@@ -7,8 +7,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  # 强制关闭并行编译和守护进程，确保 C++ 链接顺序正确
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+  # 彻底禁用并行，给 C++ 编译留足稳定的 IO 环境
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configureondemand=false"
 
 permissions:
   contents: write
@@ -40,14 +40,13 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      - name: 6. 设置特定版本的 NDK
-        # 很多时候 26.x 太新导致旧版 expo-av 崩溃，改用稳定版 25.1.8937393
+      - name: 6. 设置 NDK 23 (针对 expo-av 的兼容版本)
         uses: android-actions/setup-android@v3
         with:
-          packages: "ndk;25.1.8937393"
+          # NDK 23.1.7779620 是解决 CXX1210 错误的经典稳定版
+          packages: "ndk;23.1.7779620"
 
       - name: 7. 生成原生项目 (Prebuild)
-        # 强制清理并重新生成，这是解决 CXX1210 的关键
         run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
@@ -61,16 +60,15 @@ jobs:
           cd android
           chmod +x gradlew
           
-          # 显式指定入口文件
+          # 显式指定 NDK 路径，防止 Gradle 乱找
+          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.1.7779620
           export ENTRY_FILE=node_modules/expo/AppEntry.js
           
-          # 核心修复参数：
-          # 1. 锁定 NDK 到 25.x
-          # 2. 禁用 New Architecture (如果你的项目不需要)
-          # 3. 强制开启 Prefab
+          # 核心参数：
+          # 1. 强制 NDK 版本为 23.1.7779620
+          # 2. 仅编译 arm64-v8a 减少冲突
           ./gradlew assembleDebug --no-daemon \
-            -Pandroid.ndkVersion=25.1.8937393 \
-            -Pandroid.prefab=true \
+            -Pandroid.ndkVersion=23.1.7779620 \
             -PreactNativeArchitectures=arm64-v8a \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
@@ -89,7 +87,7 @@ jobs:
         with:
           tag_name: "v${{ steps.package-version.outputs.version }}-debug"
           name: "Debug Release v${{ steps.package-version.outputs.version }}"
-          body: "已强制开启 Prefab 且锁定 NDK 25 的修复版"
+          body: "使用 NDK 23 强制编译修复版"
           draft: false
           prerelease: true
           files: "artifacts/SuperTV_Debug.${{ steps.package-version.outputs.version }}.apk"
