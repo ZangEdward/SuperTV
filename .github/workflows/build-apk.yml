@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4 # 建议升级到 v4
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -34,18 +34,18 @@ jobs:
           java-version: "17"
 
       - name: Prebuild TV App
-        # 确保这里使用的是你在本地运行成功的命令
-        run: yarn prebuild-tv 
+        # 放弃使用 yarn 脚本，直接调用 expo 命令生成原生安卓项目
+        # --no-install 是因为前面已经 yarn install 过了
+        run: npx expo prebuild --platform android --no-install
 
       - name: Decode Keystore File
-        # 从 Secret 中恢复 jks 文件到 android/app 目录
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
 
       - name: Build TV APK with Signing
-        # 通过环境变量将 Secret 注入到 Gradle 编译流程中
         run: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleRelease \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
@@ -55,6 +55,7 @@ jobs:
       - name: Rename APK file
         run: |
           mkdir -p artifacts
+          # 确保这里重命名为 SuperTV
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
 
       - name: Create Release and Upload APK
@@ -63,11 +64,12 @@ jobs:
           tag_name: v${{ steps.package-version.outputs.version }}
           name: Release v${{ steps.package-version.outputs.version }}
           body: |
-            ## OrionTV 自动编译版
+            ## SuperTV 自动编译版
             - 版本号: ${{ steps.package-version.outputs.version }}
-            - 编译时间: ${{ github.event.repository.updated_at }}
+            - 基于项目: OrionTV
           draft: false
           prerelease: false
-          files: artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+          # 【修复点】这里必须和上面 Rename 步骤的文件名保持完全一致
+          files: artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
