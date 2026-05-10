@@ -3,6 +3,16 @@ name: Build Android APK
 on:
   workflow_dispatch: # 保持手动触发
 
+# 全局环境变量配置
+env:
+  # 强制使用 Node.js 24 运行 Actions 插件，解决弃用告警
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # 【关键】解决内存溢出：增加 Node.js 内存到 4GB
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  # 增加 Java/Gradle 内存，确保编译不崩溃
+  _JAVA_OPTIONS: "-Xmx4g"
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+
 permissions:
   contents: write
 
@@ -34,8 +44,7 @@ jobs:
           java-version: "17"
 
       - name: Prebuild TV App
-        # 放弃使用 yarn 脚本，直接调用 expo 命令生成原生安卓项目
-        # --no-install 是因为前面已经 yarn install 过了
+        # 使用 npx 直接调用，兼容性更高
         run: npx expo prebuild --platform android --no-install
 
       - name: Decode Keystore File
@@ -46,7 +55,8 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease \
+          # 使用 --no-daemon 模式在 CI 环境中更稳定，且带上签名参数
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
@@ -55,7 +65,6 @@ jobs:
       - name: Rename APK file
         run: |
           mkdir -p artifacts
-          # 确保这里重命名为 SuperTV
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
 
       - name: Create Release and Upload APK
@@ -67,9 +76,9 @@ jobs:
             ## SuperTV 自动编译版
             - 版本号: ${{ steps.package-version.outputs.version }}
             - 基于项目: OrionTV
+            - 编译时间: ${{ github.event.repository.updated_at }}
           draft: false
           prerelease: false
-          # 【修复点】这里必须和上面 Rename 步骤的文件名保持完全一致
           files: artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
