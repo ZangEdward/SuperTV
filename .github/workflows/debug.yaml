@@ -1,0 +1,85 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  _JAVA_OPTIONS: "-Xmx4g"
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+
+permissions:
+  contents: write
+
+jobs:
+  direct_build:
+    name: Build Android TV APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Get version from package.json
+        id: package-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Prebuild TV App
+        run: npx expo prebuild --platform android --no-install
+
+      # 【新增】手动尝试打包 JS，如果有语法错误，这里会直接显示红字报错
+      - name: Debug JS Bundle
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res/
+
+      - name: Decode Keystore File
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
+
+      - name: Build TV APK with Signing
+        run: |
+          cd android
+          chmod +x gradlew
+          # 添加 --stacktrace 暴露底层错误
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -Pandroid.injected.signing.store.file=SuperTV.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Rename and Release
+        if: success()
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
+
+      - name: Create Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.package-version.outputs.version }}
+          name: Release v${{ steps.package-version.outputs.version }}
+          files: artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
