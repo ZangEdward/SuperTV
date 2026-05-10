@@ -1,0 +1,74 @@
+name: Build Android Mobile APK
+
+on:
+  workflow_dispatch: # 手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  mobile_build:
+    name: Build Android Mobile APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Get version from package.json
+        id: package-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Prebuild Mobile App
+        # 移除 TV 插件影响，生成标准安卓工程
+        # 如果你想强制手机版为竖屏，可以在此步骤前用 sed 修改 app.json
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Decode Keystore File
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
+
+      - name: Build Mobile APK with Signing
+        run: |
+          cd android
+          chmod +x gradlew
+          # 使用 assembleRelease 构建标准 APK
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=SuperTV.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Rename APK file
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk
+
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-v${{ steps.package-version.outputs.version }}
+          name: Mobile Release v${{ steps.package-version.outputs.version }}
+          body: |
+            ## SuperTV 手机版
+            - 适配环境：安卓手机/平板
+            - 版本号: ${{ steps.package-version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
