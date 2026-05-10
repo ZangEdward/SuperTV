@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build AndroidTV APK
 
 on:
   workflow_dispatch: # 保持手动触发
