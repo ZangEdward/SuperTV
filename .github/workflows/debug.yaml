@@ -7,7 +7,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false" # 禁用并行编译，防止 C++ 编译冲突
+  # 强制关闭并行编译和守护进程，确保 C++ 链接顺序正确
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
 permissions:
   contents: write
@@ -39,14 +40,14 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      - name: 6. 设置 Android NDK
+      - name: 6. 设置特定版本的 NDK
+        # 很多时候 26.x 太新导致旧版 expo-av 崩溃，改用稳定版 25.1.8937393
         uses: android-actions/setup-android@v3
         with:
-          # NDK 26.1.10909125 是目前对 expo-av 兼容性最好的版本
-          packages: "ndk;26.1.10909125"
+          packages: "ndk;25.1.8937393"
 
       - name: 7. 生成原生项目 (Prebuild)
-        # 强制清除旧的 android 目录再重新生成，防止旧的 CMake 缓存导致 [CXX1210] 错误
+        # 强制清理并重新生成，这是解决 CXX1210 的关键
         run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
@@ -60,15 +61,16 @@ jobs:
           cd android
           chmod +x gradlew
           
-          # 设置入口文件路径
+          # 显式指定入口文件
           export ENTRY_FILE=node_modules/expo/AppEntry.js
           
-          # 【核心修复参数】
-          # 1. 显式锁定 NDK 版本
-          # 2. 仅编译 arm64-v8a (减少 CMake 库搜索范围)
-          # 3. 注入签名信息
+          # 核心修复参数：
+          # 1. 锁定 NDK 到 25.x
+          # 2. 禁用 New Architecture (如果你的项目不需要)
+          # 3. 强制开启 Prefab
           ./gradlew assembleDebug --no-daemon \
-            -Pandroid.ndkVersion=26.1.10909125 \
+            -Pandroid.ndkVersion=25.1.8937393 \
+            -Pandroid.prefab=true \
             -PreactNativeArchitectures=arm64-v8a \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
@@ -87,7 +89,7 @@ jobs:
         with:
           tag_name: "v${{ steps.package-version.outputs.version }}-debug"
           name: "Debug Release v${{ steps.package-version.outputs.version }}"
-          body: "SuperTV 修复 C++ 库匹配问题的测试版"
+          body: "已强制开启 Prefab 且锁定 NDK 25 的修复版"
           draft: false
           prerelease: true
           files: "artifacts/SuperTV_Debug.${{ steps.package-version.outputs.version }}.apk"
