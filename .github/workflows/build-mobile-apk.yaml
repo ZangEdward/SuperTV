@@ -3,6 +3,13 @@ name: Build Android Mobile APK
 on:
   workflow_dispatch: # 手动触发
 
+# 全局环境变量，解决内存溢出和 Node.js 版本警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  _JAVA_OPTIONS: "-Xmx4g"
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
+
 permissions:
   contents: write
 
@@ -11,64 +18,70 @@ jobs:
     name: Build Android Mobile APK
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: 1. 检出代码
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: 2. 设置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: "yarn"
 
-      - name: Install dependencies
+      - name: 3. 安装依赖
         run: yarn install --frozen-lockfile
 
-      - name: Get version from package.json
+      - name: 4. 获取版本号
         id: package-version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Setup JDK
+      - name: 5. 设置 Java 环境
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      - name: Prebuild Mobile App
-        # 移除 TV 插件影响，生成标准安卓工程
-        # 如果你想强制手机版为竖屏，可以在此步骤前用 sed 修改 app.json
+      - name: 6. 生成原生项目 (Prebuild)
+        # 强制生成标准安卓手机版配置
         run: npx expo prebuild --platform android --no-install
 
-      - name: Decode Keystore File
+      - name: 7. 恢复签名文件
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
 
-      - name: Build Mobile APK with Signing
+      - name: 8. 执行手机版正式编译
         run: |
           cd android
           chmod +x gradlew
-          # 使用 assembleRelease 构建标准 APK
-          ./gradlew assembleRelease \
+          
+          # 显式指定入口文件，防止 Metro 报错找不到 index.js
+          # 如果是 expo-router 项目，请改为 node_modules/expo-router/entry.js
+          export ENTRY_FILE=node_modules/expo/AppEntry.js
+          
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Rename APK file
+      - name: 9. 整理产物
+        if: success()
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk
 
-      - name: Create Release and Upload APK
+      - name: 10. 创建 GitHub Release
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: mobile-v${{ steps.package-version.outputs.version }}
-          name: Mobile Release v${{ steps.package-version.outputs.version }}
+          tag_name: "mobile-v${{ steps.package-version.outputs.version }}"
+          name: "Mobile Release v${{ steps.package-version.outputs.version }}"
           body: |
-            ## SuperTV 手机版
-            - 适配环境：安卓手机/平板
-            - 版本号: ${{ steps.package-version.outputs.version }}
+            ## SuperTV 手机正式版
+            - 适配：安卓手机 / 平板
+            - 版本：${{ steps.package-version.outputs.version }}
+            - 编译时间：${{ github.event.repository.updated_at }}
           draft: false
           prerelease: false
-          files: artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk
+          files: "artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
