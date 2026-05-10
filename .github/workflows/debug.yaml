@@ -1,11 +1,12 @@
-name: Build Android APK
+name: Build Debug APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 手动触发
 
+# 全局环境变量
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_OPTIONS: "--max-old-space-size=4096"
+  NODE_OPTIONS: "--max-old-space-size=4096" # 解决 JS 打包内存溢出
   _JAVA_OPTIONS: "-Xmx4g"
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
@@ -13,73 +14,63 @@ permissions:
   contents: write
 
 jobs:
-  direct_build:
-    name: Build Android TV APK
+  debug_build:
+    name: Build Android Debug APK
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: 1. 检出代码
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: 2. 设置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: "yarn"
 
-      - name: Install dependencies
+      - name: 3. 安装依赖
         run: yarn install --frozen-lockfile
 
-      - name: Get version from package.json
+      - name: 4. 获取版本号
         id: package-version
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Setup JDK
+      - name: 5. 设置 Java 环境
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      - name: Prebuild TV App
+      - name: 6. 生成原生项目 (Prebuild)
+        # 这一步会根据 app.json 生成 android 目录
         run: npx expo prebuild --platform android --no-install
 
-      # 【新增】手动尝试打包 JS，如果有语法错误，这里会直接显示红字报错
-      - name: Debug JS Bundle
-        run: |
-          mkdir -p android/app/src/main/assets
-          npx react-native bundle \
-            --platform android \
-            --dev false \
-            --entry-file index.js \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res/
-
-      - name: Decode Keystore File
+      - name: 7. 恢复签名文件
+        # 虽然是 Debug 版，但建议依然注入签名以确保能安装在电视上（部分电视拒绝无签名应用）
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
 
-      - name: Build TV APK with Signing
+      - name: 8. 执行编译 (Debug版)
         run: |
           cd android
           chmod +x gradlew
-          # 添加 --stacktrace 暴露底层错误
-          ./gradlew assembleRelease --no-daemon --stacktrace \
+          
+          # 【修复关键】显式指定 Expo 入口文件路径，防止找不到 index.js
+          # 如果你的项目不是标准 Expo，请将路径改为 node_modules/expo-router/entry.js
+          export ENTRY_FILE=node_modules/expo/AppEntry.js
+          
+          ./gradlew assembleDebug --no-daemon \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: Rename and Release
-        if: success()
+      - name: 9. 重命名并整理产物
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
+          # Debug 编译输出的文件名通常是 app-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.${{ steps.package-version.outputs.version }}.apk
 
-      - name: Create Release
-        if: success()
+      - name: 10. 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.package-version.outputs.version }}
-          name: Release v${{ steps.package-version.outputs.version }}
-          files: artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ steps.package-
