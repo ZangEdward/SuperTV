@@ -33,20 +33,86 @@ jobs:
       - name: 3. 安装依赖
         run: yarn install --frozen-lockfile
 
-      - name: 4. 设置 Java & NDK
+      - name: 4. 获取版本号
+        id: package-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: 5. 设置 Java & NDK
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      - name: 5. 设置 NDK 26
+      - name: 6. 设置 Android NDK
+        # react-native-tvos 0.74 需要 NDK 26
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 5.5 强制修正 Babel 配置 (双重保险)
-        # 防止 babel.config.js 中残留过时的 expo-router/babel 导致打包中断
+      - name: 7. 强制修正 Babel 配置 (Node.js 稳健版)
+        # 解决 Shell 引号引起的 exit code 2 问题
         run: |
-          if [ -f "babel.config.js" ]; then
-            sed -i "s/'expo-router\/babel'//g" babel.config.js
-            sed -i 's/"
+          node -e "
+          const fs = require('fs');
+          const path = 'babel.config.js';
+          if (fs.existsSync(path)) {
+            let content = fs.readFileSync(path, 'utf8');
+            // 同时移除带单引号和双引号的插件配置
+            content = content.replace(/'expo-router\/babel'/g, '');
+            content = content.replace(/\"expo-router\/babel\"/g, '');
+            // 清理可能产生的语法错误
+            content = content.replace(/,(\s*),/g, ',');
+            fs.writeFileSync(path, content);
+            console.log('Successfully sanitized babel.config.js');
+          } else {
+            console.log('babel.config.js not found, skipping.');
+          }
+          "
+
+      - name: 8. 执行预构建 (yarn prebuild)
+        # 这会运行您的脚本：expo prebuild --clean && yarn copy-config
+        run: yarn prebuild
+
+      - name: 9. 恢复签名文件
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
+
+      - name: 10. 执行 Debug 编译
+        run: |
+          cd android
+          chmod +x gradlew
+          
+          # 设置关键路径环境变量
+          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
+          # 重要：指向 expo-router 的正确入口，解决 node exit 1 问题
+          export ENTRY_FILE=node_modules/expo-router/entry.js
+          
+          ./gradlew assembleDebug --no-daemon \
+            -Pandroid.ndkVersion=26.1.10909125 \
+            -Pandroid.injected.signing.store.file=SuperTV.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} \
+            -PreactNativeArchitectures=arm64-v8a
+
+      - name: 11. 整理产物
+        if: success()
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug_v${{ steps.package-version.outputs.version }}.apk
+
+      - name: 12. 创建 GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.package-version.outputs.version }}-debug-${{ github.run_number }}"
+          name: "SuperTV Debug v${{ steps.package-version.outputs.version }} (Build ${{ github.run_number }})"
+          body: |
+            ### Android TV Debug 构建
+            - 版本：${{ steps.package-version.outputs.version }}
+            - 修正：已通过 Node 脚本清理 Babel 插件冲突
+            - 架构：arm64-v8a
+          prerelease: true
+          files: "artifacts/*.apk"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
