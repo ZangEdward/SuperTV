@@ -1,12 +1,11 @@
 name: Build Debug APK
 
 on:
-  workflow_dispatch: # 手动触发
+  workflow_dispatch:
 
-# 全局环境变量
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_OPTIONS: "--max-old-space-size=4096" # 解决 JS 打包内存溢出
+  NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
@@ -40,11 +39,10 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      # 【新增】设置 Android NDK，解决 expo-av 编译 C++ 失败的问题
       - name: 6. 设置 Android NDK
         uses: android-actions/setup-android@v3
         with:
-          # 安装 Expo/React Native 推荐的 NDK 版本
+          # NDK 26.1.10909125 是 RN 0.73+ 的标准版本
           packages: "ndk;26.1.10909125"
 
       - name: 7. 生成原生项目 (Prebuild)
@@ -59,18 +57,18 @@ jobs:
           cd android
           chmod +x gradlew
           
-          # 【关键修复】显式指向 NDK 路径，让 CMake 能找到库
-          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-          
-          # 【入口修复】显式指定入口文件
-          # 如果你的项目报错找不到 index.js，请改为 node_modules/expo-router/entry.js
+          # 设置入口文件
           export ENTRY_FILE=node_modules/expo/AppEntry.js
           
+          # 执行编译，添加强制 NDK 路径和 C++ 兼容性参数
           ./gradlew assembleDebug --no-daemon \
+            -Dandroid.dir=$ANDROID_HOME \
+            -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} \
+            -PreactNativeArchitectures=arm64-v8a
 
       - name: 10. 整理产物
         if: success()
@@ -85,10 +83,9 @@ jobs:
           tag_name: "v${{ steps.package-version.outputs.version }}-debug"
           name: "Debug Release v${{ steps.package-version.outputs.version }}"
           body: |
-            ## SuperTV Debug 测试版
-            - 状态：测试版 (Debug)
-            - 版本：${{ steps.package-version.outputs.version }}
-            - 修复：解决了 expo-av NDK 编译错误
+            ## SuperTV Debug 修复版
+            - 状态：已修复 expo-av C++ 编译冲突
+            - 架构：arm64-v8a
           draft: false
           prerelease: true
           files: "artifacts/SuperTV_Debug.${{ steps.package-version.outputs.version }}.apk"
