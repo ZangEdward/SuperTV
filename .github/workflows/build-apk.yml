@@ -55,7 +55,7 @@ jobs:
       - name: Rename APK file
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/orionTV.${{ steps.package-version.outputs.version }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV.${{ steps.package-version.outputs.version }}.apk
 
       - name: Create Release and Upload APK
         uses: softprops/action-gh-release@v2
