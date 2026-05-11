@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { api } from '@/services/api';
 
+const DEFAULT_API = "https://tv.lzsb.edu.eu.org/n.json";
+
 export interface ApiConfigStatus {
   isConfigured: boolean;
   isValidating: boolean;
@@ -12,30 +14,20 @@ export interface ApiConfigStatus {
 
 export const useApiConfig = () => {
   const { apiBaseUrl, serverConfig, isLoadingServerConfig } = useSettingsStore();
-  const [validationState, setValidationState] = useState<{
-    isValidating: boolean;
-    isValid: boolean | null;
-    error: string | null;
-  }>({
+  const [validationState, setValidationState] = useState({
     isValidating: false,
     isValid: null,
     error: null,
   });
 
-  const isConfigured = Boolean(apiBaseUrl && apiBaseUrl.trim());
-  const needsConfiguration = !isConfigured;
+  // 自动使用默认 API
+  const finalApiUrl = apiBaseUrl?.trim() || DEFAULT_API;
+  api.setBaseUrl(finalApiUrl);
 
-  // Validate API configuration when it changes
+  const isConfigured = true; // 永远视为已配置
+  const needsConfiguration = false;
+
   useEffect(() => {
-    if (!isConfigured) {
-      setValidationState({
-        isValidating: false,
-        isValid: false,
-        error: null,
-      });
-      return;
-    }
-
     const validateConfig = async () => {
       setValidationState(prev => ({ ...prev, isValidating: true, error: null }));
 
@@ -47,65 +39,18 @@ export const useApiConfig = () => {
           error: null,
         });
       } catch (error) {
-        let errorMessage = '服务器连接失败';
-
-        if (error instanceof Error) {
-          switch (error.message) {
-            case 'API_URL_NOT_SET':
-              errorMessage = 'API地址未设置';
-              break;
-            case 'UNAUTHORIZED':
-              errorMessage = '服务器认证失败';
-              break;
-            default:
-              if (error.message.includes('Network')) {
-                errorMessage = '网络连接失败，请检查网络或服务器地址';
-              } else if (error.message.includes('timeout')) {
-                errorMessage = '连接超时，请检查服务器地址';
-              } else if (error.message.includes('404')) {
-                errorMessage = '服务器地址无效，请检查API路径';
-              } else if (error.message.includes('500')) {
-                errorMessage = '服务器内部错误';
-              }
-              break;
-          }
-        }
-
         setValidationState({
           isValidating: false,
           isValid: false,
-          error: errorMessage,
+          error: "服务器连接失败",
         });
       }
     };
 
-    // Only validate if not already loading server config
     if (!isLoadingServerConfig) {
       validateConfig();
     }
-  }, [apiBaseUrl, isConfigured, isLoadingServerConfig]);
-
-  // Reset validation when server config loading state changes
-  useEffect(() => {
-    if (isLoadingServerConfig) {
-      setValidationState(prev => ({ ...prev, isValidating: true, error: null }));
-    }
-  }, [isLoadingServerConfig]);
-
-  // Update validation state based on server config
-  useEffect(() => {
-    if (!isLoadingServerConfig && isConfigured) {
-      if (serverConfig) {
-        setValidationState(prev => ({ ...prev, isValid: true, error: null }));
-      } else {
-        setValidationState(prev => ({
-          ...prev,
-          isValid: false,
-          error: prev.error || '无法获取服务器配置'
-        }));
-      }
-    }
-  }, [serverConfig, isLoadingServerConfig, isConfigured]);
+  }, [finalApiUrl, isLoadingServerConfig]);
 
   const status: ApiConfigStatus = {
     isConfigured,
@@ -119,21 +64,8 @@ export const useApiConfig = () => {
 };
 
 export const getApiConfigErrorMessage = (status: ApiConfigStatus): string => {
-  if (status.needsConfiguration) {
-    return '请点击右上角设置按钮，配置您的服务器地址';
-  }
-
-  if (status.error) {
-    return status.error;
-  }
-
-  if (status.isValidating) {
-    return '正在验证服务器配置...';
-  }
-
-  if (status.isValid === false) {
-    return '服务器配置验证失败，请检查设置';
-  }
-
+  if (status.error) return status.error;
+  if (status.isValidating) return '正在验证服务器配置...';
+  if (status.isValid === false) return '服务器配置验证失败，请检查设置';
   return '加载失败，请重试';
 };
