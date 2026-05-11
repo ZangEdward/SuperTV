@@ -1,4 +1,4 @@
-name: Build Mobile Release (Fix JS Bundle)
+name: Build Mobile Release
 
 on:
   workflow_dispatch:
@@ -8,35 +8,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - run: yarn install --frozen-lockfile
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
-      - run: |
+      - name: Prebuild
+        run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      # ⭐ 关键修复：禁用 Hermes，强制 JSC
-      - name: Disable Hermes for TV (force JSC)
-        run: |
-          echo "hermesEnabled=false" >> android/gradle.properties
-          echo "expo.jsEngine=jsc" >> android/gradle.properties
-
-      # ⭐ 让 Expo 能读到 NODE_ENV
-      - name: Force NODE_ENV in gradle.properties
-        run: |
-          echo "NODE_ENV=production" >> android/gradle.properties
-
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
@@ -46,7 +41,8 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --info
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: android/app/build/outputs/apk/release/*.apk
