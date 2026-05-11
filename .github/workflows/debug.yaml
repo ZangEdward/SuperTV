@@ -9,8 +9,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  # 强制关闭并行编译，确保 C++ 链接时不会因为资源竞争而找不到库
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configureondemand=false"
+  # 彻底关闭守护进程和并行，确保纯净编译
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
 permissions:
   contents: write
@@ -38,19 +38,16 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
-      - name: 5. 设置 NDK 26.1.10909125
+      - name: 5. 设置 NDK 26 (Expo SDK 51 标准)
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 6. 超级补丁 (修复 Babel & expo-av 深度链接)
-        # 这一步是解决 CXX1210 的核心：同时修正 CMake 和 build.gradle
+      - name: 6. 修复 Babel 插件冲突
+        # 仅保留 Babel 修复，因为这是真实存在的 SDK 51 语法冲突
         run: |
           node -e "
           const fs = require('fs');
-          const path = require('path');
-
-          // --- 1. 修复 Babel ---
           const babelPath = 'babel.config.js';
           if (fs.existsSync(babelPath)) {
             let content = fs.readFileSync(babelPath, 'utf8');
@@ -58,33 +55,9 @@ jobs:
             fs.writeFileSync(babelPath, content);
             console.log('✅ Babel fixed.');
           }
-
-          // --- 2. 修复 expo-av CMakeLists.txt ---
-          const cmakePath = 'node_modules/expo-av/android/CMakeLists.txt';
-          if (fs.existsSync(cmakePath)) {
-            let content = fs.readFileSync(cmakePath, 'utf8');
-            // 彻底移除 REQUIRED 约束，防止找不到 ReactAndroid 时崩溃
-            content = content.replace(/find_package\(ReactAndroid REQUIRED\)/g, 'find_package(ReactAndroid)');
-            content = content.replace(/find_package\(fbjni REQUIRED\)/g, 'find_package(fbjni)');
-            fs.writeFileSync(cmakePath, content);
-            console.log('✅ expo-av CMake patched.');
-          }
-
-          // --- 3. 修复 expo-av build.gradle (新增步骤) ---
-          const avGradlePath = 'node_modules/expo-av/android/build.gradle';
-          if (fs.existsSync(avGradlePath)) {
-            let content = fs.readFileSync(avGradlePath, 'utf8');
-            // 在 android 块中强制注入 prefab true
-            if (!content.includes('prefab true')) {
-              content = content.replace('android {', 'android {\n    buildFeatures { prefab true }');
-            }
-            fs.writeFileSync(avGradlePath, content);
-            console.log('✅ expo-av build.gradle patched with Prefab support.');
-          }
           "
 
-      - name: 7. 执行预构建 (yarn prebuild)
-        # 必须先删除旧的 android 目录，确保 patch 后的配置能应用到生成的工程中
+      - name: 7. 执行预构建 (清理并重建)
         run: |
           rm -rf android
           yarn prebuild
@@ -93,20 +66,22 @@ jobs:
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
 
-      - name: 9. 执行 Debug 编译
+      - name: 9. 执行 Debug 编译 (切换为 32 位电视架构)
         run: |
           cd android
           chmod +x gradlew
           
-          # 关键环境变量
+          # 核心路径引导
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
           export ENTRY_FILE=node_modules/expo-router/entry.js
           
-          # 增加 -Pandroid.prefab=true 以确保全局启用
+          # 显式告诉 CMake 去哪里找 React Native
+          export REACT_NATIVE_DIR=$GITHUB_WORKSPACE/node_modules/react-native
+          
+          # 【核心修复】：将 reactNativeArchitectures 改为 armeabi-v7a
           ./gradlew assembleDebug --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
-            -Pandroid.prefab=true \
-            -PreactNativeArchitectures=arm64-v8a \
+            -PreactNativeArchitectures=armeabi-v7a \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
@@ -124,6 +99,10 @@ jobs:
         with:
           tag_name: "v1.3.13-debug-${{ github.run_number }}"
           name: "SuperTV Debug v1.3.13"
+          body: |
+            ### 构建详情
+            - 架构：`armeabi-v7a` (专门适配 Android TV OS)
+            - 引擎：react-native-tvos
           files: "artifacts/*.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
