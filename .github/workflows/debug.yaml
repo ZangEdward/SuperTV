@@ -16,35 +16,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 2. Node
+      - name: Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: yarn
 
-      - name: 3. Install deps
+      - name: Install deps
         run: yarn install --frozen-lockfile
 
-      - name: 4. Java
+      - name: Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
-      - name: 5. Android NDK
+      - name: Android NDK
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 6. Prebuild
+      - name: Prebuild
         run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      - name: 7. Patch CXX1210 (node_modules + .cxx)
+      - name: Patch Maven Mirrors (fix 403)
+        run: |
+          echo "Patching Maven mirrors..."
+          # settings.gradle
+          sed -i '1i\
+pluginManagement { repositories {\
+maven { url "https://maven.aliyun.com/repository/public" }\
+maven { url "https://maven.aliyun.com/repository/google" }\
+mavenCentral()\
+google()\
+gradlePluginPortal()\
+}}' android/settings.gradle
+
+          # build.gradle
+          sed -i '/allprojects {/a\
+    repositories {\
+        maven { url "https://maven.aliyun.com/repository/public" }\
+        maven { url "https://maven.aliyun.com/repository/google" }\
+    }' android/build.gradle
+
+      - name: Patch CXX1210 (expo-av)
         run: |
           echo "Patching expo-av CMakeLists..."
           node -e "
@@ -53,28 +73,17 @@ jobs:
 
           const patch = 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\\n';
 
-          // patch node_modules
-          const nm = 'node_modules/expo-av/android/CMakeLists.txt';
-          if (fs.existsSync(nm)) {
-            let c = fs.readFileSync(nm, 'utf8');
-            if (!c.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
-              fs.writeFileSync(nm, patch + c);
-              console.log('patched node_modules expo-av');
-            }
-          }
-
-          // patch android/.cxx (真正参与编译)
           const files = glob.sync('android/.cxx/**/expo-av/CMakeLists.txt');
           for (const f of files) {
             let c = fs.readFileSync(f, 'utf8');
             if (!c.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
               fs.writeFileSync(f, patch + c);
-              console.log('patched .cxx expo-av:', f);
+              console.log('patched:', f);
             }
           }
           "
 
-      - name: 8. Build Debug
+      - name: Build Debug
         run: |
           cd android
           chmod +x gradlew
@@ -83,12 +92,12 @@ jobs:
             -Pandroid.ndkVersion=26.1.10909125 \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
 
-      - name: 9. Collect APK
+      - name: Collect APK
         run: |
           mkdir -p artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.apk
 
-      - name: 10. Release
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "debug-${{ github.run_number }}"
