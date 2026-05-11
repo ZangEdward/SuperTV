@@ -24,6 +24,17 @@ jobs:
           rm -rf android
           npx expo prebuild --platform android --no-install
 
+      # ⭐ 关键补丁：强制禁用 Hermes，强制使用 JSC
+      - name: Force disable Hermes (TV fix)
+        run: |
+          echo "hermesEnabled=false" >> android/gradle.properties
+          echo "expo.jsEngine=jsc" >> android/gradle.properties
+
+      # ⭐ 让 Expo 能读到 NODE_ENV
+      - name: Force NODE_ENV
+        run: |
+          echo "NODE_ENV=production" >> android/gradle.properties
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
