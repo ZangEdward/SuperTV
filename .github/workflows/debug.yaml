@@ -9,7 +9,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  # 彻底禁用并行和配置按需加载，防止 C++ 链接时丢失 Prefab 路径
+  # 强制关闭并行编译，确保 C++ 链接时不会因为资源竞争而找不到库
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.configureondemand=false"
 
 permissions:
@@ -43,13 +43,14 @@ jobs:
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 6. 自动化环境修补 (Babel & expo-av CMake)
-        # 针对 SDK 51 和 TVOS 分支的专属补丁
+      - name: 6. 超级补丁 (修复 Babel & expo-av 深度链接)
+        # 这一步是解决 CXX1210 的核心：同时修正 CMake 和 build.gradle
         run: |
           node -e "
           const fs = require('fs');
-          
-          // 1. 修复 Babel 插件冲突
+          const path = require('path');
+
+          // --- 1. 修复 Babel ---
           const babelPath = 'babel.config.js';
           if (fs.existsSync(babelPath)) {
             let content = fs.readFileSync(babelPath, 'utf8');
@@ -58,20 +59,35 @@ jobs:
             console.log('✅ Babel fixed.');
           }
 
-          // 2. 修复 expo-av [CXX1210] 报错 (针对 react-native-tvos 的核心补丁)
+          // --- 2. 修复 expo-av CMakeLists.txt ---
           const cmakePath = 'node_modules/expo-av/android/CMakeLists.txt';
           if (fs.existsSync(cmakePath)) {
             let content = fs.readFileSync(cmakePath, 'utf8');
-            // 移除对 ReactAndroid 包的强制依赖检查，改用 Prefab 自动链接
-            content = content.replace('find_package(ReactAndroid REQUIRED)', 'find_package(ReactAndroid)');
+            // 彻底移除 REQUIRED 约束，防止找不到 ReactAndroid 时崩溃
+            content = content.replace(/find_package\(ReactAndroid REQUIRED\)/g, 'find_package(ReactAndroid)');
+            content = content.replace(/find_package\(fbjni REQUIRED\)/g, 'find_package(fbjni)');
             fs.writeFileSync(cmakePath, content);
             console.log('✅ expo-av CMake patched.');
+          }
+
+          // --- 3. 修复 expo-av build.gradle (新增步骤) ---
+          const avGradlePath = 'node_modules/expo-av/android/build.gradle';
+          if (fs.existsSync(avGradlePath)) {
+            let content = fs.readFileSync(avGradlePath, 'utf8');
+            // 在 android 块中强制注入 prefab true
+            if (!content.includes('prefab true')) {
+              content = content.replace('android {', 'android {\n    buildFeatures { prefab true }');
+            }
+            fs.writeFileSync(avGradlePath, content);
+            console.log('✅ expo-av build.gradle patched with Prefab support.');
           }
           "
 
       - name: 7. 执行预构建 (yarn prebuild)
-        # 会自动清理 android 目录并运行 copy-config (如 package.json 所定义)
-        run: yarn prebuild
+        # 必须先删除旧的 android 目录，确保 patch 后的配置能应用到生成的工程中
+        run: |
+          rm -rf android
+          yarn prebuild
 
       - name: 8. 恢复签名文件
         run: |
@@ -82,13 +98,11 @@ jobs:
           cd android
           chmod +x gradlew
           
-          # 核心路径变量
+          # 关键环境变量
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
           export ENTRY_FILE=node_modules/expo-router/entry.js
           
-          # 编译参数说明：
-          # -Pandroid.prefab=true: 启用 Prefab 依赖发现机制 (解决 C++ 库找不到的关键)
-          # -PreactNativeArchitectures=arm64-v8a: 仅编译主流 64 位电视架构，减少出错率
+          # 增加 -Pandroid.prefab=true 以确保全局启用
           ./gradlew assembleDebug --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
             -Pandroid.prefab=true \
@@ -102,21 +116,14 @@ jobs:
         if: success()
         run: |
           mkdir -p artifacts
-          VERSION=$(node -p "require('./package.json').version")
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_v${VERSION}_Debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.apk
 
-      - name: 11. 发布 GitHub Release
+      - name: 11. 发布 Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v1.3.13-debug-${{ github.run_number }}"
-          name: "SuperTV Debug v1.3.13 (Build ${{ github.run_number }})"
-          body: |
-            ### 构建详情
-            - **App 名称**: SuperTV
-            - **包名**: com.oriontv
-            - **引擎**: react-native-tvos (Expo SDK 51)
-            - **修复**: 已应用 expo-av C++ 链接补丁
+          name: "SuperTV Debug v1.3.13"
           files: "artifacts/*.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
