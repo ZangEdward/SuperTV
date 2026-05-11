@@ -1,4 +1,4 @@
-name: Build Mobile Release (Debug JS Bundle)
+name: Build Android APK (Signed)
 
 on:
   workflow_dispatch:
@@ -8,55 +8,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Prebuild
-        run: |
-          rm -rf android
-          npx expo prebuild --platform android --no-install
-
-      # ⭐ 强制禁用 Hermes（TV 必须）
-      - name: Force disable Hermes
-        run: |
-          echo "hermesEnabled=false" >> android/gradle.properties
-          echo "expo.jsEngine=jsc" >> android/gradle.properties
-
-      # ⭐ 让 Node 打印所有 JS bundler 错误
-      - name: Inject Node debug flags
-        run: |
-          echo "NODE_OPTIONS=--trace-uncaught --trace-warnings" >> android/gradle.properties
-          echo "BUNDLE_COMMAND=bundle" >> android/gradle.properties
-          echo "CLI_PATH=node_modules/react-native/cli.js" >> android/gradle.properties
-          echo "RCT_METRO_PORT=8081" >> android/gradle.properties
+          node-version: 20
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
-          java-version: 17
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: "ndk;26.1.10909125"
 
-      - name: Build Release APK (print JS errors)
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      # 解码 JKS 签名文件
+      - name: Decode Keystore
+        run: |
+          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+
+      # Expo Prebuild（生成 android 目录）
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --no-install
+
+      # 写入签名配置到 gradle.properties
+      - name: Configure Signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      # 构建 Release APK
+      - name: Build APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace --info
+          ./gradlew assembleRelease
 
+      # 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: Signed-Mobile-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
