@@ -1,0 +1,63 @@
+name: Build Mobile APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Read version
+        id: pkg
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+
+      - name: Prebuild
+        run: |
+          rm -rf android
+          npx expo prebuild --platform android --no-install
+
+      - name: Disable ABI splits
+        run: |
+          sed -i '/defaultConfig {/a\
+        splits { abi { enable false } }' android/app/build.gradle
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;26.1.10909125"
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Save APK
+        run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/SuperTV_Mobile_v${{ steps.pkg.outputs.version }}.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperTV-Mobile-v${{ steps.pkg.outputs.version }}
+          path: artifacts/*.apk
