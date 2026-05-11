@@ -7,7 +7,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  # 禁用并行编译，防止 C++ 链接时的资源竞争导致莫名其妙的报错
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
 permissions:
@@ -17,6 +16,7 @@ jobs:
   debug_build:
     name: Build Android Debug APK
     runs-on: ubuntu-latest
+
     steps:
       - name: 1. 检出代码
         uses: actions/checkout@v4
@@ -43,43 +43,40 @@ jobs:
       - name: 6. 设置 Android NDK
         uses: android-actions/setup-android@v3
         with:
-          # NDK 26 是 Expo SDK 51 的官方推荐版本
           packages: "ndk;26.1.10909125"
 
-      - name: 7. 注入 CXX1210 终极补丁
-        # 这是解决 [CXX1210] No compatible library found 的核心操作
-        # 强制 CMake 在 Debug 编译时使用 Release 版本的底层库
+      - name: 7. 注入 CXX1210 终极补丁（全模块版）
         run: |
-          echo "Applying CXX1210 Fallback Patch..."
+          echo "Applying Full CXX1210 Patch..."
           node -e "
           const fs = require('fs');
-          const path = require('path');
-          
-          // 修复 expo-av 的 CMake 配置
-          const avCmake = 'node_modules/expo-av/android/CMakeLists.txt';
-          if (fs.existsSync(avCmake)) {
-            let content = fs.readFileSync(avCmake, 'utf8');
-            if (!content.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
-              fs.writeFileSync(avCmake, 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\n' + content);
-              console.log('✅ expo-av patched');
-            }
-          }
 
-          // 修复 expo-modules-core 的 CMake 配置（防止连锁反应）
-          const coreCmake = 'node_modules/expo-modules-core/android/CMakeLists.txt';
-          if (fs.existsSync(coreCmake)) {
-            let content = fs.readFileSync(coreCmake, 'utf8');
-            if (!content.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
-              fs.writeFileSync(coreCmake, 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\n' + content);
-              console.log('✅ expo-modules-core patched');
+          const targets = [
+            'node_modules/expo-av/android/CMakeLists.txt',
+            'node_modules/expo-modules-core/android/CMakeLists.txt',
+            'node_modules/react-native/ReactAndroid/CMakeLists.txt',
+            'node_modules/react-native-reanimated/android/CMakeLists.txt',
+            'node_modules/react-native-gesture-handler/android/CMakeLists.txt'
+          ];
+
+          for (const file of targets) {
+            if (fs.existsSync(file)) {
+              let content = fs.readFileSync(file, 'utf8');
+              if (!content.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
+                fs.writeFileSync(
+                  file,
+                  'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\n' + content
+                );
+                console.log('✅ patched: ' + file);
+              }
             }
           }
           "
 
-      - name: 8. 执行 Prebuild (生成 Android 目录)
+      - name: 8. 执行 Prebuild-TV
         run: |
           rm -rf android
-          npx expo prebuild --platform android --no-install
+          yarn prebuild-tv
 
       - name: 9. 恢复签名文件
         run: |
@@ -89,11 +86,9 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          
-          # 明确路径，防止构建系统“迷路”
+
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-          
-          # 编译双架构，确保兼容新旧电视盒子
+
           ./gradlew assembleDebug --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
@@ -118,7 +113,7 @@ jobs:
             ### 构建信息
             - **版本**: ${{ steps.package-version.outputs.version }}
             - **架构**: armeabi-v7a, arm64-v8a
-            - **修复**: 强制 CMake 映射 Debug 库到 Release (解决 CXX1210 错误)
+            - **修复**: 全模块 CXX1210 Debug→Release 映射
           files: "artifacts/*.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
