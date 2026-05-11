@@ -1,4 +1,4 @@
-name: Build TV + Mobile APK
+name: Build Android TV APK (Signed)
 
 on:
   workflow_dispatch:
@@ -8,108 +8,57 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Read version from package.json
-        id: pkg
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
-
-      # -------------------------
-      # 📱 MOBILE 版本
-      # -------------------------
-      - name: Prepare Mobile app.json
-        run: |
-          cp app.json app.base.json
-          node -e "
-          const fs = require('fs');
-          const app = JSON.parse(fs.readFileSync('app.base.json','utf8'));
-          app.expo.android.tv = false;
-          app.expo.android.package = 'com.oriontv';
-          fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-          "
-
-      - name: Prebuild Mobile
-        run: |
-          rm -rf android
-          npx expo prebuild --platform android --no-install
-
-      - name: Disable ABI splits (Mobile)
-        run: |
-          sed -i '/defaultConfig {/a\
-        splits { abi { enable false } }' android/app/build.gradle
+          node-version: 20
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
-          java-version: 17
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: "ndk;26.1.10909125"
 
-      - name: Build Mobile APK
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      # 解码 JKS 签名文件
+      - name: Decode Keystore
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
 
-      - name: Save Mobile APK
+      # Expo Prebuild（TV 版）
+      - name: Expo Prebuild (Android TV)
+        run: npx expo prebuild --platform android --no-install
+
+      # 写入签名配置
+      - name: Configure Signing
         run: |
-          mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             artifacts/SuperTV_Mobile_v${{ steps.pkg.outputs.version }}.apk
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # -------------------------
-      # 📺 TV 版本
-      # -------------------------
-      - name: Prepare TV app.json
-        run: |
-          cp app.base.json app.json
-          node -e "
-          const fs = require('fs');
-          const app = JSON.parse(fs.readFileSync('app.json','utf8'));
-          app.expo.android.tv = true;
-          app.expo.android.package = 'com.oriontv.tv';
-          fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
-          "
-
-      - name: Prebuild TV
-        run: |
-          rm -rf android
-          npx expo prebuild --platform android --no-install
-
-      - name: Disable ABI splits (TV)
-        run: |
-          sed -i '/defaultConfig {/a\
-        splits { abi { enable false } }' android/app/build.gradle
-
+      # 构建 TV Release APK
       - name: Build TV APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease
 
-      - name: Save TV APK
-        run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             artifacts/SuperTV_TV_v${{ steps.pkg.outputs.version }}.apk
-
-      # -------------------------
-      # 📦 上传两个 APK
-      # -------------------------
-      - name: Upload Both APKs
+      # 上传 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SuperTV-APK-Bundle-v${{ steps.pkg.outputs.version }}
-          path: artifacts/*.apk
+          name: Signed-TV-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
