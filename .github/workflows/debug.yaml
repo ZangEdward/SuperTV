@@ -1,15 +1,13 @@
-name: Build Android TV Debug
+name: Build Debug APK
 
 on:
   workflow_dispatch:
 
 env:
-  EXPO_TV: 1
-  EXPO_USE_METRO_WORKSPACE_ROOT: 1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
-  # 彻底关闭守护进程和并行，确保纯净编译
+  # 禁用并行编译，防止 C++ 链接时的资源竞争
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
 
 permissions:
@@ -32,77 +30,85 @@ jobs:
       - name: 3. 安装依赖
         run: yarn install --frozen-lockfile
 
-      - name: 4. 设置 Java 环境
+      - name: 4. 获取版本号
+        id: package-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: 5. 设置 Java 环境
         uses: actions/setup-java@v4
         with:
           distribution: "zulu"
           java-version: "17"
 
-      - name: 5. 设置 NDK 26 (Expo SDK 51 标准)
+      - name: 6. 设置 Android NDK
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 6. 修复 Babel 插件冲突
-        # 仅保留 Babel 修复，因为这是真实存在的 SDK 51 语法冲突
+      - name: 7. 核心修复：注入 Debug 库回退逻辑
+        # 针对 expo-av 和 TVOS 环境，强制 CMake 在 Debug 模式下使用 Release 库
         run: |
           node -e "
           const fs = require('fs');
-          const babelPath = 'babel.config.js';
-          if (fs.existsSync(babelPath)) {
-            let content = fs.readFileSync(babelPath, 'utf8');
-            content = content.replace(/'expo-router\/babel'/g, '').replace(/\"expo-router\/babel\"/g, '').replace(/,(\s*),/g, ',');
-            fs.writeFileSync(babelPath, content);
-            console.log('✅ Babel fixed.');
+          const path = require('path');
+          const modulesDir = 'node_modules';
+          
+          if (fs.existsSync(modulesDir)) {
+            const targets = ['expo-av', 'expo-modules-core']; // 容易报错的模块
+            targets.forEach(mod => {
+              const cmakePath = path.join(modulesDir, mod, 'android/CMakeLists.txt');
+              if (fs.existsSync(cmakePath)) {
+                let content = fs.readFileSync(cmakePath, 'utf8');
+                if (!content.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
+                  // 注入指令：如果找不到 Debug 库，就用 Release 库代替
+                  const patch = 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\n';
+                  fs.writeFileSync(cmakePath, patch + content);
+                  console.log('✅ Patched ' + mod);
+                }
+              }
+            });
           }
           "
 
-      - name: 7. 执行预构建 (清理并重建)
+      - name: 8. 生成原生项目 (Prebuild)
         run: |
           rm -rf android
-          yarn prebuild
+          npx expo prebuild --platform android --no-install
 
-      - name: 8. 恢复签名文件
+      - name: 9. 恢复签名文件
         run: |
           echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
 
-      - name: 9. 执行 Debug 编译 (切换为 32 位电视架构)
+      - name: 10. 执行 Debug 编译
         run: |
           cd android
           chmod +x gradlew
           
-          # 核心路径引导
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-          export ENTRY_FILE=node_modules/expo-router/entry.js
           
-          # 显式告诉 CMake 去哪里找 React Native
-          export REACT_NATIVE_DIR=$GITHUB_WORKSPACE/node_modules/react-native
-          
-          # 【核心修复】：将 reactNativeArchitectures 改为 armeabi-v7a
+          # 【架构建议】
+          # 电视端建议包含 armeabi-v7a，因为很多老旧电视/盒子不支持 64 位
           ./gradlew assembleDebug --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
-            -PreactNativeArchitectures=armeabi-v7a \
+            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
             -Pandroid.injected.signing.store.file=SuperTV.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: 10. 整理产物
+      - name: 11. 整理产物
         if: success()
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.${{ steps.package-version.outputs.version }}.apk
 
-      - name: 11. 发布 Release
+      - name: 12. 创建 GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v1.3.13-debug-${{ github.run_number }}"
-          name: "SuperTV Debug v1.3.13"
-          body: |
-            ### 构建详情
-            - 架构：`armeabi-v7a` (专门适配 Android TV OS)
-            - 引擎：react-native-tvos
+          tag_name: "v${{ steps.package-version.outputs.version }}-debug-${{ github.run_number }}"
+          name: "SuperTV Debug v${{ steps.package-version.outputs.version }}"
+          body: "此版本包含针对 expo-av C++ 库匹配问题的终极修复 (Debug Fallback Patch)"
           files: "artifacts/*.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
