@@ -1,4 +1,4 @@
-name: Build Mobile Release
+name: Build Mobile Release (Debug JS Error)
 
 on:
   workflow_dispatch:
@@ -8,39 +8,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - run: yarn install --frozen-lockfile
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
-      - run: |
+      - name: Prebuild
+        run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      # ⭐ 关键修复：让 Expo 能读到 NODE_ENV
+      # ⭐ 关键：让 Expo 能读到 NODE_ENV
       - name: Force NODE_ENV in gradle.properties
         run: |
           echo "NODE_ENV=production" >> android/gradle.properties
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: Build Release APK
+      # ⭐⭐ 最关键：打印 JS bundle 的真实错误
+      - name: Build Release APK (with JS error logs)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace --info
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+      - name: Upload logs
+        if: failure()
+        run: |
+          echo "Build failed. Uploading logs..."
+        # 这里不上传文件，只是占位
