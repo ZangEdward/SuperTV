@@ -1,4 +1,4 @@
-name: Build Mobile Release APK
+name: Build Mobile Release
 
 on:
   workflow_dispatch:
@@ -16,56 +16,14 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
-      - name: Read version
-        id: pkg
-        run: |
-          VERSION=$(node -e "console.log(require('./package.json').version)")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      # -------------------------
-      # 🔧 设置 Release 所需环境变量（关键）
-      # -------------------------
-      - name: Set NODE_ENV
-        run: echo "NODE_ENV=production" >> $GITHUB_ENV
-
-      # -------------------------
-      # 🔧 Prebuild（只执行一次）
-      # -------------------------
       - run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      # -------------------------
-      # 🔧 写入签名文件
-      # -------------------------
-      - name: Decode signing key
+      # ⭐ 关键修复：让 Expo 能读到 NODE_ENV
+      - name: Force NODE_ENV in gradle.properties
         run: |
-          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-
-      - name: Create signing config
-        run: |
-          cat >> android/app/build.gradle << 'EOF'
-
-android {
-    signingConfigs {
-        release {
-            storeFile file("release-key.jks")
-            storePassword System.getenv("KEY_PASSWORD")
-            keyAlias System.getenv("KEY_ALIAS")
-            keyPassword System.getenv("KEY_PASSWORD")
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
-            shrinkResources false
-        }
-    }
-}
-EOF
+          echo "NODE_ENV=production" >> android/gradle.properties
 
       - uses: actions/setup-java@v4
         with:
@@ -76,20 +34,13 @@ EOF
         with:
           packages: "ndk;26.1.10909125"
 
-      # -------------------------
-      # 📦 构建 Release APK（包含 JS bundle）
-      # -------------------------
       - name: Build Release APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      # -------------------------
-      # 📦 上传 APK
-      # -------------------------
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: SuperTV-Mobile-Release-v${{ steps.pkg.outputs.version }}
+          name: release-apk
           path: android/app/build/outputs/apk/release/*.apk
