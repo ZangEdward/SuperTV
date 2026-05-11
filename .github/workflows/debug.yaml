@@ -3,104 +3,46 @@ name: Build Debug APK
 on:
   workflow_dispatch:
 
-env:
-  NODE_OPTIONS: "--max-old-space-size=4096"
-  _JAVA_OPTIONS: "-Xmx4g"
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
-
-permissions:
-  contents: write
-
 jobs:
-  debug_build:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: yarn
 
-      - name: Install deps
-        run: yarn install --frozen-lockfile
-
-      - name: Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 17
-
-      - name: Android NDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: "ndk;26.1.10909125"
+      - name: Install dependencies
+        run: yarn install
 
       - name: Prebuild
         run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      - name: Patch Maven Mirrors (fix 403)
-        run: |
-          echo "Patching Maven mirrors..."
-          # settings.gradle
-          sed -i '1i\
-pluginManagement { repositories {\
-maven { url "https://maven.aliyun.com/repository/public" }\
-maven { url "https://maven.aliyun.com/repository/google" }\
-mavenCentral()\
-google()\
-gradlePluginPortal()\
-}}' android/settings.gradle
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
 
-          # build.gradle
-          sed -i '/allprojects {/a\
-    repositories {\
-        maven { url "https://maven.aliyun.com/repository/public" }\
-        maven { url "https://maven.aliyun.com/repository/google" }\
-    }' android/build.gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;26.1.10909125"
 
-      - name: Patch CXX1210 (expo-av)
-        run: |
-          echo "Patching expo-av CMakeLists..."
-          node -e "
-          const fs = require('fs');
-          const glob = require('glob');
-
-          const patch = 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\\n';
-
-          const files = glob.sync('android/.cxx/**/expo-av/CMakeLists.txt');
-          for (const f of files) {
-            let c = fs.readFileSync(f, 'utf8');
-            if (!c.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
-              fs.writeFileSync(f, patch + c);
-              console.log('patched:', f);
-            }
-          }
-          "
-
-      - name: Build Debug
+      - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
-          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-          ./gradlew assembleDebug --no-daemon \
-            -Pandroid.ndkVersion=26.1.10909125 \
-            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Collect APK
-        run: |
-          mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.apk
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: "debug-${{ github.run_number }}"
-          files: artifacts/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
