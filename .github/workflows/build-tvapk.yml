@@ -28,18 +28,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --network-timeout 100000
 
-      # 解码 JKS 签名文件
+      # 1️⃣ 先 Prebuild（生成 android 目录）
+      - name: Expo Prebuild (Android TV)
+        run: npx expo prebuild --platform android --no-install
+
+      # 2️⃣ 再写入 JKS（目录现在已经存在）
       - name: Decode Keystore
         run: |
           echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
 
-      # Expo Prebuild（TV 版）
-      - name: Expo Prebuild (Android TV)
-        run: npx expo prebuild --platform android --no-install
-
-      # 写入签名配置
+      # 3️⃣ 写入签名配置
       - name: Configure Signing
         run: |
           echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
@@ -50,13 +50,13 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 构建 TV Release APK
+      # 4️⃣ 构建 Release APK
       - name: Build TV APK
         run: |
           cd android
           ./gradlew assembleRelease
 
-      # 上传 APK
+      # 5️⃣ 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
