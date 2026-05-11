@@ -73,10 +73,10 @@ jobs:
           }
           "
 
-      - name: 8. 执行 Prebuild-TV
+      - name: 8. 执行 Prebuild（TV 支持自动注入）
         run: |
           rm -rf android
-          yarn prebuild-tv
+          npx expo prebuild --platform android --no-install
 
       - name: 9. 恢复签名文件
         run: |
