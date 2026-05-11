@@ -1,4 +1,4 @@
-name: Build Mobile Release
+name: Build Mobile Release (Debug JS Bundle)
 
 on:
   workflow_dispatch:
@@ -24,16 +24,19 @@ jobs:
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      # ⭐ 关键补丁：强制禁用 Hermes，强制使用 JSC
-      - name: Force disable Hermes (TV fix)
+      # ⭐ 强制禁用 Hermes（TV 必须）
+      - name: Force disable Hermes
         run: |
           echo "hermesEnabled=false" >> android/gradle.properties
           echo "expo.jsEngine=jsc" >> android/gradle.properties
 
-      # ⭐ 让 Expo 能读到 NODE_ENV
-      - name: Force NODE_ENV
+      # ⭐ 让 Node 打印所有 JS bundler 错误
+      - name: Inject Node debug flags
         run: |
-          echo "NODE_ENV=production" >> android/gradle.properties
+          echo "NODE_OPTIONS=--trace-uncaught --trace-warnings" >> android/gradle.properties
+          echo "BUNDLE_COMMAND=bundle" >> android/gradle.properties
+          echo "CLI_PATH=node_modules/react-native/cli.js" >> android/gradle.properties
+          echo "RCT_METRO_PORT=8081" >> android/gradle.properties
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -46,7 +49,7 @@ jobs:
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: Build Release APK
+      - name: Build Release APK (print JS errors)
         run: |
           cd android
           chmod +x gradlew
