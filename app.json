@@ -7,6 +7,8 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
 
+    "jsEngine": "jsc",
+
     "assetBundlePatterns": ["**/*"],
 
     "experiments": {
@@ -37,8 +39,8 @@
           },
           "android": {
             "newArchEnabled": false,
-            "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableProguardInReleaseBuilds": false,
+            "enableShrinkResourcesInReleaseBuilds": false
           }
         }
       ],
