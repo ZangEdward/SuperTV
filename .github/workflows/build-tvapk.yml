@@ -1,89 +1,127 @@
-name: Build Android TV APK
+name: Build TV + Mobile APK
 
 on:
-  workflow_dispatch: # 手动触发
-
-# 全局环境变量，解决内存溢出、Node 版本警告及 Gradle 编译性能
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_OPTIONS: "--max-old-space-size=4096"
-  _JAVA_OPTIONS: "-Xmx4g"
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  tv_build:
-    name: Build Android TV APK
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: 1. 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 2. 设置 Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "yarn"
 
-      - name: 3. 安装依赖
+      - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: 4. 获取版本号
-        id: package-version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      # -------------------------
+      # 📱 MOBILE 版本构建
+      # -------------------------
+      - name: Prepare Mobile app.json
+        run: |
+          echo "Generating Mobile app.json..."
+          cp app.json app.mobile.json
+          node -e "
+          const fs = require('fs');
+          const app = JSON.parse(fs.readFileSync('app.mobile.json','utf8'));
+          app.expo.android.tv = false;
+          app.expo.android.package = 'com.oriontv';
+          fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+          "
 
-      - name: 5. 设置 Java 环境
+      - name: Prebuild Mobile
+        run: |
+          rm -rf android
+          npx expo prebuild --platform android --no-install
+
+      - name: Disable ABI splits (Mobile)
+        run: |
+          sed -i '/defaultConfig {/a\
+        splits { abi { enable false } }' android/app/build.gradle
+
+      - name: Restore signing key
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/release-key.jks
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: "zulu"
-          java-version: "17"
+          distribution: zulu
+          java-version: 17
 
-      - name: 6. 生成原生 TV 项目 (Prebuild)
-        # Expo 会根据 app.json 中的 @react-native-tvos/config-tv 插件配置 TV 专属属性
-        run: npx expo prebuild --platform android --no-install
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;26.1.10909125"
 
-      - name: 7. 恢复签名文件
-        # 电视版必须签名，否则大部分电视系统（如索尼、小米）会拦截安装
-        run: |
-          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
-
-      - name: 8. 执行 TV 版正式编译
+      - name: Build Mobile APK (signed)
         run: |
           cd android
           chmod +x gradlew
-          
-          # 核心修复：显式指定入口文件，解决 Metro 报错找不到 index.js
-          # 根据你之前的报错，这里设为标准 Expo 入口
-          export ENTRY_FILE=node_modules/expo/AppEntry.js
-          
-          ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file=SuperTV.jks \
+          ./gradlew assembleDebug --no-daemon \
+            -Pandroid.injected.signing.store.file=release-key.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
-      - name: 9. 整理产物
-        if: success()
+      - name: Save Mobile APK
         run: |
           mkdir -p artifacts
-          # 复制正式版输出
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV_TV.${{ steps.package-version.outputs.version }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Mobile.apk
 
-      - name: 10. 创建 GitHub Release
-        if: success()
-        uses: softprops/action-gh-release@v2
+      # -------------------------
+      # 📺 TV 版本构建
+      # -------------------------
+      - name: Prepare TV app.json
+        run: |
+          echo "Generating TV app.json..."
+          cp app.mobile.json app.json
+          node -e "
+          const fs = require('fs');
+          const app = JSON.parse(fs.readFileSync('app.json','utf8'));
+          app.expo.android.tv = true;
+          app.expo.android.package = 'com.oriontv.tv';
+          fs.writeFileSync('app.json', JSON.stringify(app, null, 2));
+          "
+
+      - name: Prebuild TV
+        run: |
+          rm -rf android
+          npx expo prebuild --platform android --no-install
+
+      - name: Disable ABI splits (TV)
+        run: |
+          sed -i '/defaultConfig {/a\
+        splits { abi { enable false } }' android/app/build.gradle
+
+      - name: Restore signing key (TV)
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/release-key.jks
+
+      - name: Build TV APK (signed)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon \
+            -Pandroid.injected.signing.store.file=release-key.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+
+      - name: Save TV APK
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_TV.apk
+
+      # -------------------------
+      # 📦 上传两个 APK
+      # -------------------------
+      - name: Upload Both APKs
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: "v${{ steps.package-version.outputs.version }}-tv"
-          name: "SuperTV TV Release v${{ steps.package-version.outputs.version }}"
-          body: |
-            ## SuperTV 安卓电视正式版
-            - 适配：Android TV / 电视盒子 / 投影仪
-            - 版本：${{ steps.package-version.outputs.version }}
-            - 包含：电视专属 Banner 图、正式签名、混淆优化
-          draft: false
-          prerelease: false
-          files: "artifacts/SuperTV_TV.${{ steps.package-version.outputs.version }}.apk"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: SuperTV-APK-Bundle
+          path: artifacts/*.apk
