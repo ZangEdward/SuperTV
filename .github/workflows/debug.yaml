@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NODE_OPTIONS: "--max-old-space-size=4096"
   _JAVA_OPTIONS: "-Xmx4g"
   GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
@@ -14,106 +13,85 @@ permissions:
 
 jobs:
   debug_build:
-    name: Build Android Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. 检出代码
+      - name: 1. Checkout
         uses: actions/checkout@v4
 
-      - name: 2. 设置 Node.js
+      - name: 2. Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "yarn"
+          cache: yarn
 
-      - name: 3. 安装依赖
+      - name: 3. Install deps
         run: yarn install --frozen-lockfile
 
-      - name: 4. 获取版本号
-        id: package-version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: 5. 设置 Java 环境
+      - name: 4. Java
         uses: actions/setup-java@v4
         with:
-          distribution: "zulu"
-          java-version: "17"
+          distribution: zulu
+          java-version: 17
 
-      - name: 6. 设置 Android NDK
+      - name: 5. Android NDK
         uses: android-actions/setup-android@v3
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 7. 执行 Prebuild（生成 android）
+      - name: 6. Prebuild
         run: |
           rm -rf android
           npx expo prebuild --platform android --no-install
 
-      - name: 8. 注入 CXX1210 终极补丁（必须在 prebuild 之后）
+      - name: 7. Patch CXX1210 (node_modules + .cxx)
         run: |
-          echo "Applying Full CXX1210 Patch AFTER prebuild..."
+          echo "Patching expo-av CMakeLists..."
           node -e "
           const fs = require('fs');
+          const glob = require('glob');
 
-          const targets = [
-            'node_modules/expo-av/android/CMakeLists.txt',
-            'node_modules/expo-modules-core/android/CMakeLists.txt',
-            'node_modules/react-native/ReactAndroid/CMakeLists.txt',
-            'node_modules/react-native-reanimated/android/CMakeLists.txt',
-            'node_modules/react-native-gesture-handler/android/CMakeLists.txt'
-          ];
+          const patch = 'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\\n';
 
-          for (const file of targets) {
-            if (fs.existsSync(file)) {
-              let content = fs.readFileSync(file, 'utf8');
-              if (!content.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
-                fs.writeFileSync(
-                  file,
-                  'set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)\n' + content
-                );
-                console.log('✅ patched: ' + file);
-              }
+          // patch node_modules
+          const nm = 'node_modules/expo-av/android/CMakeLists.txt';
+          if (fs.existsSync(nm)) {
+            let c = fs.readFileSync(nm, 'utf8');
+            if (!c.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
+              fs.writeFileSync(nm, patch + c);
+              console.log('patched node_modules expo-av');
+            }
+          }
+
+          // patch android/.cxx (真正参与编译)
+          const files = glob.sync('android/.cxx/**/expo-av/CMakeLists.txt');
+          for (const f of files) {
+            let c = fs.readFileSync(f, 'utf8');
+            if (!c.includes('CMAKE_MAP_IMPORTED_CONFIG_DEBUG')) {
+              fs.writeFileSync(f, patch + c);
+              console.log('patched .cxx expo-av:', f);
             }
           }
           "
 
-      - name: 9. 恢复签名文件
-        run: |
-          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
-
-      - name: 10. 执行编译
+      - name: 8. Build Debug
         run: |
           cd android
           chmod +x gradlew
-
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-
           ./gradlew assembleDebug --no-daemon \
             -Pandroid.ndkVersion=26.1.10909125 \
-            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
-            -Pandroid.injected.signing.store.file=SuperTV.jks \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
 
-      - name: 11. 整理产物
-        if: success()
+      - name: 9. Collect APK
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug_v${{ steps.package-version.outputs.version }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/SuperTV_Debug.apk
 
-      - name: 12. 发布 Release
-        if: success()
+      - name: 10. Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.package-version.outputs.version }}-debug-${{ github.run_number }}"
-          name: "SuperTV Debug v${{ steps.package-version.outputs.version }}"
-          body: |
-            ### 构建信息
-            - **版本**: ${{ steps.package-version.outputs.version }}
-            - **架构**: armeabi-v7a, arm64-v8a
-            - **修复**: 全模块 CXX1210 Debug→Release 映射（prebuild 后补丁）
-          files: "artifacts/*.apk"
+          tag_name: "debug-${{ github.run_number }}"
+          files: artifacts/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
