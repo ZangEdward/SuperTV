@@ -1,5 +1,18 @@
 {
   "expo": {
+    "name": "SuperTV",
+    "slug": "OrionTV",
+    "scheme": "oriontv",
+    "orientation": "default",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "dark",
+
+    "assetBundlePatterns": ["**/*"],
+
+    "experiments": {
+      "typedRoutes": true
+    },
+
     "plugins": [
       [
         "@react-native-tvos/config-tv",
@@ -31,44 +44,42 @@
       ],
       "expo-router"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
-    "name": "SuperTV",
-    "slug": "OrionTV",
-    "orientation": "default",
-    "icon": "./assets/images/icon.png",
-    "userInterfaceStyle": "dark",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+
     "android": {
       "package": "com.oriontv",
       "usesCleartextTraffic": true,
       "hardwareAcceleration": true,
       "networkSecurityConfig": "@xml/network_security_config",
+
       "icon": "./assets/images/icon.png",
+
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#000000"
+      },
+
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.WAKE_LOCK"
       ],
+
       "screenOrientation": "unspecified",
+
       "intentFilters": [
         {
           "action": "android.intent.action.VIEW",
-          "data": [
-            {
-              "scheme": "oriontv"
-            }
-          ],
+          "data": [{ "scheme": "oriontv" }],
           "category": [
             "android.intent.category.BROWSABLE",
             "android.intent.category.DEFAULT"
           ]
         }
-      ]
+      ],
+
+      "tv": true
     },
+
     "ios": {
       "bundleIdentifier": "com.oriontv",
       "supportsTablet": true,
@@ -83,7 +94,7 @@
         "usesNonExemptEncryption": false
       }
     },
-    "scheme": "oriontv",
+
     "extra": {
       "router": {
         "origin": false
