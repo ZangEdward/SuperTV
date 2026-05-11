@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { api } from '@/services/api';
 
-const DEFAULT_API = "https://tv.lzsb.edu.eu.org/n.json";
+const DEFAULT_API = "https://ltv.lzsb.edu.eu.org/";
 
 export interface ApiConfigStatus {
   isConfigured: boolean;
