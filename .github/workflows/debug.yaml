@@ -45,9 +45,14 @@ jobs:
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: 7. 注入 CXX1210 终极补丁（全模块版）
+      - name: 7. 执行 Prebuild（生成 android）
         run: |
-          echo "Applying Full CXX1210 Patch..."
+          rm -rf android
+          npx expo prebuild --platform android --no-install
+
+      - name: 8. 注入 CXX1210 终极补丁（必须在 prebuild 之后）
+        run: |
+          echo "Applying Full CXX1210 Patch AFTER prebuild..."
           node -e "
           const fs = require('fs');
 
@@ -72,11 +77,6 @@ jobs:
             }
           }
           "
-
-      - name: 8. 执行 Prebuild（TV 支持自动注入）
-        run: |
-          rm -rf android
-          npx expo prebuild --platform android --no-install
 
       - name: 9. 恢复签名文件
         run: |
@@ -113,7 +113,7 @@ jobs:
             ### 构建信息
             - **版本**: ${{ steps.package-version.outputs.version }}
             - **架构**: armeabi-v7a, arm64-v8a
-            - **修复**: 全模块 CXX1210 Debug→Release 映射
+            - **修复**: 全模块 CXX1210 Debug→Release 映射（prebuild 后补丁）
           files: "artifacts/*.apk"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
