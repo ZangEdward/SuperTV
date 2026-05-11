@@ -1,4 +1,4 @@
-name: Build Mobile APK
+name: Build Mobile Release APK
 
 on:
   workflow_dispatch:
@@ -35,14 +35,14 @@ jobs:
         with:
           packages: "ndk;26.1.10909125"
 
-      - name: Build APK
+      - name: Build Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Pandroid.injected.apk=true
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SuperTV-Mobile-v${{ steps.pkg.outputs.version }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: SuperTV-Mobile-Release-v${{ steps.pkg.outputs.version }}
+          path: android/app/build/outputs/apk/release/*.apk
