@@ -1,87 +1,74 @@
-name: Build Android Mobile APK
+name: Build Mobile APK
 
 on:
-  workflow_dispatch: # 手动触发
-
-# 全局环境变量，解决内存溢出和 Node.js 版本警告
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  NODE_OPTIONS: "--max-old-space-size=4096"
-  _JAVA_OPTIONS: "-Xmx4g"
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  mobile_build:
-    name: Build Android Mobile APK
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: 1. 检出代码
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 2. 设置 Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "yarn"
 
-      - name: 3. 安装依赖
+      - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: 4. 获取版本号
-        id: package-version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+      - name: Read version
+        id: pkg
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
 
-      - name: 5. 设置 Java 环境
+      # -------------------------
+      # 🔧 只执行一次 prebuild（关键）
+      # -------------------------
+      - name: Prebuild
+        run: |
+          rm -rf android
+          npx expo prebuild --platform android --no-install
+
+      # -------------------------
+      # 🔧 关闭 ABI 拆分（生成真正 APK）
+      # -------------------------
+      - name: Disable ABI splits
+        run: |
+          sed -i '/defaultConfig {/a\
+        splits { abi { enable false } }' android/app/build.gradle
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: "zulu"
-          java-version: "17"
+          distribution: zulu
+          java-version: 17
 
-      - name: 6. 生成原生项目 (Prebuild)
-        # 强制生成标准安卓手机版配置
-        run: npx expo prebuild --platform android --no-install
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "ndk;26.1.10909125"
 
-      - name: 7. 恢复签名文件
-        run: |
-          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > android/app/SuperTV.jks
-
-      - name: 8. 执行手机版正式编译
+      # -------------------------
+      # 📦 构建 APK（手机版）
+      # -------------------------
+      - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          
-          # 显式指定入口文件，防止 Metro 报错找不到 index.js
-          # 如果是 expo-router 项目，请改为 node_modules/expo-router/entry.js
-          export ENTRY_FILE=node_modules/expo/AppEntry.js
-          
-          ./gradlew assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file=SuperTV.jks \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEY_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+          ./gradlew assembleDebug --no-daemon
 
-      - name: 9. 整理产物
-        if: success()
+      # -------------------------
+      # 📦 保存 APK（自动带版本号）
+      # -------------------------
+      - name: Save APK
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/SuperTV_Mobile_v${{ steps.pkg.outputs.version }}.apk
 
-      - name: 10. 创建 GitHub Release
-        if: success()
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: "mobile-v${{ steps.package-version.outputs.version }}"
-          name: "Mobile Release v${{ steps.package-version.outputs.version }}"
-          body: |
-            ## SuperTV 手机正式版
-            - 适配：安卓手机 / 平板
-            - 版本：${{ steps.package-version.outputs.version }}
-            - 编译时间：${{ github.event.repository.updated_at }}
-          draft: false
-          prerelease: false
-          files: "artifacts/SuperTV_Mobile.${{ steps.package-version.outputs.version }}.apk"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: SuperTV-Mobile
