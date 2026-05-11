@@ -238,4 +238,4 @@ export class API {
 }
 
 // 默认实例
-export let api = new API(https://tv.lzsb.edu.eu.org/n.json);
+export let api = new API("https://tv.lzsb.edu.eu.org/n.json");
