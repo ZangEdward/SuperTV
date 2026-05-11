@@ -17,6 +17,7 @@ const API_NODES = [
 
 interface SettingsState {
   apiBaseUrl: string;
+  nodeLatencies: Record<string, number>;
   m3uUrl: string;
   remoteInputEnabled: boolean;
   videoSource: {
@@ -42,6 +43,7 @@ interface SettingsState {
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   apiBaseUrl: "",
+  nodeLatencies: {},
   m3uUrl: "",
   remoteInputEnabled: false,
   isModalVisible: false,
@@ -91,6 +93,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         time: await testSpeed(url),
       }))
     );
+
+    // 保存延迟信息
+    const latencyMap: Record<string, number> = {};
+    results.forEach(r => latencyMap[r.url] = r.time);
+    set({ nodeLatencies: latencyMap });
 
     const fastest = results.reduce((a, b) => (a.time < b.time ? a : b));
     const finalUrl = fastest.time === Infinity ? API_NODES[0] : fastest.url;
