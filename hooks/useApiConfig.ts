@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { api } from '@/services/api';
 
-const DEFAULT_API = "https://ltv.lzsb.edu.eu.org/";
-
 export interface ApiConfigStatus {
   isConfigured: boolean;
   isValidating: boolean;
@@ -15,21 +13,26 @@ export interface ApiConfigStatus {
 export const useApiConfig = () => {
   const { apiBaseUrl, serverConfig, isLoadingServerConfig } = useSettingsStore();
   const [validationState, setValidationState] = useState({
-    isValidating: false,
+    isValidating: true,
     isValid: null,
     error: null,
   });
 
-  // 自动使用默认 API
-  const finalApiUrl = apiBaseUrl?.trim() || DEFAULT_API;
-  api.setBaseUrl(finalApiUrl);
-
-  const isConfigured = true; // 永远视为已配置
-  const needsConfiguration = false;
+  useEffect(() => {
+    if (apiBaseUrl) {
+      api.setBaseUrl(apiBaseUrl);
+    }
+  }, [apiBaseUrl]);
 
   useEffect(() => {
+    if (!apiBaseUrl) return;
+
     const validateConfig = async () => {
-      setValidationState(prev => ({ ...prev, isValidating: true, error: null }));
+      setValidationState({
+        isValidating: true,
+        isValid: null,
+        error: null,
+      });
 
       try {
         await api.getServerConfig();
@@ -38,7 +41,7 @@ export const useApiConfig = () => {
           isValid: true,
           error: null,
         });
-      } catch (error) {
+      } catch {
         setValidationState({
           isValidating: false,
           isValid: false,
@@ -50,17 +53,15 @@ export const useApiConfig = () => {
     if (!isLoadingServerConfig) {
       validateConfig();
     }
-  }, [finalApiUrl, isLoadingServerConfig]);
+  }, [apiBaseUrl, isLoadingServerConfig]);
 
-  const status: ApiConfigStatus = {
-    isConfigured,
+  return {
+    isConfigured: true,
+    needsConfiguration: false,
     isValidating: validationState.isValidating || isLoadingServerConfig,
     isValid: validationState.isValid,
     error: validationState.error,
-    needsConfiguration,
   };
-
-  return status;
 };
 
 export const getApiConfigErrorMessage = (status: ApiConfigStatus): string => {
