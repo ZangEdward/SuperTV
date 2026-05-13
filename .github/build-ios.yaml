@@ -1,0 +1,112 @@
+name: Build iOS Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # -----------------------------
+  # 1️⃣ 环境准备（Node / Yarn / 版本号）
+  # -----------------------------
+  setup:
+    runs-on: macos-latest
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+  # -----------------------------
+  # 2️⃣ iOS 构建（IPA）
+  # -----------------------------
+  ios-build:
+    runs-on: macos-latest
+    needs: setup
+    outputs:
+      VERSION: ${{ needs.setup.outputs.VERSION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      - name: Prebuild iOS
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Build iOS Archive
+        run: |
+          xcodebuild \
+            -workspace ios/OrionTV.xcworkspace \
+            -scheme OrionTV \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath ios/build/OrionTV.xcarchive \
+            archive
+
+      - name: Export IPA
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath ios/build/OrionTV.xcarchive \
+            -exportPath ios/build \
+            -exportOptionsPlist ios/exportOptions.plist
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: ios/build/*.ipa
+
+  # -----------------------------
+  # 3️⃣ 上传到 GitHub Releases
+  # -----------------------------
+  release:
+    runs-on: macos-latest
+    needs: ios-build
+
+    steps:
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-ipa
+          path: output
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.ios-build.outputs.VERSION }}
+          name: "SuperTV iOS v${{ needs.ios-build.outputs.VERSION }}"
+          generate_release_notes: true
+          files: |
+            output/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
