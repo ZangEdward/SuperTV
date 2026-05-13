@@ -78,7 +78,7 @@ jobs:
             -exportArchive \
             -archivePath ios/build/OrionTV.xcarchive \
             -exportPath ios/build \
-            -exportOptionsPlist ios/exportOptions.plist
+            -exportOptionsPlist .github/exportOptions.plist
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
