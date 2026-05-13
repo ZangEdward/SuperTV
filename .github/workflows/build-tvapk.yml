@@ -28,11 +28,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --network-timeout 100000
 
-      # 1️⃣ 先 Prebuild（生成 android 目录）
+      # 读取版本号
+      - name: Read version from package.json
+        id: version
+        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+
+      # 1️⃣ Prebuild
       - name: Expo Prebuild (Android TV)
         run: npx expo prebuild --platform android --no-install
 
-      # 2️⃣ 再写入 JKS（目录现在已经存在）
+      # 2️⃣ 写入 JKS
       - name: Decode Keystore
         run: |
           echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
@@ -50,15 +55,25 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 4️⃣ 构建 Release APK
+      # 4️⃣ 构建 APK
       - name: Build TV APK
         run: |
           cd android
           ./gradlew assembleRelease
 
-      # 5️⃣ 上传 APK
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      # 5️⃣ 重命名 APK（加入版本号）
+      - name: Rename APK with version
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            output/SuperTV-TV-v${VERSION}.apk
+
+      # 6️⃣ 创建 Release 并上传 APK
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
         with:
-          name: Signed-TV-APK
-          path: android/app/build/outputs/apk/release/app-release.apk
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV TV v${{ env.VERSION }}"
+          files: output/SuperTV-TV-v${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
