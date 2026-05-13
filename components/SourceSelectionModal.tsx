@@ -1,32 +1,112 @@
-import React from "react";
-import { View, Text, StyleSheet, Modal, FlatList } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, Modal, FlatList, TouchableOpacity } from "react-native";
 import { StyledButton } from "./StyledButton";
 import useDetailStore from "@/stores/detailStore";
 import usePlayerStore from "@/stores/playerStore";
-import Logger from '@/utils/Logger';
+import Logger from "@/utils/Logger";
 
-const logger = Logger.withTag('SourceSelectionModal');
+const logger = Logger.withTag("SourceSelectionModal");
+
+// 测速函数（HEAD 请求）
+const testSourceSpeed = async (url: string): Promise<number> => {
+  const start = Date.now();
+  try {
+    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+    if (!res.ok) throw new Error("Bad response");
+    return Date.now() - start;
+  } catch {
+    return Infinity;
+  }
+};
+
+// 自动切换到下一个最快源（播放失败时调用）
+export const autoSwitchToNextSource = () => {
+  const { searchResults, detail, setDetail } = useDetailStore.getState();
+  const { loadVideo, currentEpisodeIndex, status } = usePlayerStore.getState();
+
+  const sorted = [...searchResults].sort(
+    (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
+  );
+
+  const currentIndex = sorted.findIndex((s) => s.source === detail?.source);
+  const next = sorted[currentIndex + 1];
+
+  if (!next) {
+    console.warn("没有更多源可切换");
+    return;
+  }
+
+  setDetail(next);
+
+  const currentPosition = status?.isLoaded ? status.positionMillis : undefined;
+
+  loadVideo({
+    source: next.source,
+    id: next.id.toString(),
+    episodeIndex: currentEpisodeIndex,
+    title: next.title,
+    position: currentPosition,
+  });
+};
 
 export const SourceSelectionModal: React.FC = () => {
-  const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } = usePlayerStore();
+  const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
+    usePlayerStore();
   const { searchResults, detail, setDetail } = useDetailStore();
 
+  const [latencies, setLatencies] = useState<Record<string, number>>({});
+
+  // Modal 打开时自动测速所有源
+  useEffect(() => {
+    if (!showSourceModal) return;
+
+    const runSpeedTest = async () => {
+      const result: Record<string, number> = {};
+
+      for (const item of searchResults) {
+        const url = item.play_url || item.url || item.source_url || item.source;
+        if (!url) continue;
+
+        const ms = await testSourceSpeed(url);
+        result[item.source] = ms;
+      }
+
+      setLatencies(result);
+    };
+
+    runSpeedTest();
+  }, [showSourceModal]);
+
+  // 自动选择最快源（打开详情页时）
+  useEffect(() => {
+    if (!searchResults || searchResults.length === 0) return;
+
+    const sorted = [...searchResults].sort(
+      (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
+    );
+
+    if (sorted[0] && sorted[0].source !== detail?.source) {
+      setDetail(sorted[0]);
+    }
+  }, [searchResults]);
+
   const onSelectSource = (index: number) => {
-    logger.debug("onSelectSource", index, searchResults[index].source, detail?.source);
-    if (searchResults[index].source !== detail?.source) {
-      const newDetail = searchResults[index];
-      setDetail(newDetail);
-      
-      // Reload the video with the new source, preserving current position
+    const selected = searchResults[index];
+
+    if (selected.source !== detail?.source) {
+      setDetail(selected);
+
       const currentPosition = status?.isLoaded ? status.positionMillis : undefined;
+
       loadVideo({
-        source: newDetail.source,
-        id: newDetail.id.toString(),
+        source: selected.source,
+        id: selected.id.toString(),
         episodeIndex: currentEpisodeIndex,
-        title: newDetail.title,
-        position: currentPosition
+        title: selected.title,
+        position: currentPosition,
       });
     }
+
     setShowSourceModal(false);
   };
 
@@ -34,11 +114,19 @@ export const SourceSelectionModal: React.FC = () => {
     setShowSourceModal(false);
   };
 
+  const getLatencyText = (source: string) => {
+    const ms = latencies[source];
+    if (ms === undefined) return "测速中...";
+    if (ms === Infinity) return "超时";
+    return `${ms} ms`;
+  };
+
   return (
     <Modal visible={showSourceModal} transparent={true} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>选择播放源</Text>
+
           <FlatList
             data={searchResults}
             numColumns={3}
@@ -46,7 +134,7 @@ export const SourceSelectionModal: React.FC = () => {
             keyExtractor={(item, index) => `source-${item.source}-${index}`}
             renderItem={({ item, index }) => (
               <StyledButton
-                text={item.source_name}
+                text={`${item.source_name} (${getLatencyText(item.source)})`}
                 onPress={() => onSelectSource(index)}
                 isSelected={detail?.source === item.source}
                 hasTVPreferredFocus={detail?.source === item.source}
