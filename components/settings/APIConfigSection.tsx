@@ -93,32 +93,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
             )}
           </View>
           <Animated.View style={inputAnimationStyle}>
-            <TextInput
-              ref={inputRef}
-              style={[styles.input, isInputFocused && styles.inputFocused]}
-              value={apiBaseUrl}
-              onChangeText={handleUrlChange}
-              placeholder="输入服务器地址"
-              placeholderTextColor="#888"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onFocus={() => {
-                setIsInputFocused(true);
-                // 将光标移动到文本末尾
-                const end = apiBaseUrl.length;
-                setSelection({ start: end, end: end });
-                // 有时需要延迟一下，让系统先完成 focus 再设置 selection
-                //（在 Android 上更可靠）
-                setTimeout(() => {
-                  // 对于受控的 selection 已经生效，这里仅作保险
-                  inputRef.current?.setNativeProps({ selection: { start: end, end: end } });
-                }, 0);
-              }}
-              selection={selection}
-              onSelectionChange={onSelectionChange} // 可选
-
-              onBlur={() => setIsInputFocused(false)}
-            />
+           <ApiNodeSelectorUI />
           </Animated.View>
         </View>
       </SettingsSection>
