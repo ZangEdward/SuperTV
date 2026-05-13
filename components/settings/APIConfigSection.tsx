@@ -9,6 +9,9 @@ import { useButtonAnimation } from "@/hooks/useAnimation";
 import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
+// ⭐ 必须补上这个 import，否则闪退
+import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
+
 interface APIConfigSectionProps {
   onChanged: () => void;
   onFocus?: () => void;
@@ -25,7 +28,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
     const { apiBaseUrl, setApiBaseUrl, remoteInputEnabled } = useSettingsStore();
     const { serverUrl } = useRemoteControlStore();
-    const [isInputFocused, setIsInputFocused] = useState(false);
+
     const [isSectionFocused, setIsSectionFocused] = useState(false);
     const inputRef = useRef<TextInput>(null);
     const inputAnimationStyle = useButtonAnimation(isSectionFocused, 1.01);
@@ -53,7 +56,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       onBlur?.();
     };
 
-    // TV遥控器事件处理
+    // TV 遥控器事件处理
     const handleTVEvent = React.useCallback(
       (event: any) => {
         if (isSectionFocused && event.eventType === "select") {
@@ -63,37 +66,34 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       [isSectionFocused]
     );
 
+    useTVEventHandler(handleTVEvent);
+
     const handlePress = () => {
       inputRef.current?.focus();
       onPress?.();
-    }
-
-    useTVEventHandler(handleTVEvent);
-
-    const [selection, setSelection] = useState<{ start: number; end: number }>({
-      start: 0,
-      end: 0,
-    });
-    // 当用户手动移动光标或选中文本时，同步到 state（可选）
-    const onSelectionChange = ({
-      nativeEvent: { selection },
-    }: any) => {
-      setSelection(selection);
     };
 
     return (
-      <SettingsSection focusable onFocus={handleSectionFocus} onBlur={handleSectionBlur}
-        {...Platform.isTV || deviceType !== 'tv' ? undefined : { onPress: handlePress }}
+      <SettingsSection
+        focusable
+        onFocus={handleSectionFocus}
+        onBlur={handleSectionBlur}
+        {...(Platform.isTV || deviceType === "tv" ? { onPress: handlePress } : {})}
       >
         <View style={styles.inputContainer}>
           <View style={styles.titleContainer}>
             <ThemedText style={styles.sectionTitle}>API 地址</ThemedText>
+
             {!hideDescription && remoteInputEnabled && serverUrl && (
-              <ThemedText style={styles.subtitle}>用手机访问 {serverUrl}，可远程输入</ThemedText>
+              <ThemedText style={styles.subtitle}>
+                用手机访问 {serverUrl}，可远程输入
+              </ThemedText>
             )}
           </View>
+
           <Animated.View style={inputAnimationStyle}>
-           <ApiNodeSelectorUI />
+            {/* ⭐ 替换 TextInput，使用节点选择 UI */}
+            <ApiNodeSelectorUI />
           </Animated.View>
         </View>
       </SettingsSection>
@@ -121,28 +121,5 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     marginBottom: 12,
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 8,
-    color: "#ccc",
-  },
-  input: {
-    height: 50,
-    borderWidth: 2,
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    fontSize: 16,
-    backgroundColor: "#3a3a3c",
-    color: "white",
-    borderColor: "transparent",
-  },
-  inputFocused: {
-    borderColor: Colors.dark.primary,
-    shadowColor: Colors.dark.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 5,
   },
 });
