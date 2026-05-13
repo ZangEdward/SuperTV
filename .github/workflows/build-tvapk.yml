@@ -1,11 +1,19 @@
-name: Build Android TV APK (Signed)
+name: Build Android TV + Mobile setup  build  upload APK (Signed)
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+# -----------------------------
+# 1️⃣ 环境配置 Job
+# -----------------------------
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
 
     steps:
       - name: Checkout repository
@@ -31,20 +39,50 @@ jobs:
       # 读取版本号
       - name: Read version from package.json
         id: version
-        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      # 1️⃣ Prebuild
-      - name: Expo Prebuild (Android TV)
+# -----------------------------
+# 2️⃣ 编译 Job（依赖 setup）
+# -----------------------------
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    outputs:
+      VERSION: ${{ needs.setup.outputs.VERSION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      # 2️⃣ 写入 JKS
       - name: Decode Keystore
         run: |
           echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
 
-      # 3️⃣ 写入签名配置
       - name: Configure Signing
         run: |
           echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
@@ -55,25 +93,56 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 4️⃣ 构建 APK
-      - name: Build TV APK
+      # Mobile APK
+      - name: Build Mobile APK
         run: |
           cd android
           ./gradlew assembleRelease
 
-      # 5️⃣ 重命名 APK（加入版本号）
-      - name: Rename APK with version
+      - name: Copy Mobile APK
         run: |
           mkdir -p output
           cp android/app/build/outputs/apk/release/app-release.apk \
-            output/SuperTV-TV-v${VERSION}.apk
+            output/SuperTV-build-Mobile-v${{ needs.setup.outputs.VERSION }}.apk
 
-      # 6️⃣ 创建 Release 并上传 APK
+      # TV APK
+      - name: Build TV APK
+        run: |
+          cd android
+          ./gradlew assembleRelease -Pexpo.androidTV=true
+
+      - name: Copy TV APK
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            output/SuperTV-build-TV-v${{ needs.setup.outputs.VERSION }}.apk
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: output/
+
+# -----------------------------
+# 3️⃣ 上传 Releases Job（依赖 build）
+# -----------------------------
+  upload:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: apks
+          path: output
+
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VERSION }}
-          name: "SuperTV TV v${{ env.VERSION }}"
-          files: output/SuperTV-TV-v${{ env.VERSION }}.apk
+          tag_name: v${{ needs.build.outputs.VERSION }}
+          name: "SuperTV v${{ needs.build.outputs.VERSION }}"
+          files: |
+            output/SuperTV-Mobile-v${{ needs.build.outputs.VERSION }}.apk
+            output/SuperTV-TV-v${{ needs.build.outputs.VERSION }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
