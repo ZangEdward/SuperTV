@@ -16,7 +16,7 @@ interface APIConfigSectionProps {
   onChanged: () => void;
   onFocus?: () => void;
   onBlur?: () => void;
-  onPress?: () => void;
+  onPress?: () => void; // ⭐ 这里会传入“测速并自动选择最佳节点”
   hideDescription?: boolean;
 }
 
@@ -56,11 +56,11 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       onBlur?.();
     };
 
-    // TV 遥控器事件处理
+    // ⭐ TV 遥控器事件处理：按 OK 时触发“测速并自动选择最佳节点”
     const handleTVEvent = React.useCallback(
       (event: any) => {
         if (isSectionFocused && event.eventType === "select") {
-          inputRef.current?.focus();
+          onPress?.(); // ⭐ TV 端按 OK → 执行节点测速 + 自动选择
         }
       },
       [isSectionFocused]
@@ -68,9 +68,12 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
 
     useTVEventHandler(handleTVEvent);
 
+    // ⭐ 手机端点击：保持原来的行为
     const handlePress = () => {
-      inputRef.current?.focus();
-      onPress?.();
+      if (!Platform.isTV) {
+        inputRef.current?.focus();
+        onPress?.(); // 手机点击 → 执行原来的逻辑
+      }
     };
 
     return (
@@ -78,21 +81,22 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         focusable
         onFocus={handleSectionFocus}
         onBlur={handleSectionBlur}
-        {...(Platform.isTV || deviceType === "tv" ? { onPress: handlePress } : {})}
+        onPress={handlePress} // ⭐ TV 不走这里；手机走这里
       >
         <View style={styles.inputContainer}>
           <View style={styles.titleContainer}>
             <ThemedText style={styles.sectionTitle}>API 地址</ThemedText>
 
-            {!hideDescription && remoteInputEnabled && serverUrl && (
+            {/* ⭐ 修改后的提示文字 */}
+            {!hideDescription && (
               <ThemedText style={styles.subtitle}>
-                用手机访问 {serverUrl}，可远程输入
+                测速并自动选择最佳节点
               </ThemedText>
             )}
           </View>
 
           <Animated.View style={inputAnimationStyle}>
-            {/* ⭐ 替换 TextInput，使用节点选择 UI */}
+            {/* ⭐ TV 无法选中内部按钮，但 UI 保留 */}
             <ApiNodeSelectorUI />
           </Animated.View>
         </View>
