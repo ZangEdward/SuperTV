@@ -28,12 +28,14 @@ jobs:
       - name: Install dependencies
         run: yarn install --network-timeout 100000
 
-      # 读取版本号
+      # 读取版本号（修复语法错误）
       - name: Read version from package.json
         id: version
-        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      # 1️⃣ Prebuild（生成 android 目录）
+      # 1️⃣ Prebuild
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
@@ -68,7 +70,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk \
             output/SuperTV-Mobile-v${VERSION}.apk
 
-      # 6️⃣ 构建 TV APK（切换 TV 配置）
+      # 6️⃣ 构建 TV APK
       - name: Build TV APK
         run: |
           cd android
@@ -80,7 +82,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk \
             output/SuperTV-TV-v${VERSION}.apk
 
-      # 8️⃣ 上传到 GitHub Releases（自动创建 Release）
+      # 8️⃣ 上传到 GitHub Releases
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v1
         with:
