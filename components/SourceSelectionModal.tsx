@@ -22,9 +22,10 @@ const testSourceSpeed = async (url: string): Promise<number> => {
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();
-  const { searchResults, detail, setDetail } = useDetailStore();
 
-  const [latencies, setLatencies] = useState<Record<string, number>>({});
+  const { searchResults, detail, setDetail, setLatencies } = useDetailStore();
+
+  const [latencies, setLocalLatencies] = useState<Record<string, number>>({});
   const [focusedSource, setFocusedSource] = useState<any>(null); // ⭐ TV 当前焦点源
 
   // ⭐ TV：焦点停留 2 秒后自动测速
@@ -43,10 +44,17 @@ export const SourceSelectionModal: React.FC = () => {
 
       const ms = await testSourceSpeed(url);
 
-      setLatencies((prev) => ({
-        ...prev,
+      const newLatencies = {
+        ...latencies,
         [focusedSource.source]: ms,
-      }));
+      };
+
+      // ⭐ 更新本地
+      setLocalLatencies(newLatencies);
+
+      // ⭐ 写入全局 detailStore（排序 + 默认选最快 + 前 5 个）
+      setLatencies(newLatencies);
+
     }, 2000);
 
     return () => clearTimeout(timer);
