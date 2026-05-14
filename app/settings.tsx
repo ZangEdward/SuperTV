@@ -208,23 +208,34 @@ export default function SettingsScreen() {
 
 
   // TV遥控器事件处理 - 仅在TV设备上启用
-  const handleTVEvent = React.useCallback(
-    (event: any) => {
-      if (deviceType !== "tv") return;
+ const handleTVEvent = React.useCallback(
+  (event: any) => {
+    if (deviceType !== "tv") return;
 
-      if (event.eventType === "down") {
-        const nextIndex = Math.min(currentFocusIndex + 1, sections.length);
-        setCurrentFocusIndex(nextIndex);
-        if (nextIndex === sections.length) {
-          saveButtonRef.current?.focus();
-        }
-      } else if (event.eventType === "up") {
-        const prevIndex = Math.max(currentFocusIndex - 1, 0);
-        setCurrentFocusIndex(prevIndex);
+    if (event.eventType === "down") {
+      const nextIndex = Math.min(currentFocusIndex + 1, sections.length);
+      setCurrentFocusIndex(nextIndex);
+      if (nextIndex === sections.length) {
+        saveButtonRef.current?.focus();
       }
-    },
-    [currentFocusIndex, sections.length, deviceType]
-  );
+    } 
+    
+    else if (event.eventType === "up") {
+      const prevIndex = Math.max(currentFocusIndex - 1, 0);
+      setCurrentFocusIndex(prevIndex);
+    }
+
+    // ⭐⭐⭐ 最关键：TV 按 OK → 执行当前 Section 的 onPress
+    else if (event.eventType === "select") {
+      const currentSection = sections[currentFocusIndex];
+
+      if (currentSection?.component?.props?.onPress) {
+        currentSection.component.props.onPress();
+      }
+    }
+  },
+  [currentFocusIndex, sections.length, deviceType, sections]
+);
 
   useTVEventHandler(deviceType === "tv" ? handleTVEvent : () => { });
 
