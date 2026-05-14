@@ -1,4 +1,4 @@
-import React, { useState, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useImperativeHandle, forwardRef } from "react";
 import { View, StyleSheet, Animated, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
@@ -6,17 +6,14 @@ import { SettingsSection } from "./SettingsSection";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import { useButtonAnimation } from "@/hooks/useAnimation";
-import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-
-// ⭐ 必须补上这个 import，否则闪退
 import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
 
 interface APIConfigSectionProps {
   onChanged: () => void;
   onFocus?: () => void;
   onBlur?: () => void;
-  onPress?: () => void; // ⭐ 这里会传入“测速并自动选择最佳节点”
+  onPress?: () => void; // ⭐ TV/手机按 OK → 执行测速
   hideDescription?: boolean;
 }
 
@@ -30,10 +27,10 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
     const { remoteInputEnabled, serverUrl } = useRemoteControlStore();
 
     const [isSectionFocused, setIsSectionFocused] = useState(false);
-    const inputAnimationStyle = useButtonAnimation(isSectionFocused, 1.01);
     const deviceType = useResponsiveLayout().deviceType;
+    const animationStyle = useButtonAnimation(isSectionFocused, 1.02);
 
-    // 允许外部设置 API 地址
+    // 外部可设置 API 地址
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {
         setApiBaseUrl(value);
@@ -51,11 +48,11 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       onBlur?.();
     };
 
-    // ⭐ TV 遥控器事件处理：按 OK 时触发“测速并自动选择最佳节点”
+    // ⭐ TV 遥控器 OK → 执行测速
     const handleTVEvent = React.useCallback(
       (event: any) => {
         if (isSectionFocused && event.eventType === "select") {
-          onPress?.(); // ⭐ TV 端按 OK → 执行节点测速 + 自动选择
+          onPress?.();
         }
       },
       [isSectionFocused, onPress]
@@ -63,10 +60,10 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
 
     useTVEventHandler(handleTVEvent);
 
-    // ⭐ 手机端点击：保持原来的行为
+    // ⭐ 手机端点击
     const handlePress = () => {
       if (!Platform.isTV) {
-        onPress?.(); // 手机点击 → 执行原来的逻辑
+        onPress?.();
       }
     };
 
@@ -77,23 +74,18 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         onBlur={handleSectionBlur}
         onPress={Platform.isTV ? undefined : handlePress} // ⭐ TV 禁用 onPress，避免冲突
       >
-        <View style={styles.inputContainer}>
-          <View style={styles.titleContainer}>
-            <ThemedText style={styles.sectionTitle}>API 地址</ThemedText>
+        <Animated.View style={[styles.container, animationStyle]}>
+          <ThemedText style={styles.title}>服务器节点</ThemedText>
 
-            {/* ⭐ 修改后的提示文字 */}
-            {!hideDescription && (
-              <ThemedText style={styles.subtitle}>
-                测速并自动选择最佳节点
-              </ThemedText>
-            )}
-          </View>
+          {!hideDescription && (
+            <ThemedText style={styles.subtitle}>
+              测速并自动选择最佳节点
+            </ThemedText>
+          )}
 
-          <Animated.View style={inputAnimationStyle}>
-            {/* ⭐ TV 无法选中内部按钮，但 UI 保留 */}
-            <ApiNodeSelectorUI />
-          </Animated.View>
-        </View>
+          {/* ⭐ 节点列表 UI */}
+          <ApiNodeSelectorUI />
+        </Animated.View>
       </SettingsSection>
     );
   }
@@ -102,22 +94,17 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
 APIConfigSection.displayName = "APIConfigSection";
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  container: {
+    padding: 16,
+  },
+  title: {
+    fontSize: Platform.isTV ? 22 : 18,
+    fontWeight: "bold",
     marginBottom: 8,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginRight: 12,
-  },
   subtitle: {
-    fontSize: 12,
+    fontSize: Platform.isTV ? 16 : 14,
     color: "#888",
-    fontStyle: "italic",
-  },
-  inputContainer: {
     marginBottom: 12,
   },
 });
