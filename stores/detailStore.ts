@@ -14,8 +14,8 @@ export type SearchResultWithResolution = SearchResult & {
 
 interface DetailState {
   q: string | null;
-  searchResults: SearchResultWithResolution[]; // ⭐ 全部源（排序后）
-  sourcesTop5: SearchResultWithResolution[]; // ⭐ 前 5 个最快源
+  searchResults: SearchResultWithResolution[]; // ⭐ 全部源
+  sourcesTop5: SearchResultWithResolution[];   // ⭐ 前 5 个最快源
   detail: SearchResultWithResolution | null;
 
   latencies: Record<string, number>; // ⭐ 保存测速结果
@@ -37,15 +37,14 @@ interface DetailState {
     currentSource: string,
     episodeIndex: number
   ) => SearchResultWithResolution | null;
-}
-
-const useDetailStore = create<DetailState>((set, get) => ({
+}const useDetailStore = create<DetailState>((set, get) => ({
   q: null,
   searchResults: [],
   sourcesTop5: [],
   detail: null,
 
-  latencies: {}, // ⭐ 新增
+  latencies: {},
+
   setLatencies: (lat) => {
     const { searchResults } = get();
 
@@ -72,9 +71,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
   allSourcesLoaded: false,
   controller: null,
   isFavorited: false,
-  failedSources: new Set(),
-
-  init: async (q, preferredSource, id) => {
+  failedSources: new Set(),init: async (q, preferredSource, id) => {
     const old = get().controller;
     if (old) old.abort();
 
@@ -92,6 +89,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
       controller,
     });
 
+    const { videoSource } = useSettingsStore.getState();
+
     const processResults = async (results: SearchResult[]) => {
       const processed = await Promise.all(
         results.map(async (item) => {
@@ -107,7 +106,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
       if (signal.aborted) return;
 
-      // ⭐ 初次加载：不排序（等待测速）
       set({
         searchResults: processed,
         sourcesTop5: processed.slice(0, 5),
@@ -116,19 +114,18 @@ const useDetailStore = create<DetailState>((set, get) => ({
     };
 
     try {
-      const res = await api.searchVideo(q, preferredSource, signal);
+      const res = await api.searchVideo(q, videoSource, signal);
       await processResults(res.results);
       set({ allSourcesLoaded: true });
     } catch (e) {
       if (!signal.aborted) {
+        console.log("DetailStore.init error:", e);
         set({ error: "加载失败，请稍后重试", loading: false });
       }
     }
 
     set({ loading: false });
-  },
-
-  setDetail: async (detail) => {
+  },setDetail: async (detail) => {
     set({ detail });
   },
 
