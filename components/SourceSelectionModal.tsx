@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Modal, FlatList, Platform } from "react-native";
+import { View, Text, StyleSheet, Modal, FlatList, TouchableOpacity } from "react-native";
 import { StyledButton } from "./StyledButton";
 import useDetailStore from "@/stores/detailStore";
 import usePlayerStore from "@/stores/playerStore";
@@ -19,46 +19,76 @@ const testSourceSpeed = async (url: string): Promise<number> => {
   }
 };
 
+// 自动切换到下一个最快源（播放失败时调用）
+export const autoSwitchToNextSource = () => {
+  const { searchResults, detail, setDetail } = useDetailStore.getState();
+  const { loadVideo, currentEpisodeIndex, status } = usePlayerStore.getState();
+
+  const sorted = [...searchResults].sort(
+    (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
+  );
+
+  const currentIndex = sorted.findIndex((s) => s.source === detail?.source);
+  const next = sorted[currentIndex + 1];
+
+  if (!next) {
+    console.warn("没有更多源可切换");
+    return;
+  }
+
+  setDetail(next);
+
+  const currentPosition = status?.isLoaded ? status.positionMillis : undefined;
+
+  loadVideo({
+    source: next.source,
+    id: next.id.toString(),
+    episodeIndex: currentEpisodeIndex,
+    title: next.title,
+    position: currentPosition,
+  });
+};
+
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();
+  const { searchResults, detail, setDetail } = useDetailStore();
 
-  const { searchResults, detail, setDetail, setLatencies } = useDetailStore();
+  const [latencies, setLatencies] = useState<Record<string, number>>({});
 
-  const [latencies, setLocalLatencies] = useState<Record<string, number>>({});
-  const [focusedSource, setFocusedSource] = useState<any>(null); // ⭐ TV 当前焦点源
-
-  // ⭐ TV：焦点停留 2 秒后自动测速
+  // Modal 打开时自动测速所有源
   useEffect(() => {
-    if (!Platform.isTV) return; // 手机不执行
-    if (!focusedSource) return;
+    if (!showSourceModal) return;
 
-    const timer = setTimeout(async () => {
-      const url =
-        focusedSource.play_url ||
-        focusedSource.url ||
-        focusedSource.source_url ||
-        focusedSource.source;
+    const runSpeedTest = async () => {
+      const result: Record<string, number> = {};
 
-      if (!url) return;
+      for (const item of searchResults) {
+        const url = item.play_url || item.url || item.source_url || item.source;
+        if (!url) continue;
 
-      const ms = await testSourceSpeed(url);
+        const ms = await testSourceSpeed(url);
+        result[item.source] = ms;
+      }
 
-      const newLatencies = {
-        ...latencies,
-        [focusedSource.source]: ms,
-      };
+      setLatencies(result);
+    };
 
-      // ⭐ 更新本地
-      setLocalLatencies(newLatencies);
+    runSpeedTest();
+  }, [showSourceModal]);
 
-      // ⭐ 写入全局 detailStore（排序 + 默认选最快 + 前 5 个）
-      setLatencies(newLatencies);
+  // 自动选择最快源（打开详情页时）
+  useEffect(() => {
+    if (!searchResults || searchResults.length === 0) return;
 
-    }, 2000);
+    const sorted = [...searchResults].sort(
+      (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
+    );
 
-    return () => clearTimeout(timer);
-  }, [focusedSource]);
+    if (sorted[0] && sorted[0].source !== detail?.source) {
+      setDetail(sorted[0]);
+    }
+  }, [searchResults]);
 
   const onSelectSource = (index: number) => {
     const selected = searchResults[index];
@@ -105,8 +135,7 @@ export const SourceSelectionModal: React.FC = () => {
             renderItem={({ item, index }) => (
               <StyledButton
                 text={`${item.source_name} (${getLatencyText(item.source)})`}
-                onPress={() => onSelectSource(index)} // ⭐ 手机点击
-                onFocus={() => setFocusedSource(item)} // ⭐ TV 焦点变化
+                onPress={() => onSelectSource(index)}
                 isSelected={detail?.source === item.source}
                 hasTVPreferredFocus={detail?.source === item.source}
                 style={styles.sourceItem}
