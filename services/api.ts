@@ -106,8 +106,6 @@ export class API {
     return response;
   }
 
-  // ------------------ 登录 / 登出 ------------------
-
   async login(username?: string | undefined, password?: string): Promise<{ ok: boolean }> {
     const response = await this._fetch("/api/login", {
       method: "POST",
@@ -128,18 +126,14 @@ export class API {
     const response = await this._fetch("/api/logout", {
       method: "POST",
     });
-    await AsyncStorage.setItem("authCookies", "");
+    await AsyncStorage.setItem("authCookies", '');
     return response.json();
   }
-
-  // ------------------ 配置 ------------------
 
   async getServerConfig(): Promise<ServerConfig> {
     const response = await this._fetch("/api/server-config");
     return response.json();
   }
-
-  // ------------------ 收藏 ------------------
 
   async getFavorites(key?: string): Promise<Record<string, Favorite> | Favorite | null> {
     const url = key ? `/api/favorites?key=${encodeURIComponent(key)}` : "/api/favorites";
@@ -162,8 +156,6 @@ export class API {
     return response.json();
   }
 
-  // ------------------ 播放记录 ------------------
-
   async getPlayRecords(): Promise<Record<string, PlayRecord>> {
     const response = await this._fetch("/api/playrecords");
     return response.json();
@@ -184,8 +176,6 @@ export class API {
     return response.json();
   }
 
-  // ------------------ 搜索历史 ------------------
-
   async getSearchHistory(): Promise<string[]> {
     const response = await this._fetch("/api/searchhistory");
     return response.json();
@@ -201,24 +191,51 @@ export class API {
   }
 
   async deleteSearchHistory(keyword?: string): Promise<{ success: boolean }> {
-    const url = keyword
-      ? `/api/searchhistory?keyword=${encodeURIComponent(keyword)}`
-      : "/api/searchhistory";
+    const url = keyword ? `/api/searchhistory?keyword=${keyword}` : "/api/searchhistory";
     const response = await this._fetch(url, { method: "DELETE" });
     return response.json();
   }
 
-  // ------------------ 搜索视频（搜索页在用的接口） ------------------
+  getImageProxyUrl(imageUrl: string): string {
+    return `${this.baseURL}/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+  }
 
-  // 注意：如果你的后端路径不是 /api/search?wd=，只改 url 这一行即可
-  async searchVideos(
-    keyword: string,
-    signal?: AbortSignal
-  ): Promise<{ results: SearchResult[] }> {
-    const url = `/api/search?wd=${encodeURIComponent(keyword)}`;
+  async getDoubanData(
+    type: "movie" | "tv",
+    tag: string,
+    pageSize: number = 16,
+    pageStart: number = 0
+  ): Promise<DoubanResponse> {
+    const url = `/api/douban?type=${type}&tag=${encodeURIComponent(tag)}&pageSize=${pageSize}&pageStart=${pageStart}`;
+    const response = await this._fetch(url);
+    return response.json();
+  }
+
+  async searchVideos(query: string): Promise<{ results: SearchResult[] }> {
+    const url = `/api/search?q=${encodeURIComponent(query)}`;
+    const response = await this._fetch(url);
+    return response.json();
+  }
+
+  async searchVideo(query: string, resourceId: string, signal?: AbortSignal): Promise<{ results: SearchResult[] }> {
+    const url = `/api/search/one?q=${encodeURIComponent(query)}&resourceId=${encodeURIComponent(resourceId)}`;
     const response = await this._fetch(url, { signal });
+    const { results } = await response.json();
+    return { results: results.filter((item: any) => item.title === query )};
+  }
+
+  async getResources(signal?: AbortSignal): Promise<ApiSite[]> {
+    const url = `/api/search/resources`;
+    const response = await this._fetch(url, { signal });
+    return response.json();
+  }
+
+  async getVideoDetail(source: string, id: string): Promise<VideoDetail> {
+    const url = `/api/detail?source=${source}&id=${id}`;
+    const response = await this._fetch(url);
     return response.json();
   }
 }
 
-export const api = new API(https://ltv.955598.xyz);
+// 默认实例
+export let api = new API("https://ltv.lzsb.edu.eu.org/");
