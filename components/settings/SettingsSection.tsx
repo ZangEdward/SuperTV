@@ -42,7 +42,7 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({ children, onFo
         // {...(Platform.isTV ? {onFocus: handleFocus, onBlur: handleBlur} : {onPress: onPress})}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        onPress={handlePress}
+        onPress={Platform.isTV ? undefined : handlePress}
       >
         {children}
       </Pressable>
