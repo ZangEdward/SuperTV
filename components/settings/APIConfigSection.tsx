@@ -1,5 +1,5 @@
 import React, { useState, useRef, useImperativeHandle, forwardRef } from "react";
-import { View, TextInput, StyleSheet, Animated, Platform } from "react-native";
+import { View, StyleSheet, Animated, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsSection } from "./SettingsSection";
@@ -26,19 +26,14 @@ export interface APIConfigSectionRef {
 
 export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSectionProps>(
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
-    const { apiBaseUrl, setApiBaseUrl, remoteInputEnabled } = useSettingsStore();
-    const { serverUrl } = useRemoteControlStore();
+    const { apiBaseUrl, setApiBaseUrl } = useSettingsStore();
+    const { remoteInputEnabled, serverUrl } = useRemoteControlStore();
 
     const [isSectionFocused, setIsSectionFocused] = useState(false);
-    const inputRef = useRef<TextInput>(null);
     const inputAnimationStyle = useButtonAnimation(isSectionFocused, 1.01);
     const deviceType = useResponsiveLayout().deviceType;
 
-    const handleUrlChange = (url: string) => {
-      setApiBaseUrl(url);
-      onChanged();
-    };
-
+    // 允许外部设置 API 地址
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {
         setApiBaseUrl(value);
@@ -63,7 +58,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
           onPress?.(); // ⭐ TV 端按 OK → 执行节点测速 + 自动选择
         }
       },
-      [isSectionFocused]
+      [isSectionFocused, onPress]
     );
 
     useTVEventHandler(handleTVEvent);
@@ -71,7 +66,6 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
     // ⭐ 手机端点击：保持原来的行为
     const handlePress = () => {
       if (!Platform.isTV) {
-        inputRef.current?.focus();
         onPress?.(); // 手机点击 → 执行原来的逻辑
       }
     };
@@ -81,7 +75,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         focusable
         onFocus={handleSectionFocus}
         onBlur={handleSectionBlur}
-        onPress={handlePress} // ⭐ TV 不走这里；手机走这里
+        onPress={Platform.isTV ? undefined : handlePress} // ⭐ TV 禁用 onPress，避免冲突
       >
         <View style={styles.inputContainer}>
           <View style={styles.titleContainer}>
