@@ -115,6 +115,7 @@ export class API {
       body: JSON.stringify({ username, password }),
     });
 
+    // 存储cookie到AsyncStorage
     const cookies = response.headers.get("Set-Cookie");
     if (cookies) {
       await AsyncStorage.setItem("authCookies", cookies);
@@ -127,7 +128,7 @@ export class API {
     const response = await this._fetch("/api/logout", {
       method: "POST",
     });
-    await AsyncStorage.setItem("authCookies", '');
+    await AsyncStorage.setItem("authCookies", "");
     return response.json();
   }
 
@@ -200,21 +201,24 @@ export class API {
   }
 
   async deleteSearchHistory(keyword?: string): Promise<{ success: boolean }> {
-    const url = keyword ? `/api/searchhistory?keyword=${encodeURIComponent(keyword)}` : "/api/searchhistory";
+    const url = keyword
+      ? `/api/searchhistory?keyword=${encodeURIComponent(keyword)}`
+      : "/api/searchhistory";
     const response = await this._fetch(url, { method: "DELETE" });
     return response.json();
   }
 
-  // ------------------ ⭐⭐⭐ 搜索视频（你缺少的函数）⭐⭐⭐ ------------------
+  // ------------------ 搜索视频（搜索页在用的接口） ------------------
 
-  async searchVideo(q: string, source?: string, signal?: AbortSignal) {
-    const url = source
-      ? `/api/search?q=${encodeURIComponent(q)}&source=${encodeURIComponent(source)}`
-      : `/api/search?q=${encodeURIComponent(q)}`;
-
+  // 注意：如果你的后端路径不是 /api/search?wd=，只改 url 这一行即可
+  async searchVideos(
+    keyword: string,
+    signal?: AbortSignal
+  ): Promise<{ results: SearchResult[] }> {
+    const url = `/api/search?wd=${encodeURIComponent(keyword)}`;
     const response = await this._fetch(url, { signal });
     return response.json();
   }
 }
 
-export const api = new API();
+export const api = new API(https://ltv.955598.xyz);
