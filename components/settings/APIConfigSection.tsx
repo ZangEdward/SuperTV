@@ -2,9 +2,8 @@ import React, { useState, useImperativeHandle, forwardRef } from "react";
 import { View, StyleSheet, Animated, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
-import { SettingsSection } from "./SettingsSection";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import { useButtonAnimation } from "@/hooks/useAnimation";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
@@ -24,11 +23,11 @@ export interface APIConfigSectionRef {
 export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSectionProps>(
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
     const { apiBaseUrl, setApiBaseUrl } = useSettingsStore();
-    const { remoteInputEnabled, serverUrl } = useRemoteControlStore();
-
-    const [isSectionFocused, setIsSectionFocused] = useState(false);
+    const [isFocused, setIsFocused] = useState(false);
     const deviceType = useResponsiveLayout().deviceType;
-    const animationStyle = useButtonAnimation(isSectionFocused, 1.02);
+
+    // 放大动画（和 UpdateSection 一样）
+    const animationStyle = useButtonAnimation(isFocused, 1.02);
 
     // 外部可设置 API 地址
     useImperativeHandle(ref, () => ({
@@ -38,24 +37,16 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       },
     }));
 
-    const handleSectionFocus = () => {
-      setIsSectionFocused(true);
-      onFocus?.();
-    };
-
-    const handleSectionBlur = () => {
-      setIsSectionFocused(false);
-      onBlur?.();
-    };
-
-    // ⭐ TV 遥控器 OK → 执行测速
+    // ⭐ TV 遥控器 OK → 执行 onPress
     const handleTVEvent = React.useCallback(
       (event: any) => {
-        if (isSectionFocused && event.eventType === "select") {
+        if (deviceType !== "tv") return;
+
+        if (isFocused && event.eventType === "select") {
           onPress?.();
         }
       },
-      [isSectionFocused, onPress]
+      [isFocused, onPress, deviceType]
     );
 
     useTVEventHandler(handleTVEvent);
@@ -70,8 +61,14 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
     return (
       <SettingsSection
         focusable
-        onFocus={handleSectionFocus}
-        onBlur={handleSectionBlur}
+        onFocus={() => {
+          setIsFocused(true);
+          onFocus?.();
+        }}
+        onBlur={() => {
+          setIsFocused(false);
+          onBlur?.();
+        }}
         onPress={Platform.isTV ? undefined : handlePress} // ⭐ TV 禁用 onPress，避免冲突
       >
         <Animated.View style={[styles.container, animationStyle]}>
@@ -83,7 +80,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
             </ThemedText>
           )}
 
-          {/* ⭐ 节点列表 UI */}
+          {/* ⭐ 节点列表 UI（展示用，不参与焦点） */}
           <ApiNodeSelectorUI />
         </Animated.View>
       </SettingsSection>
@@ -108,3 +105,4 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 });
+
