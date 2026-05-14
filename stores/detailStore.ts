@@ -5,7 +5,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { FavoriteManager } from "@/services/storage";
 import Logger from "@/utils/Logger";
 
-const logger = Logger.withTag('DetailStore');
+const logger = Logger.withTag("DetailStore");
 
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
@@ -14,9 +14,13 @@ export type SearchResultWithResolution = SearchResult & {
 
 interface DetailState {
   q: string | null;
-  searchResults: SearchResultWithResolution[];
-  sourcesTop5: SearchResultWithResolution[]; // ⭐ 新增：前 5 个最快源
+  searchResults: SearchResultWithResolution[]; // ⭐ 全部源（排序后）
+  sourcesTop5: SearchResultWithResolution[]; // ⭐ 前 5 个最快源
   detail: SearchResultWithResolution | null;
+
+  latencies: Record<string, number>; // ⭐ 保存测速结果
+  setLatencies: (lat: Record<string, number>) => void;
+
   loading: boolean;
   error: string | null;
   allSourcesLoaded: boolean;
@@ -24,22 +28,45 @@ interface DetailState {
   isFavorited: boolean;
   failedSources: Set<string>;
 
-  latencies: Record<string, number>; // ⭐ 新增：保存测速结果
-  setLatencies: (lat: Record<string, number>) => void;
-
   init: (q: string, preferredSource?: string, id?: string) => Promise<void>;
   setDetail: (detail: SearchResultWithResolution) => Promise<void>;
   abort: () => void;
   toggleFavorite: () => Promise<void>;
   markSourceAsFailed: (source: string, reason: string) => void;
-  getNextAvailableSource: (currentSource: string, episodeIndex: number) => SearchResultWithResolution | null;
+  getNextAvailableSource: (
+    currentSource: string,
+    episodeIndex: number
+  ) => SearchResultWithResolution | null;
 }
 
 const useDetailStore = create<DetailState>((set, get) => ({
   q: null,
   searchResults: [],
-  sourcesTop5: [], // ⭐ 新增
+  sourcesTop5: [],
   detail: null,
+
+  latencies: {}, // ⭐ 新增
+  setLatencies: (lat) => {
+    const { searchResults } = get();
+
+    // ⭐ 更新每个源的 latency 字段
+    const updated = searchResults.map((s) => ({
+      ...s,
+      latency: lat[s.source] ?? Infinity,
+    }));
+
+    // ⭐ 按速度排序
+    updated.sort((a, b) => (a.latency ?? 99999) - (b.latency ?? 99999));
+
+    // ⭐ 更新前 5 个
+    set({
+      latencies: lat,
+      searchResults: updated,
+      sourcesTop5: updated.slice(0, 5),
+      detail: updated[0] ?? null, // 默认选最快
+    });
+  },
+
   loading: true,
   error: null,
   allSourcesLoaded: false,
@@ -47,34 +74,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
   isFavorited: false,
   failedSources: new Set(),
 
-  latencies: {}, // ⭐ 新增
-  setLatencies: (lat) => {
-    set({ latencies: lat });
-
-    // ⭐ 更新 searchResults 中的 latency 字段
-    const { searchResults } = get();
-    const updated = searchResults.map((s) => ({
-      ...s,
-      latency: lat[s.source] ?? Infinity,
-    }));
-
-    // ⭐ 排序
-    updated.sort((a, b) => (a.latency ?? 99999) - (b.latency ?? 99999));
-
-    // ⭐ 更新前 5 个
-    set({
-      searchResults: updated,
-      sourcesTop5: updated.slice(0, 5),
-      detail: updated[0] ?? null, // 默认选最快
-    });
-  },
-
   init: async (q, preferredSource, id) => {
-    const { controller: oldController } = get();
-    if (oldController) oldController.abort();
+    const old = get().controller;
+    if (old) old.abort();
 
-    const newController = new AbortController();
-    const signal = newController.signal;
+    const controller = new AbortController();
+    const signal = controller.signal;
 
     set({
       q,
@@ -84,19 +89,19 @@ const useDetailStore = create<DetailState>((set, get) => ({
       detail: null,
       error: null,
       allSourcesLoaded: false,
-      controller: newController,
+      controller,
     });
 
-    const processAndSetResults = async (results: SearchResult[]) => {
-      const resultsWithResolution = await Promise.all(
-        results.map(async (searchResult) => {
+    const processResults = async (results: SearchResult[]) => {
+      const processed = await Promise.all(
+        results.map(async (item) => {
           let resolution = null;
           try {
-            if (searchResult.episodes?.length > 0) {
-              resolution = await getResolutionFromM3U8(searchResult.episodes[0], signal);
+            if (item.episodes?.length > 0) {
+              resolution = await getResolutionFromM3U8(item.episodes[0], signal);
             }
           } catch {}
-          return { ...searchResult, resolution, latency: Infinity };
+          return { ...item, resolution, latency: Infinity };
         })
       );
 
@@ -104,15 +109,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
       // ⭐ 初次加载：不排序（等待测速）
       set({
-        searchResults: resultsWithResolution,
-        sourcesTop5: resultsWithResolution.slice(0, 5),
-        detail: resultsWithResolution[0] ?? null,
+        searchResults: processed,
+        sourcesTop5: processed.slice(0, 5),
+        detail: processed[0] ?? null,
       });
     };
 
     try {
-      const response = await api.searchVideo(q, preferredSource, signal);
-      await processAndSetResults(response.results);
+      const res = await api.searchVideo(q, preferredSource, signal);
+      await processResults(res.results);
       set({ allSourcesLoaded: true });
     } catch (e) {
       if (!signal.aborted) {
@@ -128,8 +133,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   abort: () => {
-    const { controller } = get();
-    if (controller) controller.abort();
+    const c = get().controller;
+    if (c) c.abort();
   },
 
   toggleFavorite: async () => {
@@ -146,13 +151,14 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   markSourceAsFailed: (source, reason) => {
-    const { failedSources } = get();
-    failedSources.add(source);
-    set({ failedSources: new Set(failedSources) });
+    const failed = get().failedSources;
+    failed.add(source);
+    set({ failedSources: new Set(failed) });
   },
 
   getNextAvailableSource: (currentSource) => {
     const { searchResults, failedSources } = get();
+
     const sorted = [...searchResults].sort(
       (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
     );
