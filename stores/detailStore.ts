@@ -117,12 +117,12 @@ interface DetailState {
       const res = await api.searchVideo(q, videoSource, signal);
       await processResults(res.results);
       set({ allSourcesLoaded: true });
-    } catch (e) {
-      if (!signal.aborted) {
-        console.log("DetailStore.init error:", e);
-        set({ error: "加载失败，请稍后重试", loading: false });
-      }
-    }
+  } catch (e: any) {
+  if (!signal.aborted) {
+    const msg = e?.message || JSON.stringify(e) || "未知错误";
+    set({ error: "加载失败：" + msg, loading: false });
+  }
+}
 
     set({ loading: false });
   },setDetail: async (detail) => {
