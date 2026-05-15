@@ -102,9 +102,9 @@ export default function RootLayout() {
             <Stack screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: Colors.dark.background },
-              animation: 'fade', // 平滑切换
+              animation: 'slide_from_right', // 左右滑动动画
             }}>
-              <Stack.Screen name="index" />
+              <Stack.Screen name="index" options={{ gestureEnabled: false }} />
               <Stack.Screen name="detail" />
               {Platform.OS !== "web" && <Stack.Screen name="play" />}
               <Stack.Screen name="search" />
