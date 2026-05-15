@@ -109,7 +109,7 @@ class UpdateService {
    * --------------------------------------------------------------- */
   async downloadApk(
     url: string,
-    onProgress?: (percent: number) => void,
+    onProgress?: (written: number, total: number) => void,
   ): Promise<string> {
     const maxRetries = 3;
     await this.cleanOldApkFiles();
@@ -120,20 +120,13 @@ class UpdateService {
         const fileName = `OrionTV_v${timestamp}.apk`;
         const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-        // expo-file-system 把下载进度回调参数统一为 `{totalBytesWritten, totalBytesExpectedToWrite}`
         const downloadResumable = FileSystem.createDownloadResumable(
           url,
           fileUri,
-          {
-            // Android 需要在 AndroidManifest 中声明 INTERNET、WRITE_EXTERNAL_STORAGE (API 33+ 使用 MANAGE_EXTERNAL_STORAGE)
-            // 这里不使用系统下载管理器，因为我们想自己控制进度回调。
-          },
+          {},
           progress => {
-            if (onProgress && progress.totalBytesExpectedToWrite) {
-              const percent = Math.floor(
-                (progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100,
-              );
-              onProgress(percent);
+            if (onProgress) {
+              onProgress(progress.totalBytesWritten, progress.totalBytesExpectedToWrite);
             }
           },
         );
@@ -179,14 +172,14 @@ class UpdateService {
     // ③ 只在 Android 里执行
     if (Platform.OS === 'android') {
       try {
-        // FLAG_ACTIVITY_NEW_TASK = 0x10000000 (1)
-        // FLAG_GRANT_READ_URI_PERMISSION = 0x00000010
-        const flags = 1 | 0x00000010;   // 1 | 16
+        // Intent.FLAG_GRANT_READ_URI_PERMISSION = 1
+        // Intent.FLAG_ACTIVITY_NEW_TASK = 0x10000000
+        const flags = 1 | 0x10000000;
 
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
           data: contentUri,          // 必须是 content://
           type: ANDROID_MIME_TYPE,   // application/vnd.android.package-archive
-          flags,
+          flags: flags,
         });
       } catch (e: any) {
         // 统一错误提示
