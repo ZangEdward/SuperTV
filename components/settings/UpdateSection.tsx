@@ -60,8 +60,13 @@ export function UpdateSection() {
 
       {downloading && (
         <View style={styles.row}>
-          <ThemedText style={styles.label}>下载进度</ThemedText>
-          <ThemedText style={styles.value}>{downloadProgress}%</ThemedText>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginRight: 8 }} />
+            <ThemedText style={styles.label}>正在下载...</ThemedText>
+          </View>
+          <ThemedText style={styles.value}>
+            {(downloadProgress / (1024 * 1024)).toFixed(2)} MB
+          </ThemedText>
         </View>
       )}
 
