@@ -1,18 +1,15 @@
-import React, { useState, useImperativeHandle, forwardRef, useRef, useEffect } from "react";
-import { View, StyleSheet, Animated, Platform } from "react-native";
+import React, { useImperativeHandle, forwardRef } from "react";
+import { View, StyleSheet, Platform } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsSection } from "@/components/settings/SettingsSection";
-import { StyledButton } from "@/components/StyledButton";
 import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { useButtonAnimation } from "@/hooks/useAnimation";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 interface APIConfigSectionProps {
   onChanged: () => void;
   onFocus?: () => void;
   onBlur?: () => void;
-  onPress?: () => void; // ⭐ TV/手机按 OK → 执行测速
+  onPress?: () => void;
   hideDescription?: boolean;
 }
 
@@ -22,14 +19,7 @@ export interface APIConfigSectionRef {
 
 export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSectionProps>(
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
-    const { apiBaseUrl, setApiBaseUrl } = useSettingsStore();
-    const [isFocused, setIsFocused] = useState(false);
-    const deviceType = useResponsiveLayout().deviceType;
-
-    const animationStyle = useButtonAnimation(isFocused, 1.02);
-
-    // ⭐ 按钮引用（TV 自动聚焦用）
-    const speedTestButtonRef = useRef<any>(null);
+    const { setApiBaseUrl } = useSettingsStore();
 
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {
@@ -38,28 +28,13 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       },
     }));
 
-    // ⭐⭐⭐ TV 自动聚焦测速按钮（和 UpdateSection 一样）
-    useEffect(() => {
-      if (Platform.isTV && isFocused) {
-        setTimeout(() => {
-          speedTestButtonRef.current?.focus();
-        }, 100);
-      }
-    }, [isFocused]);
-
     return (
       <SettingsSection
-        focusable
-        onFocus={() => {
-          setIsFocused(true);
-          onFocus?.();
-        }}
-        onBlur={() => {
-          setIsFocused(false);
-          onBlur?.();
-        }}
+        focusable={false}
+        onFocus={onFocus}
+        onBlur={onBlur}
       >
-        <Animated.View style={[styles.container, animationStyle]}>
+        <View style={styles.container} onFocus={onFocus} onBlur={onBlur}>
           <ThemedText style={styles.title}>服务器节点</ThemedText>
 
           {!hideDescription && (
@@ -68,18 +43,9 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
             </ThemedText>
           )}
 
-          {/* 节点列表展示 */}
-          <ApiNodeSelectorUI />
-
-          {/* ⭐ 关键：像 UpdateSection 一样的按钮（TV 焦点落在这里） */}
-          <StyledButton
-            ref={speedTestButtonRef}
-            text="测速并选择最佳节点"
-            onPress={onPress}
-            hasTVPreferredFocus={false}
-            style={styles.button}
-          />
-        </Animated.View>
+          {/* 节点列表展示 - 内部已经使用了 StyledButton，可直接遥控选择 */}
+          <ApiNodeSelectorUI onFocus={onFocus} />
+        </View>
       </SettingsSection>
     );
   }
@@ -100,9 +66,5 @@ const styles = StyleSheet.create({
     fontSize: Platform.isTV ? 16 : 14,
     color: "#888",
     marginBottom: 12,
-  },
-  button: {
-    marginTop: 16,
-    width: "100%",
   },
 });
