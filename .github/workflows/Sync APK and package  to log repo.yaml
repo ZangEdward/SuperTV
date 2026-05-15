@@ -41,6 +41,22 @@ jobs:
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
 
+      # 计算 APK 大小并写入 apksize.json
+      - name: Update apksize.json
+        run: |
+          mkdir -p sync-repo/log/vision
+
+          # 删除旧的 apksize.json
+          rm -f sync-repo/log/vision/apksize.json
+
+          # 获取 APK 文件大小（字节）
+          APK_SIZE=$(stat -c%s "SuperTV-${VERSION}.apk")
+
+          # 写入新的 apksize.json
+          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
+
+          echo "APK size: ${APK_SIZE} bytes"
+
       # 上传 APK 到 internal-cache-sync-daemon-log 的 Releases
       - name: Upload APK to log repo Releases
         uses: softprops/action-gh-release@v1
@@ -90,12 +106,12 @@ jobs:
             echo "  checksum: \"$(openssl rand -hex 8)\""
           } > sync-repo/${LOGFILE}
 
-      # 提交并推送 package.json + log 文件
+      # 提交并推送 package.json + log 文件 + apksize.json
       - name: Commit & Push
         run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update v${TIMESTAMP} log ${LOGFILE}" || true
+          git commit -m "Update v${VERSION} + apksize.json + log ${LOGFILE}" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
