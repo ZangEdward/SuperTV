@@ -107,8 +107,37 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
       },
     });
 
+    // 分离布局样式和装饰样式，彻底解决“两个框”的问题
+    const flattenedStyle = StyleSheet.flatten(style) || {};
+    const {
+      // 布局相关：放在 Animated.View (container)
+      width, height, minWidth, minHeight, maxWidth, maxHeight,
+      margin, marginBottom, marginTop, marginLeft, marginRight, marginHorizontal, marginVertical,
+      flex, flexBasis, flexGrow, flexShrink,
+      position, top, left, right, bottom, zIndex, alignSelf,
+
+      // 装饰相关：放在 Pressable (inner)
+      backgroundColor, borderRadius, borderWidth, borderColor,
+      padding, paddingHorizontal, paddingVertical, paddingLeft, paddingRight, paddingTop, paddingBottom,
+
+      ...restStyle
+    } = flattenedStyle as any;
+
+    const containerStyle = {
+      width, height, minWidth, minHeight, maxWidth, maxHeight,
+      margin, marginBottom, marginTop, marginLeft, marginRight, marginHorizontal, marginVertical,
+      flex, flexBasis, flexGrow, flexShrink,
+      position, top, left, right, bottom, zIndex, alignSelf
+    };
+
+    const decorationStyle = {
+      backgroundColor, borderRadius, borderWidth, borderColor,
+      padding, paddingHorizontal, paddingVertical, paddingLeft, paddingRight, paddingTop, paddingBottom,
+      ...restStyle
+    };
+
     return (
-      <Animated.View style={[animationStyle, style]}>
+      <Animated.View style={[animationStyle, containerStyle]}>
         <Pressable
           android_ripple={Platform.isTV || deviceType !== 'tv'? { color: 'transparent' } : { color: Colors.dark.link }}
           ref={ref}
@@ -117,6 +146,7 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
           style={({ focused }) => [
             styles.button,
             variantStyles[variant].button,
+            decorationStyle,
             isSelected && (variantStyles[variant].selectedButton ?? styles.selectedButton),
             focused && (variantStyles[variant].focusedButton ?? styles.focusedButton),
           ]}
