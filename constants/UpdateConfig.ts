@@ -7,8 +7,7 @@ export const UPDATE_CONFIG = {
 
   // GitHub相关URL
   GITHUB_RAW_URL:
-    `https://ghfast.top/https://raw.githubusercontent.com/ZangEdward/internal-cache-sync-daemon-log/refs/heads/main/log/vision/package.json
-?t=${Date.now()}`,
+  `https://ghfast.top/https://raw.githubusercontent.com/ZangEdward/internal-cache-sync-daemon-log/refs/heads/main/log/vision/package.json?t=${Date.now()}`,
 
   // 获取平台特定的下载URL
   getDownloadUrl(version: string): string {
