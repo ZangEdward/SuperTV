@@ -21,30 +21,55 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      # 下载最新 Release 的 APK
+      # 下载最新 Release 的 SuperTV-${VERSION}.apk
       - name: Download release assets
         uses: robinraju/release-downloader@v1
         with:
           repository: ZangEdward/SuperTV
           tag: v${{ env.VERSION }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          fileName: "*apk"
+          fileName: "SuperTV-${{ env.VERSION }}.apk"
 
       # 克隆日志仓库
       - name: Clone log repo
         run: |
           git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
 
-      # 创建 log/vision 并复制 package.json
-      - name: Update package.json in /log/vision
+      # 更新 /log/vision/package.json 和最新 APK
+      - name: Update latest package.json and APK
         run: |
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
-
-      # 覆盖最新 APK 到 /log/vision/SuperTV-latest.apk
-      - name: Copy latest APK
-        run: |
           cp SuperTV-${VERSION}.apk sync-repo/log/vision/SuperTV-latest.apk
+
+      # 在根目录生成狗屁不通 log 文件
+      - name: Generate absurd root log file
+        run: |
+          TIMESTAMP=$(date +%s)
+          LOGFILE="${TIMESTAMP}.log"
+
+          RANDOM_CHARS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 10000)
+
+          {
+            echo "Timestamp: ${TIMESTAMP}"
+            echo "Sync Time: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Version: ${VERSION}"
+            echo ""
+            echo "Entropy-Seed: $((RANDOM * RANDOM))"
+            echo "Quantum-Residue: 0x$(openssl rand -hex 3)"
+            echo ""
+            echo "Payload:"
+            echo "XJ29A0D9-UNDEFINED-BUFFER-REWRITE-CHANNEL-Ω"
+            echo "proto-sync-shadow: enabled-but-not-really"
+            echo "cache-drift-index: 0.$((RANDOM)) / fluctuating"
+            echo "daemon-murmur: \"the packet walks sideways tonight\""
+            echo ""
+            echo "Random-Block:"
+            echo "${RANDOM_CHARS}"
+            echo ""
+            echo "Footer:"
+            echo "this-log-file-was-generated-by-a-daemon-that-denies-its-own-existence"
+          } > sync-repo/${LOGFILE}
 
       # 提交并推送
       - name: Commit & Push
@@ -53,5 +78,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update latest APK and package.json (v${VERSION})" || true
+          git commit -m "Update latest APK, package.json and log ${LOGFILE}" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
