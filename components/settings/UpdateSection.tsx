@@ -141,8 +141,9 @@ const styles = StyleSheet.create({
   },
   button: {
     width: "90%",
+    minHeight: 48,
+    marginTop: 16,
     ...(Platform.isTV && {
-      // TV平台焦点样式
       borderWidth: 2,
       borderColor: "transparent",
     }),
