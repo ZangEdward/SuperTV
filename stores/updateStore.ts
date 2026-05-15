@@ -72,6 +72,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       set({
         remoteVersion: versionInfo.version,
         downloadUrl: versionInfo.downloadUrl,
+        totalSize: versionInfo.apkSize || 0, // 保存从 apksize.json 获取的大小
         updateAvailable: isUpdateAvailable,
         lastCheckTime: Date.now(),
         skipVersion,
