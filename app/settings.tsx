@@ -99,65 +99,7 @@ export default function SettingsScreen() {
     setHasChanges(true);
   };
 
-  // const sections = [
-  //   // 远程输入配置 - 仅在非手机端显示
-  //   deviceType !== "mobile" && {
-  //     component: (
-  //       <RemoteInputSection
-  //         onChanged={markAsChanged}
-  //         onFocus={() => {
-  //           setCurrentFocusIndex(0);
-  //           setCurrentSection("remote");
-  //         }}
-  //       />
-  //     ),
-  //     key: "remote",
-  //   },
-  //   {
-  //     component: (
-  //       <APIConfigSection
-  //         ref={apiSectionRef}
-  //         onChanged={markAsChanged}
-  //         hideDescription={deviceType === "mobile"}
-  //         onFocus={() => {
-  //           setCurrentFocusIndex(1);
-  //           setCurrentSection("api");
-  //         }}
-  //       />
-  //     ),
-  //     key: "api",
-  //   },
-  //   // 直播源配置 - 仅在非手机端显示
-  //   deviceType !== "mobile" && {
-  //     component: (
-  //       <LiveStreamSection
-  //         ref={liveStreamSectionRef}
-  //         onChanged={markAsChanged}
-  //         onFocus={() => {
-  //           setCurrentFocusIndex(2);
-  //           setCurrentSection("livestream");
-  //         }}
-  //       />
-  //     ),
-  //     key: "livestream",
-  //   },
-  //   // {
-  //   //   component: (
-  //   //     <VideoSourceSection
-  //   //       onChanged={markAsChanged}
-  //   //       onFocus={() => {
-  //   //         setCurrentFocusIndex(3);
-  //   //         setCurrentSection("videoSource");
-  //   //       }}
-  //   //     />
-  //   //   ),
-  //   //   key: "videoSource",
-  //   // },
-  //   Platform.OS === "android" && {
-  //     component: <UpdateSection />,
-  //     key: "update",
-  //   },
-  // ].filter(Boolean);
+
   const rawSections = [
     deviceType !== "mobile" && {
       component: (
@@ -274,14 +216,17 @@ export default function SettingsScreen() {
             contentContainerStyle={dynamicStyles.listContent}
           />
         </View> */}
-        <View style={dynamicStyles.scrollView}>
-          {sections.map(item => (
-            // 必须把 key 放在最外层的 View 上
-            <View key={item.key} style={dynamicStyles.itemWrapper}>
-              {item.component}
-            </View>
-          ))}
-        </View>
+<View style={dynamicStyles.scrollView}>
+  {sections.map(item =>
+    React.cloneElement(item.component, {
+      key: item.key,
+      style: [
+        (item.component.props as any).style,
+        dynamicStyles.itemWrapper,
+      ],
+    })
+  )}
+</View>
 
         <View style={dynamicStyles.footer}>
           <StyledButton
