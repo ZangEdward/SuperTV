@@ -8,9 +8,10 @@ import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
 import { SourceSelectionModal } from "@/components/SourceSelectionModal";
 import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
+import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 // import { NextEpisodeOverlay } from "@/components/NextEpisodeOverlay";
-import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
+import { MonitorPlay } from "lucide-react-native";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import Toast from "react-native-toast-message";
@@ -66,6 +67,17 @@ const createResponsiveStyles = (deviceType: string) => {
       alignItems: "center",
       zIndex: 10,
     },
+    mobileControls: {
+      position: 'absolute',
+      top: 40,
+      right: 20,
+      zIndex: 20,
+    },
+    castButton: {
+      padding: 10,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 25,
+    }
   });
 };
 
@@ -107,6 +119,7 @@ export default function PlayScreen() {
     setVideoRef,
     handlePlaybackStatusUpdate,
     setShowControls,
+    setShowCastModal,
     // setShowNextEpisodeOverlay,
     reset,
     loadVideo,
@@ -232,6 +245,17 @@ export default function PlayScreen() {
           <PlayerControls showControls={showControls} setShowControls={setShowControls} />
         )}
 
+        {showControls && deviceType !== "tv" && (
+          <View style={dynamicStyles.mobileControls}>
+            <TouchableOpacity
+              style={dynamicStyles.castButton}
+              onPress={() => setShowCastModal(true)}
+            >
+              <MonitorPlay color="white" size={28} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <SeekingBar />
 
         {/* 只在Video组件存在且正在加载时显示加载动画覆盖层 */}
@@ -247,6 +271,7 @@ export default function PlayScreen() {
       <EpisodeSelectionModal />
       <SourceSelectionModal />
       <SpeedSelectionModal />
+      <CastModal />
     </ThemedView>
   );
 }
