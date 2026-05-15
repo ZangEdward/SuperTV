@@ -33,6 +33,10 @@ class UpdateService {
    *  1️⃣ 远程版本检查（保持不变，只是把 fetch 包装成 async/await）
    * --------------------------------------------------------------- */
   async checkVersion(): Promise<VersionInfo> {
+    if (!UPDATE_CONFIG) {
+      logger.error('UPDATE_CONFIG is undefined');
+      throw new Error('Update configuration is missing');
+    }
     const maxRetries = 3;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
