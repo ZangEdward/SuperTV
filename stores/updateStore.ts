@@ -13,7 +13,8 @@ interface UpdateState {
   remoteVersion: string;
   downloadUrl: string;
   downloading: boolean;
-  downloadProgress: number;
+  downloadProgress: number; // 已下载字节数
+  totalSize: number; // 总字节数
   downloadedPath: string | null;
   error: string | null;
   lastCheckTime: number;
@@ -43,6 +44,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   downloadUrl: '',
   downloading: false,
   downloadProgress: 0,
+  totalSize: 0,
   downloadedPath: null,
   error: null,
   lastCheckTime: 0,
@@ -115,13 +117,17 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       set({ 
         downloading: true, 
         downloadProgress: 0, 
-        error: null 
+        totalSize: 0,
+        error: null
       });
 
       const filePath = await updateService.downloadApk(
         downloadUrl,
-        (progress) => {
-          set({ downloadProgress: progress });
+        (written, total) => {
+          set({
+            downloadProgress: written,
+            totalSize: total > 0 ? total : 0
+          });
         }
       );
 
@@ -184,6 +190,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({
       downloading: false,
       downloadProgress: 0,
+      totalSize: 0,
       downloadedPath: null,
       error: null,
       showUpdateModal: false,
