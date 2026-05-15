@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Platform, View, StyleSheet } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useRemoteControlStore } from "@/stores/remoteControlStore";
@@ -15,15 +16,28 @@ import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
 import { UpdateModal } from "@/components/UpdateModal";
 import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('RootLayout');
+
+// 自定义暗色主题，确保背景色一致
+const CustomDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: Colors.dark.background,
+    card: Colors.dark.background,
+  },
+};
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = "dark";
+  const theme = colorScheme === "dark" ? CustomDarkTheme : DefaultTheme;
+
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
@@ -81,25 +95,31 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <View style={styles.container}>
-          <Stack>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="detail" options={{ headerShown: false }} />
-            {Platform.OS !== "web" && <Stack.Screen name="play" options={{ headerShown: false }} />}
-            <Stack.Screen name="search" options={{ headerShown: false }} />
-            <Stack.Screen name="live" options={{ headerShown: false }} />
-            <Stack.Screen name="settings" options={{ headerShown: false }} />
-            <Stack.Screen name="favorites" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-        </View>
-        <Toast />
-        <LoginModal />
-        <UpdateModal />
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider value={theme}>
+          <View style={[styles.container, { backgroundColor: Colors.dark.background }]}>
+            <Stack screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Colors.dark.background },
+              animation: 'fade', // 平滑切换
+            }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="detail" />
+              {Platform.OS !== "web" && <Stack.Screen name="play" />}
+              <Stack.Screen name="search" />
+              <Stack.Screen name="live" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="favorites" />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+          </View>
+          <Toast />
+          <LoginModal />
+          <UpdateModal />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
