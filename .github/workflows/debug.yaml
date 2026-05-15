@@ -1,48 +1,57 @@
-name: Build Debug APK
+name: Build SuperTV Debug APK
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: yarn install
-
-      - name: Prebuild
-        run: |
-          rm -rf android
-          npx expo prebuild --platform android --no-install
+          node-version: 20
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: zulu
-          java-version: 17
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: "ndk;26.1.10909125"
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      # ⚠️ Debug 构建不需要 prebuild
+      # ⚠️ Debug 构建不需要 JKS
+      # ⚠️ Debug 构建不需要签名配置
 
       - name: Build Debug APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Copy Debug APK
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            output/SuperTV-debug.apk
+
+      - name: Upload Debug APK to GitHub Releases
+        uses: softprops/action-gh-release@v1
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: debug-latest
+          name: "SuperTV Debug Build"
+          files: |
+            output/SuperTV-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
