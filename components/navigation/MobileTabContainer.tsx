@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -36,46 +36,67 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
     deviceType !== 'mobile' || tab.key !== 'live'
   );
   
-  const handleTabPress = (route: string) => {
-    // 使用 replace 避免在切换标签时堆叠历史记录
-    router.replace(route as any);
-  };
-
-  const isTabActive = (route: string) => {
-    if (route === '/' && pathname === '/') return true;
-    if (route !== '/' && pathname === route) return true;
+  const currentIndex = filteredTabs.findIndex(t => {
+    if (t.route === '/' && pathname === '/') return true;
+    if (t.route !== '/' && pathname === t.route) return true;
     return false;
+  });
+
+  const indicatorAnim = useRef(new Animated.Value(0)).current;
+  const screenWidth = Dimensions.get('window').width;
+  const tabBarWidth = screenWidth - spacing * 2;
+  const tabWidth = tabBarWidth / filteredTabs.length;
+
+  useEffect(() => {
+    if (currentIndex !== -1) {
+      Animated.spring(indicatorAnim, {
+        toValue: currentIndex * tabWidth,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 8,
+      }).start();
+    }
+  }, [currentIndex, tabWidth]);
+
+  const handleTabPress = (route: string, withAnim = true, direction = 'forward') => {
+    // 点击按钮切换不要动画
+    router.replace({
+      pathname: route,
+      params: {
+        noAnim: !withAnim ? 'true' : 'false',
+        dir: direction
+      }
+    } as any);
   };
 
   const onGestureEvent = (event: any) => {
     if (event.nativeEvent.state === State.END) {
       const { translationX, velocityX } = event.nativeEvent;
-      const currentIndex = filteredTabs.findIndex(t => isTabActive(t.route));
 
-      // 识别滑动逻辑：位移超过 50 或 速度较快
-      if (translationX > 100 || velocityX > 500) {
-        // 向右划 -> 切换到左边的 Tab
+      // 识别滑动逻辑：位移超过 80 或 速度较快
+      if (translationX > 80 || velocityX > 400) {
+        // 向右划 (Finger L->R) -> 切换到左边的 Tab
         if (currentIndex > 0) {
-          handleTabPress(filteredTabs[currentIndex - 1].route);
+          handleTabPress(filteredTabs[currentIndex - 1].route, true, 'back');
         }
-      } else if (translationX < -100 || velocityX < -500) {
-        // 向左划 -> 切换到右边的 Tab
+      } else if (translationX < -80 || velocityX < -400) {
+        // 向左划 (Finger R->L) -> 切换到右边的 Tab
         if (currentIndex < filteredTabs.length - 1) {
-          handleTabPress(filteredTabs[currentIndex + 1].route);
+          handleTabPress(filteredTabs[currentIndex + 1].route, true, 'forward');
         }
       }
     }
   };
 
-  const dynamicStyles = createStyles(spacing);
+  const dynamicStyles = createStyles(spacing, tabWidth);
 
   return (
     <View style={dynamicStyles.container}>
       {/* 内容区域：包装手势处理器 */}
       <PanGestureHandler
         onHandlerStateChange={onGestureEvent}
-        activeOffsetX={[-20, 20]} // 避免轻微抖动触发
-        failOffsetY={[-20, 20]}    // 允许上下滚动不干扰左右滑动
+        activeOffsetX={[-20, 20]}
+        failOffsetY={[-20, 20]}
       >
         <View style={dynamicStyles.content}>
           {children}
@@ -84,37 +105,47 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       
       {/* 底部导航栏 */}
       <View style={dynamicStyles.tabBar}>
-        {filteredTabs.map((tab) => {
-          const isActive = isTabActive(tab.route);
-          const IconComponent = tab.icon;
+        <View style={dynamicStyles.tabBarInner}>
+          {/* 绿色高亮指示器：背景层，不随标签移动 */}
+          <Animated.View
+            style={[
+              dynamicStyles.indicator,
+              { transform: [{ translateX: indicatorAnim }] }
+            ]}
+          />
           
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[dynamicStyles.tab, isActive && dynamicStyles.activeTab]}
-              onPress={() => handleTabPress(tab.route)}
-              activeOpacity={0.7}
-            >
-              <IconComponent
-                size={20}
-                color={isActive ? Colors.dark.primary : '#888'}
-                strokeWidth={isActive ? 2.5 : 2}
-              />
-              <Text style={[
-                dynamicStyles.tabLabel,
-                isActive && dynamicStyles.activeTabLabel
-              ]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+          {filteredTabs.map((tab, index) => {
+            const isActive = index === currentIndex;
+            const IconComponent = tab.icon;
+
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={dynamicStyles.tab}
+                onPress={() => handleTabPress(tab.route, false)} // 点击按钮不要动画
+                activeOpacity={0.7}
+              >
+                <IconComponent
+                  size={20}
+                  color={isActive ? Colors.dark.primary : '#888'}
+                  strokeWidth={isActive ? 2.5 : 2}
+                />
+                <Text style={[
+                  dynamicStyles.tabLabel,
+                  isActive && dynamicStyles.activeTabLabel
+                ]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
 };
 
-const createStyles = (spacing: number) => {
+const createStyles = (spacing: number, tabWidth: number) => {
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
   
   return StyleSheet.create({
@@ -126,7 +157,6 @@ const createStyles = (spacing: number) => {
       flex: 1,
     },
     tabBar: {
-      flexDirection: 'row',
       backgroundColor: '#1c1c1e',
       borderTopWidth: 1,
       borderTopColor: '#333',
@@ -134,16 +164,25 @@ const createStyles = (spacing: number) => {
       paddingBottom: Platform.OS === 'ios' ? spacing * 2 : spacing,
       paddingHorizontal: spacing,
     },
+    tabBarInner: {
+      flexDirection: 'row',
+      position: 'relative',
+    },
     tab: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: minTouchTarget,
       paddingVertical: spacing / 2,
-      borderRadius: 8,
+      zIndex: 1, // 确保标签在指示器之上
     },
-    activeTab: {
-      backgroundColor: 'rgba(0, 187, 94, 0.1)', // 使用 primary 颜色的透明版
+    indicator: {
+      position: 'absolute',
+      top: spacing / 4,
+      bottom: spacing / 4,
+      width: tabWidth,
+      backgroundColor: 'rgba(0, 187, 94, 0.15)', // 绿色高亮
+      borderRadius: 8,
     },
     tabLabel: {
       fontSize: 11,
