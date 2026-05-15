@@ -1,3 +1,4 @@
+import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -14,7 +15,6 @@ import LoginModal from "@/components/LoginModal";
 import useAuthStore from "@/stores/authStore";
 import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
 import { UpdateModal } from "@/components/UpdateModal";
-import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
@@ -72,9 +72,9 @@ export default function RootLayout() {
 
   // 检查更新
   useEffect(() => {
-    if (loaded && UPDATE_CONFIG.AUTO_CHECK && Platform.OS === 'android') {
+    if (loaded && UPDATE_CONFIG?.AUTO_CHECK && Platform.OS === 'android') {
       // 检查是否需要自动检查更新
-      const shouldCheck = Date.now() - lastCheckTime > UPDATE_CONFIG.CHECK_INTERVAL;
+      const shouldCheck = Date.now() - lastCheckTime > (UPDATE_CONFIG?.CHECK_INTERVAL || 0);
       if (shouldCheck) {
         checkForUpdate(true); // 静默检查
       }
