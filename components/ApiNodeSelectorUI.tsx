@@ -71,16 +71,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nodeButton: {
-    width: '90%', // 对标检查更新按钮的宽度
+    width: '90%',
     marginBottom: 12,
+    minHeight: 48,
   },
   selectedNodeButton: {
     backgroundColor: Colors.dark.primary,
   },
   nodeButtonText: {
     color: "#ffffff",
-    fontSize: Platform.isTV ? 16 : 14, // 对标检查更新按钮的字号
-    fontWeight: "500",
+    fontSize: Platform.isTV ? 16 : 14,
+    fontWeight: "600",
     textAlign: 'center',
   },
   speedTestContainer: {
@@ -89,7 +90,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   speedTestButton: {
-    width: "90%", // 对标检查更新按钮的宽度
+    width: "90%",
+    backgroundColor: "rgba(0, 187, 94, 0.15)",
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "rgba(0, 187, 94, 0.3)",
   },
   speedTestButtonText: {
     color: "#00bb5e", // 显眼的绿色
