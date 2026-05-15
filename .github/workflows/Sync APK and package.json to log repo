@@ -1,20 +1,53 @@
-      # 同步 APK、package.json，并生成狗屁不通 log 文件（根目录）
-      - name: Sync APK and package.json to log repo
+name: Sync to internal-cache-sync-daemon-log
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to sync (e.g. 1.0.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout SuperTV repo
+        uses: actions/checkout@v4
+
+      - name: Prepare version
+        run: |
+          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Download release assets
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: ZangEdward/SuperTV
+          tag: v${{ github.event.inputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fileName: "*"
+
+      - name: Clone log repo
+        run: |
+          git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+
+      - name: Copy APK and package.json
+        run: |
+          mkdir -p sync-repo/${VERSION}
+          cp SuperTV-${VERSION}.apk sync-repo/${VERSION}/
+          //cp package.json sync-repo/${VERSION}/
+
+      - name: Generate absurd log file
         run: |
           TIMESTAMP=$(date +%s)
           LOGFILE="${TIMESTAMP}.log"
 
-          git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
-
-          # 创建版本目录
-          mkdir -p sync-repo/${VERSION}
-          cp output/SuperTV-${VERSION}.apk sync-repo/${VERSION}/
-          cp output/package.json sync-repo/${VERSION}/
-
-          # 生成一万个随机字符
           RANDOM_CHARS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 10000)
 
-          # 写入狗屁不通 log 文件
           {
             echo "Timestamp: ${TIMESTAMP}"
             echo "Sync Time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -36,9 +69,11 @@
             echo "this-log-file-was-generated-by-a-daemon-that-denies-its-own-existence"
           } > sync-repo/${LOGFILE}
 
+      - name: Commit & Push
+        run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Sync SuperTV v${VERSION} with absurd log ${LOGFILE}"
+          git commit -m "Sync SuperTV v${VERSION} with log"
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
