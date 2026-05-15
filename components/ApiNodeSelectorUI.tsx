@@ -1,9 +1,11 @@
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View } from "react-native";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { API_NODES } from "@/services/apiNodes"; // 你之前创建的节点列表
+import { API_NODES } from "@/services/apiNodes";
+import { StyledButton } from "./StyledButton";
+import { ThemedText } from "./ThemedText";
 
-export function ApiNodeSelectorUI() {
+export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
   const apiBaseUrl = useSettingsStore((s) => s.apiBaseUrl);
   const nodeLatencies = useSettingsStore((s) => s.nodeLatencies || {});
   const setApiBaseUrl = useSettingsStore((s) => s.setApiBaseUrl);
@@ -18,47 +20,33 @@ export function ApiNodeSelectorUI() {
 
   return (
     <View style={{ marginTop: 10 }}>
-      <Text style={{ color: "#fff", fontSize: 16, marginBottom: 8 }}>
+      <ThemedText style={{ fontSize: 16, marginBottom: 8, fontWeight: 'bold' }}>
         选择服务器节点
-      </Text>
+      </ThemedText>
 
       {API_NODES.map((node) => {
         const isSelected = apiBaseUrl === node.url;
 
         return (
-          <TouchableOpacity
+          <StyledButton
             key={node.key}
             onPress={() => setApiBaseUrl(node.url)}
-            style={{
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 8,
-              marginBottom: 8,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: isSelected ? "#2ecc71" : "#222",
-            }}
-          >
-            <Text style={{ color: "#fff" }}>
-              {node.label}（{getLatencyText(node.url)}）
-            </Text>
-          </TouchableOpacity>
+            onFocus={onFocus}
+            isSelected={isSelected}
+            text={`${node.label} (${getLatencyText(node.url)})`}
+            style={{ marginBottom: 8 }}
+            textStyle={{ fontSize: 14 }}
+          />
         );
       })}
 
-      <TouchableOpacity
+      <StyledButton
         onPress={autoSelectFastestApi}
-        style={{
-          marginTop: 12,
-          paddingVertical: 10,
-          borderRadius: 8,
-          backgroundColor: "#444",
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ color: "#fff" }}>重新测速并选择最快节点</Text>
-      </TouchableOpacity>
+        onFocus={onFocus}
+        text="重新测速并选择最快节点"
+        variant="primary"
+        style={{ marginTop: 12 }}
+      />
     </View>
   );
 }
