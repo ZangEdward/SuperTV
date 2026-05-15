@@ -1,12 +1,12 @@
-import React, { useState, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useImperativeHandle, forwardRef, useRef, useEffect } from "react";
 import { View, StyleSheet, Animated, Platform } from "react-native";
-import { useTVEventHandler } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsSection } from "@/components/settings/SettingsSection";
+import { StyledButton } from "@/components/StyledButton";
+import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useButtonAnimation } from "@/hooks/useAnimation";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
 
 interface APIConfigSectionProps {
   onChanged: () => void;
@@ -26,10 +26,11 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
     const [isFocused, setIsFocused] = useState(false);
     const deviceType = useResponsiveLayout().deviceType;
 
-    // 放大动画（和 UpdateSection 一样）
     const animationStyle = useButtonAnimation(isFocused, 1.02);
 
-    // 外部可设置 API 地址
+    // ⭐ 按钮引用（TV 自动聚焦用）
+    const speedTestButtonRef = useRef<any>(null);
+
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {
         setApiBaseUrl(value);
@@ -37,26 +38,14 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
       },
     }));
 
-    // ⭐ TV 遥控器 OK → 执行 onPress
-    const handleTVEvent = React.useCallback(
-      (event: any) => {
-        if (deviceType !== "tv") return;
-
-        if (isFocused && event.eventType === "select") {
-          onPress?.();
-        }
-      },
-      [isFocused, onPress, deviceType]
-    );
-
-    useTVEventHandler(handleTVEvent);
-
-    // ⭐ 手机端点击
-    const handlePress = () => {
-      if (!Platform.isTV) {
-        onPress?.();
+    // ⭐⭐⭐ TV 自动聚焦测速按钮（和 UpdateSection 一样）
+    useEffect(() => {
+      if (Platform.isTV && isFocused) {
+        setTimeout(() => {
+          speedTestButtonRef.current?.focus();
+        }, 100);
       }
-    };
+    }, [isFocused]);
 
     return (
       <SettingsSection
@@ -69,7 +58,6 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
           setIsFocused(false);
           onBlur?.();
         }}
-        onPress={Platform.isTV ? undefined : handlePress} // ⭐ TV 禁用 onPress，避免冲突
       >
         <Animated.View style={[styles.container, animationStyle]}>
           <ThemedText style={styles.title}>服务器节点</ThemedText>
@@ -80,8 +68,17 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
             </ThemedText>
           )}
 
-          {/* ⭐ 节点列表 UI（展示用，不参与焦点） */}
+          {/* 节点列表展示 */}
           <ApiNodeSelectorUI />
+
+          {/* ⭐ 关键：像 UpdateSection 一样的按钮（TV 焦点落在这里） */}
+          <StyledButton
+            ref={speedTestButtonRef}
+            text="测速并选择最佳节点"
+            onPress={onPress}
+            hasTVPreferredFocus={false}
+            style={styles.button}
+          />
         </Animated.View>
       </SettingsSection>
     );
@@ -104,5 +101,8 @@ const styles = StyleSheet.create({
     color: "#888",
     marginBottom: 12,
   },
+  button: {
+    marginTop: 16,
+    width: "100%",
+  },
 });
-
