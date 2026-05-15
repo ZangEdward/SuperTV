@@ -1,4 +1,4 @@
-name: Sync Latest APK and package.json
+name: OTA发布
 
 on:
   workflow_dispatch:
@@ -45,6 +45,7 @@ jobs:
       - name: Upload APK to log repo Releases
         uses: softprops/action-gh-release@v1
         with:
+          repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
           files: |
