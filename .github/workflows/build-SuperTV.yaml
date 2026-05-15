@@ -73,10 +73,6 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk \
             output/SuperTV-${VERSION}.apk
 
-      # 导出 package.json
-      - name: Copy package.json
-        run: |
-          cp package.json output/package.json
 
       # 上传到 GitHub Releases
       - name: Upload to GitHub Releases
@@ -86,6 +82,6 @@ jobs:
           name: "SuperTV v${{ env.VERSION }}"
           files: |
             output/SuperTV-${{ env.VERSION }}.apk
-            output/package.json
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
