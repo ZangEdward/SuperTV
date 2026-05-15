@@ -74,10 +74,11 @@ class UpdateService {
    * --------------------------------------------------------------- */
   private async cleanOldApkFiles(): Promise<void> {
     try {
-      const dirUri = FileSystem.documentDirectory; // e.g. file:///data/user/0/.../files/
-      if (!dirUri) {
-        throw new Error('Document directory is not available');
+      if (!FileSystem || !FileSystem.documentDirectory) {
+        logger.warn('FileSystem or documentDirectory is not available');
+        return;
       }
+      const dirUri = FileSystem.documentDirectory;
       const listing = await FileSystem.readDirectoryAsync(dirUri);
       const apkFiles = listing.filter(name => name.startsWith('OrionTV_v') && name.endsWith('.apk'));
 
