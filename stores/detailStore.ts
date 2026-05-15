@@ -7,7 +7,10 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
 
-export type SearchResultWithResolution = SearchResult & { resolution?: string | null };
+export type SearchResultWithResolution = SearchResult & {
+  resolution?: string | null;
+  latency?: number;
+};
 
 interface DetailState {
   q: string | null;
@@ -64,7 +67,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     const { videoSource } = useSettingsStore.getState();
 
-    const processAndSetResults = async (results: SearchResult[], merge = false) => {
+    const processAndSetResults = async (results: SearchResult[], latency?: number, merge = false) => {
       const resolutionStart = performance.now();
       logger.info(`[PERF] Resolution detection START - processing ${results.length} sources`);
       
@@ -83,7 +86,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
           }
           const m3u8End = performance.now();
           logger.info(`[PERF] M3U8 resolution for ${searchResult.source_name}: ${(m3u8End - m3u8Start).toFixed(2)}ms (${resolution || 'failed'})`);
-          return { ...searchResult, resolution };
+          return { ...searchResult, resolution, latency };
         })
       );
       
@@ -95,7 +98,18 @@ const useDetailStore = create<DetailState>((set, get) => ({
       set((state) => {
         const existingSources = new Set(state.searchResults.map((r) => r.source));
         const newResults = resultsWithResolution.filter((r) => !existingSources.has(r.source));
-        const finalResults = merge ? [...state.searchResults, ...newResults] : resultsWithResolution;
+        const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithResolution;
+
+        // 排序逻辑:
+        // 1. 连接成功的在前面 (已经是筛选过的成功结果)
+        // 2. 按照集数大的在前面 (desc)
+        // 3. 按照延迟低的在前面 (asc)
+        const finalResults = combinedResults.sort((a, b) => {
+          if (b.episodes.length !== a.episodes.length) {
+            return b.episodes.length - a.episodes.length;
+          }
+          return (a.latency || 0) - (b.latency || 0);
+        });
 
         return {
           searchResults: finalResults,
@@ -134,7 +148,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
         // 检查preferred source结果
         if (preferredResult.length > 0) {
           logger.info(`[SUCCESS] Preferred source "${preferredSource}" found ${preferredResult.length} results for "${q}"`);
-          await processAndSetResults(preferredResult, false);
+          await processAndSetResults(preferredResult, searchPreferredEnd - searchPreferredStart, false);
           set({ loading: false });
         } else {
           // 降级策略：preferred source失败时立即尝试所有源
@@ -158,7 +172,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
             
             if (filteredResults.length > 0) {
               logger.info(`[SUCCESS] FALLBACK search found results, proceeding with ${filteredResults[0].source_name}`);
-              await processAndSetResults(filteredResults, false);
+              await processAndSetResults(filteredResults, fallbackEnd - fallbackStart, false);
               set({ loading: false });
             } else {
               logger.error(`[ERROR] FALLBACK search found no matching results for "${q}"`);
@@ -188,7 +202,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
             logger.info(`[PERF] API searchVideos (background) END - took ${(searchAllEnd - searchAllStart).toFixed(2)}ms, results: ${allResults.length}`);
             
             if (signal.aborted) return;
-            await processAndSetResults(allResults.filter(item => item.title === q), true);
+            await processAndSetResults(allResults.filter(item => item.title === q), searchAllEnd - searchAllStart, true);
           } catch (backgroundError) {
             logger.warn(`[WARN] Background search failed, but preferred source already succeeded:`, backgroundError);
           }
@@ -231,7 +245,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
               if (results.length > 0) {
                 totalResults += results.length;
                 logger.info(`[SUCCESS] Source "${resource.name}" found ${results.length} results for "${q}"`);
-                await processAndSetResults(results, true);
+                await processAndSetResults(results, searchEnd - searchStart, true);
                 if (!firstResultFound) {
                   set({ loading: false }); // Stop loading indicator on first result
                   firstResultFound = true;
