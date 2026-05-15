@@ -66,7 +66,7 @@ export function UpdateSection() {
             <ThemedText style={styles.label}>正在下载...</ThemedText>
           </View>
           <ThemedText style={styles.value}>
-            {(downloadProgress / (1024 * 1024)).toFixed(2)} MB
+            {((downloadProgress || 0) / (1024 * 1024)).toFixed(2)} MB
           </ThemedText>
         </View>
       )}
