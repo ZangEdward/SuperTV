@@ -185,12 +185,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   actionButton: {
-    minWidth: 100, // 进一步增加宽度
-    height: 42,
-    borderRadius: 6,
+    minWidth: 100,
+    minHeight: 40,
   },
   buttonText: {
     fontSize: 14,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
 });
