@@ -23,6 +23,7 @@ interface PlayerState {
   showEpisodeModal: boolean;
   showSourceModal: boolean;
   showSpeedModal: boolean;
+  showCastModal: boolean;
   showNextEpisodeOverlay: boolean;
   isSeeking: boolean;
   seekPosition: number;
@@ -48,6 +49,7 @@ interface PlayerState {
   setShowEpisodeModal: (show: boolean) => void;
   setShowSourceModal: (show: boolean) => void;
   setShowSpeedModal: (show: boolean) => void;
+  setShowCastModal: (show: boolean) => void;
   setShowNextEpisodeOverlay: (show: boolean) => void;
   setPlaybackRate: (rate: number) => void;
   setIntroEndTime: () => void;
@@ -70,6 +72,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   showEpisodeModal: false,
   showSourceModal: false,
   showSpeedModal: false,
+  showCastModal: false,
   showNextEpisodeOverlay: false,
   isSeeking: false,
   seekPosition: 0,
@@ -432,6 +435,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   setShowEpisodeModal: (show) => set({ showEpisodeModal: show }),
   setShowSourceModal: (show) => set({ showSourceModal: show }),
   setShowSpeedModal: (show) => set({ showSpeedModal: show }),
+  setShowCastModal: (show) => set({ showCastModal: show }),
   setShowNextEpisodeOverlay: (show) => set({ showNextEpisodeOverlay: show }),
 
   setPlaybackRate: async (rate) => {
