@@ -3,6 +3,7 @@ import { View, StyleSheet, Platform, ActivityIndicator } from "react-native";
 import { ThemedText } from "../ThemedText";
 import { StyledButton } from "../StyledButton";
 import { useUpdateStore } from "@/stores/updateStore";
+import { Colors } from "@/constants/Colors";
 // import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
 
 export function UpdateSection() {
@@ -61,7 +62,7 @@ export function UpdateSection() {
       {downloading && (
         <View style={styles.row}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <ActivityIndicator size="small" color={Colors.dark.primary} style={{ marginRight: 8 }} />
+            <ActivityIndicator size="small" color={Colors?.dark?.primary || "#00bb5e"} style={{ marginRight: 8 }} />
             <ThemedText style={styles.label}>正在下载...</ThemedText>
           </View>
           <ThemedText style={styles.value}>
