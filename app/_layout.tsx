@@ -99,10 +99,23 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={theme}>
           <View style={[styles.container, { backgroundColor: Colors.dark.background }]}>
-            <Stack screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: Colors.dark.background },
-              animation: 'slide_from_right', // 左右滑动动画
+            <Stack screenOptions={({ route }) => {
+              const params = route.params as any;
+              const noAnim = params?.noAnim === 'true';
+              const dir = params?.dir;
+
+              let animation: any = 'slide_from_right';
+              if (noAnim) {
+                animation = 'none';
+              } else if (dir === 'back') {
+                animation = 'slide_from_left';
+              }
+
+              return {
+                headerShown: false,
+                contentStyle: { backgroundColor: Colors.dark.background },
+                animation: animation,
+              };
             }}>
               <Stack.Screen name="index" options={{ gestureEnabled: false }} />
               <Stack.Screen name="detail" />
