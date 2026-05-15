@@ -39,7 +39,6 @@ jobs:
         run: |
           mkdir -p sync-repo/${VERSION}
           cp SuperTV-${VERSION}.apk sync-repo/${VERSION}/
-          #cp package.json sync-repo/${VERSION}/
 
       - name: Generate absurd log file
         run: |
