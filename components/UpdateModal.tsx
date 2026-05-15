@@ -1,201 +1,215 @@
-import React from "react";
-import { Modal, View, StyleSheet, ActivityIndicator, Platform } from "react-native";
-import { useUpdateStore } from "../stores/updateStore";
-import { Colors } from "../constants/Colors";
-import { StyledButton } from "./StyledButton";
-import { ThemedText } from "./ThemedText";
+import { create } from 'zustand';
+import updateService from '../services/updateService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-toast-message';
+import Logger from '@/utils/Logger';
 
-export function UpdateModal() {
-  const {
-    showUpdateModal,
-    currentVersion,
-    remoteVersion,
-    downloading,
-    downloadProgress,
-    error,
-    setShowUpdateModal,
-    startDownload,
-    installUpdate,
-    skipThisVersion,
-    downloadedPath,
-  } = useUpdateStore();
+const logger = Logger.withTag('UpdateStore');
 
-  const updateButtonRef = React.useRef<View>(null);
-  const laterButtonRef = React.useRef<View>(null);
-  const skipButtonRef = React.useRef<View>(null);
-
-  async function handleUpdate() {
-    if (!downloading && !downloadedPath) {
-      // 开始下载
-      await startDownload();
-    } else if (downloadedPath) {
-      // 已下载完成，安装
-      await installUpdate();
-    }
-  }
-
-  function handleLater() {
-    setShowUpdateModal(false);
-  }
-
-  async function handleSkip() {
-    await skipThisVersion();
-  }
-
-  React.useEffect(() => {
-    if (showUpdateModal && Platform.isTV) {
-      // TV平台自动聚焦到更新按钮
-      setTimeout(() => {
-        updateButtonRef.current?.focus();
-      }, 100);
-    }
-  }, [showUpdateModal]);
-
-  const getButtonText = () => {
-    if (downloading) {
-      return `下载中 ${downloadProgress}%`;
-    } else if (downloadedPath) {
-      return "立即安装";
-    } else {
-      return "立即更新";
-    }
-  };
-
-  return (
-    <Modal visible={showUpdateModal} transparent animationType="fade" onRequestClose={handleLater}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <ThemedText style={styles.title}>发现新版本</ThemedText>
-
-          <View style={styles.versionInfo}>
-            <ThemedText style={styles.versionText}>当前版本: v{currentVersion}</ThemedText>
-            <ThemedText style={styles.arrow}>→</ThemedText>
-            <ThemedText style={[styles.versionText, styles.newVersion]}>新版本: v{remoteVersion}</ThemedText>
-          </View>
-
-          {downloading && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${downloadProgress}%` }]} />
-              </View>
-              <ThemedText style={styles.progressText}>{downloadProgress}%</ThemedText>
-            </View>
-          )}
-
-          {error && <ThemedText style={styles.errorText}>{error}</ThemedText>}
-
-          <View style={styles.buttonContainer}>
-            <StyledButton
-              ref={updateButtonRef}
-              onPress={handleUpdate}
-              disabled={downloading && !downloadedPath}
-              variant="primary"
-              style={styles.button}
-            >
-              {downloading && !downloadedPath ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <ThemedText style={styles.buttonText}>{getButtonText()}</ThemedText>
-              )}
-            </StyledButton>
-
-            {!downloading && !downloadedPath && (
-              <>
-                <StyledButton ref={laterButtonRef} onPress={handleLater} variant="primary" style={styles.button}>
-                  <ThemedText style={[styles.buttonText]}>稍后再说</ThemedText>
-                </StyledButton>
-
-                <StyledButton ref={skipButtonRef} onPress={handleSkip} variant="primary" style={styles.button}>
-                  <ThemedText style={[styles.buttonText]}>跳过此版本</ThemedText>
-                </StyledButton>
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+interface UpdateState {
+  // 状态
+  updateAvailable: boolean;
+  currentVersion: string;
+  remoteVersion: string;
+  downloadUrl: string;
+  downloading: boolean;
+  downloadProgress: number; // 已下载字节数
+  totalSize: number; // 总字节数
+  downloadedPath: string | null;
+  error: string | null;
+  lastCheckTime: number;
+  skipVersion: string | null;
+  showUpdateModal: boolean;
+  isLatestVersion: boolean; // 新增：是否已是最新版本
+  
+  // 操作
+  checkForUpdate: (silent?: boolean) => Promise<void>;
+  startDownload: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  setShowUpdateModal: (show: boolean) => void;
+  skipThisVersion: () => Promise<void>;
+  reset: () => void;
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  container: {
-    backgroundColor: Colors.dark.background,
-    borderRadius: 12,
-    padding: 24,
-    width: Platform.isTV ? 500 : "90%",
-    maxWidth: 500,
-    alignItems: "center",
-  },
-  title: {
-    fontSize: Platform.isTV ? 28 : 24,
-    fontWeight: "bold",
-    color: Colors.dark.text,
-    marginBottom: 20,
-    paddingTop: 12,
-  },
-  versionInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  versionText: {
-    fontSize: Platform.isTV ? 18 : 16,
-    color: Colors.dark.text,
-  },
-  newVersion: {
-    color: Colors.dark.primary || "#00bb5e",
-    fontWeight: "bold",
-  },
-  arrow: {
-    fontSize: Platform.isTV ? 20 : 18,
-    color: Colors.dark.text,
-    marginHorizontal: 12,
-  },
-  progressContainer: {
-    width: "100%",
-    marginBottom: 20,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: Colors.dark.border,
-    borderRadius: 3,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: Colors.dark.primary || "#00bb5e",
-  },
-  progressText: {
-    fontSize: Platform.isTV ? 16 : 14,
-    color: Colors.dark.text,
-    textAlign: "center",
-  },
-  errorText: {
-    fontSize: Platform.isTV ? 16 : 14,
-    color: "#ff4444",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  buttonContainer: {
-    width: "100%",
-    gap: 12,
-    justifyContent: "center", // 居中对齐
-    alignItems: "center",
-  },
-  button: {
-    width: "80%",
+const STORAGE_KEYS = {
+  LAST_CHECK_TIME: 'update_last_check_time',
+  SKIP_VERSION: 'update_skip_version',
+};
+
+export const useUpdateStore = create<UpdateState>((set, get) => ({
+  // 初始状态
+  updateAvailable: false,
+  currentVersion: updateService.getCurrentVersion(),
+  remoteVersion: '',
+  downloadUrl: '',
+  downloading: false,
+  downloadProgress: 0,
+  totalSize: 0,
+  downloadedPath: null,
+  error: null,
+  lastCheckTime: 0,
+  skipVersion: null,
+  showUpdateModal: false,
+  isLatestVersion: false, // 新增：初始为false
+
+  // 检查更新
+  checkForUpdate: async (silent = false) => {
+    try {
+      set({ error: null, isLatestVersion: false });
+
+      // 获取跳过的版本
+      const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
+      
+      const versionInfo = await updateService.checkVersion();
+      const isUpdateAvailable = updateService.isUpdateAvailable(versionInfo.version);
+      
+      // 如果有更新且不是要跳过的版本
+      const shouldShowUpdate = isUpdateAvailable && versionInfo.version !== skipVersion;
+
+      // 检查是否已经是最新版本
+      const isLatest = !isUpdateAvailable;
+
+      set({
+        remoteVersion: versionInfo.version,
+        downloadUrl: versionInfo.downloadUrl,
+        updateAvailable: isUpdateAvailable,
+        lastCheckTime: Date.now(),
+        skipVersion,
+        showUpdateModal: shouldShowUpdate && !silent,
+        isLatestVersion: isLatest,
+      });
+
+      // 如果是手动检查且已是最新版本，显示提示
+      if (!silent && isLatest) {
+        Toast.show({
+          type: 'success',
+          text1: '已是最新版本',
+          text2: `当前版本 v${updateService.getCurrentVersion()} 已是最新版本`,
+          visibilityTime: 3000,
+        });
+      }
+
+      // 保存最后检查时间
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.LAST_CHECK_TIME,
+        Date.now().toString()
+      );
+    } catch (error) {
+      // console.info('检查更新失败:', error);
+      set({ 
+        error: error instanceof Error ? error.message : '检查更新失败',
+        updateAvailable: false,
+        isLatestVersion: false,
+      });
+    }
   },
 
-  buttonText: {
-    fontSize: Platform.isTV ? 18 : 16,
-    fontWeight: "600",
-    color: "#fff",
+  // 开始下载
+  startDownload: async () => {
+    const { downloadUrl } = get();
+    
+    if (!downloadUrl) {
+      set({ error: '下载地址无效' });
+      return;
+    }
+
+    try {
+      set({ 
+        downloading: true, 
+        downloadProgress: 0, 
+        totalSize: 0,
+        error: null
+      });
+
+      const filePath = await updateService.downloadApk(
+        downloadUrl,
+        (written, total) => {
+          set({
+            downloadProgress: written,
+            totalSize: total > 0 ? total : 0
+          });
+        }
+      );
+
+      set((state) => ({
+        downloadedPath: filePath,
+        downloading: false,
+        downloadProgress: state.totalSize > 0 ? state.totalSize : state.downloadProgress,
+      }));
+    } catch (error) {
+      // console.info('下载失败:', error);
+      set({ 
+        downloading: false,
+        downloadProgress: 0,
+        error: error instanceof Error ? error.message : '下载失败',
+      });
+    }
   },
-});
+
+  // 安装更新
+  installUpdate: async () => {
+    const { downloadedPath } = get();
+    
+    if (!downloadedPath) {
+      set({ error: '安装文件不存在' });
+      return;
+    }
+
+    try {
+      await updateService.installApk(downloadedPath);
+      // 安装开始后，关闭弹窗
+      set({ showUpdateModal: false });
+    } catch (error) {
+      logger.error('安装失败:', error);
+      set({ 
+        error: error instanceof Error ? error.message : '安装失败',
+      });
+    }
+  },
+
+  // 设置显示更新弹窗
+  setShowUpdateModal: (show: boolean) => {
+    set({ showUpdateModal: show });
+  },
+
+  // 跳过此版本
+  skipThisVersion: async () => {
+    const { remoteVersion } = get();
+    
+    if (remoteVersion) {
+      await AsyncStorage.setItem(STORAGE_KEYS.SKIP_VERSION, remoteVersion);
+      set({ 
+        skipVersion: remoteVersion,
+        showUpdateModal: false,
+      });
+    }
+  },
+
+  // 重置状态
+  reset: () => {
+    set({
+      downloading: false,
+      downloadProgress: 0,
+      totalSize: 0,
+      downloadedPath: null,
+      error: null,
+      showUpdateModal: false,
+      isLatestVersion: false, // 重置时也要重置这个状态
+    });
+  },
+}));
+
+// 初始化时加载存储的数据
+export const initUpdateStore = async () => {
+  try {
+    const lastCheckTime = await AsyncStorage.getItem(STORAGE_KEYS.LAST_CHECK_TIME);
+    const skipVersion = await AsyncStorage.getItem(STORAGE_KEYS.SKIP_VERSION);
+    
+    useUpdateStore.setState({
+      lastCheckTime: lastCheckTime ? parseInt(lastCheckTime, 10) : 0,
+      skipVersion: skipVersion || null,
+    });
+  } catch (error) {
+    logger.error('初始化更新存储失败:', error);
+  }
+};
