@@ -123,13 +123,13 @@ export function CacheSection() {
           <StyledButton
             onPress={handleClearCache}
             disabled={clearing}
-            style={styles.button}
+            style={styles.actionButton}
           >
-            {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清理</ThemedText>}
+            {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
           </StyledButton>
         </View>
 
-        <View style={[styles.row, { marginTop: 12 }]}>
+        <View style={[styles.row, { marginTop: 16 }]}>
           <View style={styles.info}>
             <ThemedText style={styles.label}>播放历史记录</ThemedText>
             <ThemedText style={styles.subtitle}>清除所有视频的观看进度</ThemedText>
@@ -138,9 +138,9 @@ export function CacheSection() {
             onPress={handleClearHistory}
             variant="ghost"
             disabled={clearing}
-            style={styles.button}
+            style={styles.actionButton}
           >
-            <ThemedText style={[styles.buttonText, { color: '#ff4d4f' }]}>清除</ThemedText>
+            <ThemedText style={[styles.buttonText, { color: '#ff4d4f' }]}>清除历史</ThemedText>
           </StyledButton>
         </View>
       </View>
@@ -162,9 +162,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    backgroundColor: 'rgba(255,255,255,0.03)', // 为每一行添加微弱背景
+    padding: 10,
+    borderRadius: 8,
   },
   info: {
     flex: 1,
+    marginRight: 10,
   },
   label: {
     fontSize: 16,
@@ -180,14 +184,13 @@ const styles = StyleSheet.create({
     color: "#666",
     marginTop: 2,
   },
-  button: {
-    minWidth: 80,
-    height: 36,
-    paddingHorizontal: 12,
-    paddingVertical: 0,
+  actionButton: {
+    minWidth: 100, // 进一步增加宽度
+    height: 42,
+    borderRadius: 6,
   },
   buttonText: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "bold",
   },
 });
