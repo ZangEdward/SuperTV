@@ -161,58 +161,38 @@ class UpdateService {
    *  4️⃣ 安装 APK（只在 Android 可用，使用 expo-intent-launcher）
    * --------------------------------------------------------------- */
   async installApk(fileUri: string): Promise<void> {
-    // ① 先确认文件存在
-    const exists = await FileSystem.getInfoAsync(fileUri);
-    if (!exists.exists) {
-      throw new Error(`APK not found at ${fileUri}`);
-    }
+    try {
+      // ① 先确认文件存在
+      const exists = await FileSystem.getInfoAsync(fileUri);
+      if (!exists.exists) {
+        throw new Error(`APK not found at ${fileUri}`);
+      }
 
-    // ② 把 file:// 转成 content://，Expo‑FileSystem 已经实现了 FileProvider
-    const contentUri = await FileSystem.getContentUriAsync(fileUri);
+      // ② 只在 Android 里执行
+      if (Platform.OS === 'android') {
+        // 把 file:// 转成 content://
+        const contentUri = await FileSystem.getContentUriAsync(fileUri);
 
-    // ③ 只在 Android 里执行
-    if (Platform.OS === 'android') {
-      try {
         // Intent.FLAG_GRANT_READ_URI_PERMISSION = 1
         // Intent.FLAG_ACTIVITY_NEW_TASK = 0x10000000
         const flags = 1 | 0x10000000;
 
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-          data: contentUri,          // 必须是 content://
-          type: ANDROID_MIME_TYPE,   // application/vnd.android.package-archive
+          data: contentUri,
+          type: ANDROID_MIME_TYPE,
           flags: flags,
         });
-      } catch (e: any) {
-        // 统一错误提示
-        if (e.message?.includes('Activity not found')) {
-          Toast.show({
-            type: 'error',
-            text1: '安装失败',
-            text2: '系统没有找到可以打开 APK 的应用，请检查系统设置',
-          });
-        } else if (e.message?.includes('permission')) {
-          Toast.show({
-            type: 'error',
-            text1: '安装失败',
-            text2: '请在设置里允许“未知来源”安装',
-          });
-        } else {
-          Toast.show({
-            type: 'error',
-            text1: '安装失败',
-            text2: '未知错误，请稍后重试',
-          });
-        }
-        throw e;
+      } else {
+        throw new Error('APK install not supported on this platform');
       }
-    } else {
-      // iOS 设备不支持直接安装 APK
+    } catch (e: any) {
+      logger.error('installApk error', e);
       Toast.show({
         type: 'error',
         text1: '安装失败',
-        text2: 'iOS 设备无法直接安装 APK',
+        text2: e.message || '未知错误',
       });
-      throw new Error('APK install not supported on iOS');
+      throw e;
     }
   }
 
