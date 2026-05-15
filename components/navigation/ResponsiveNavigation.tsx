@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
-import MobileTabContainer from './MobileTabContainer';
 import TabletSidebarNavigator from './TabletSidebarNavigator';
 
 interface ResponsiveNavigationProps {
@@ -13,8 +12,9 @@ const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({ children })
 
   switch (deviceType) {
     case 'mobile':
-      // 移动端使用Tab容器包装children
-      return <MobileTabContainer>{children}</MobileTabContainer>;
+      // 移动端现在已经在根布局 app/_layout.tsx 中被全局 MobileTabContainer 包裹了
+      // 这里直接返回 children 即可，避免重复出现两行标签栏
+      return <>{children}</>;
     
     case 'tablet':
       return (
@@ -25,7 +25,7 @@ const ResponsiveNavigation: React.FC<ResponsiveNavigationProps> = ({ children })
     
     case 'tv':
     default:
-      // TV端保持原有的Stack导航，不需要额外的导航容器
+      // TV端保持原有的内容
       return <>{children}</>;
   }
 };
