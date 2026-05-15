@@ -131,11 +131,11 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
         }
       );
 
-      set({ 
+      set((state) => ({
         downloadedPath: filePath,
         downloading: false,
-        downloadProgress: 100,
-      });
+        downloadProgress: state.totalSize > 0 ? state.totalSize : state.downloadProgress,
+      }));
     } catch (error) {
       // console.info('下载失败:', error);
       set({ 
