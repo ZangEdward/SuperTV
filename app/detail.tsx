@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
@@ -20,6 +20,8 @@ export default function DetailScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
+
+  const [showAllSources, setShowAllSources] = useState(false);
 
   const {
     detail,
@@ -145,7 +147,7 @@ export default function DetailScreen() {
               {!allSourcesLoaded && <ActivityIndicator style={{ marginLeft: 10 }} />}
             </View>
             <View style={dynamicStyles.sourceList}>
-              {searchResults.map((item, index) => {
+              {(showAllSources ? searchResults : searchResults.slice(0, 5)).map((item, index) => {
                 const isSelected = detail?.source === item.source;
                 return (
                   <StyledButton
@@ -170,6 +172,14 @@ export default function DetailScreen() {
                   </StyledButton>
                 );
               })}
+              {searchResults.length > 5 && !showAllSources && (
+                <StyledButton
+                  onPress={() => setShowAllSources(true)}
+                  variant="primary"
+                  style={dynamicStyles.sourceButton}
+                  text={`展开更多 (${searchResults.length - 5})...`}
+                />
+              )}
             </View>
           </View>
 
@@ -227,7 +237,7 @@ export default function DetailScreen() {
                 {!allSourcesLoaded && <ActivityIndicator style={{ marginLeft: 10 }} />}
               </View>
               <View style={dynamicStyles.sourceList}>
-                {searchResults.map((item, index) => {
+                {(showAllSources ? searchResults : searchResults.slice(0, 5)).map((item, index) => {
                   const isSelected = detail?.source === item.source;
                   return (
                     <StyledButton
@@ -253,6 +263,14 @@ export default function DetailScreen() {
                     </StyledButton>
                   );
                 })}
+                {searchResults.length > 5 && !showAllSources && (
+                  <StyledButton
+                    onPress={() => setShowAllSources(true)}
+                    variant="primary"
+                    style={dynamicStyles.sourceButton}
+                    text={`展开更多 (${searchResults.length - 5})...`}
+                  />
+                )}
               </View>
             </View>
             <View style={dynamicStyles.episodesContainer}>
