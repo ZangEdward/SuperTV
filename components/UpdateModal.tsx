@@ -80,8 +80,13 @@ export function UpdateModal() {
 
           {(downloading || downloadedPath) && (
             <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${downloadedPath ? 100 : progressPercent}%` }]} />
+              </View>
               <ThemedText style={styles.progressText}>
-                {downloadedPath ? `已下载 (${downloadedMB} MB)` : `正在下载: ${downloadedMB} MB / ${totalMB} MB`}
+                {downloadedPath
+                  ? `已下载 (${downloadedMB} MB)`
+                  : `${progressPercent}% (${downloadedMB} MB / ${totalMB} MB)`}
               </ThemedText>
             </View>
           )}
@@ -165,6 +170,17 @@ const styles = StyleSheet.create({
     width: "100%",
     marginBottom: 20,
     marginTop: 10,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: Colors.dark.border,
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: Colors.dark.primary || "#00bb5e",
   },
   progressText: {
     fontSize: Platform.isTV ? 16 : 14,
