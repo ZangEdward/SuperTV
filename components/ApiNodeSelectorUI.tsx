@@ -24,8 +24,6 @@ export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
 
   return (
     <View style={styles.container}>
-      <ThemedText style={styles.headerText}>选择服务器节点</ThemedText>
-
       <View style={styles.nodeList}>
         {API_NODES.map((node) => {
           const isSelected = apiBaseUrl === node.url;
@@ -62,54 +60,40 @@ export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 10,
+    marginTop: 0,
   },
   headerText: {
-    fontSize: 16,
-    marginBottom: 12,
-    fontWeight: 'bold',
-    color: '#ccc',
+    display: 'none', // 隐藏重复标题
   },
   nodeList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: 'column', // 改为单列，对标检查更新按钮
     width: '100%',
+    alignItems: 'center',
   },
   nodeButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 6,
-    width: Platform.isTV ? '32%' : '48%', // TV 3列，手机 2列
-    marginBottom: 10,
-    minHeight: 44,
-    borderWidth: 0,
-    paddingVertical: 4, // 减小内边距使按钮更小
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: '90%', // 对标检查更新按钮的宽度
+    marginBottom: 12,
   },
   selectedNodeButton: {
     backgroundColor: Colors.dark.primary,
   },
   nodeButtonText: {
     color: "#ffffff",
-    fontSize: 13, // 减小字体
+    fontSize: Platform.isTV ? 16 : 14, // 对标检查更新按钮的字号
     fontWeight: "500",
     textAlign: 'center',
   },
   speedTestContainer: {
     marginTop: 10,
     alignItems: "center",
+    width: '100%',
   },
   speedTestButton: {
-    width: Platform.isTV ? "60%" : "100%",
-    backgroundColor: "rgba(0, 187, 94, 0.1)", // 淡淡的绿色背景
-    borderRadius: 8,
-    paddingVertical: 10,
+    width: "90%", // 对标检查更新按钮的宽度
   },
   speedTestButtonText: {
     color: "#00bb5e", // 显眼的绿色
-    fontSize: 14,
+    fontSize: Platform.isTV ? 16 : 14,
     fontWeight: "bold",
     textAlign: 'center',
   },
