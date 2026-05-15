@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sync:
@@ -21,8 +21,8 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      # 下载最新 Release 的 SuperTV-${VERSION}.apk
-      - name: Download release assets
+      # 下载 SuperTV-${VERSION}.apk
+      - name: Download release APK
         uses: robinraju/release-downloader@v1
         with:
           repository: ZangEdward/SuperTV
@@ -35,12 +35,22 @@ jobs:
         run: |
           git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
 
-      # 更新 /log/vision/package.json 和最新 APK
-      - name: Update latest package.json and APK
+      # 更新 /log/vision/package.json
+      - name: Update package.json in log/vision
         run: |
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
-          cp SuperTV-${VERSION}.apk sync-repo/log/vision/SuperTV-latest.apk
+
+      # 上传 APK 到 internal-cache-sync-daemon-log 的 Releases
+      - name: Upload APK to log repo Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: |
+            SuperTV-${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
 
       # 在根目录生成狗屁不通 log 文件
       - name: Generate absurd root log file
@@ -71,12 +81,12 @@ jobs:
             echo "this-log-file-was-generated-by-a-daemon-that-denies-its-own-existence"
           } > sync-repo/${LOGFILE}
 
-      # 提交并推送
+      # 提交并推送 package.json + log 文件
       - name: Commit & Push
         run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update latest APK, package.json and log ${LOGFILE}" || true
+          git commit -m "Sync v${VERSION} + update package.json + add log ${LOGFILE}" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
