@@ -13,6 +13,7 @@ const logger = Logger.withTag('UpdateService');
 interface VersionInfo {
   version: string;
   downloadUrl: string;
+  apkSize?: number;
 }
 
 /**
@@ -42,18 +43,40 @@ class UpdateService {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10_000);
-        const response = await fetch(UPDATE_CONFIG.GITHUB_RAW_URL, {
-          signal: controller.signal,
-        });
+
+        // 并行获取 package.json 和 apksize.json
+        const pkgUrl = UPDATE_CONFIG.GITHUB_RAW_URL;
+        const sizeUrl = pkgUrl.replace('package.json', 'apksize.json');
+
+        const [pkgRes, sizeRes] = await Promise.all([
+          fetch(pkgUrl, { signal: controller.signal }),
+          fetch(sizeUrl, { signal: controller.signal }).catch(() => null)
+        ]);
+
         clearTimeout(timeoutId);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+
+        if (!pkgRes.ok) {
+          throw new Error(`HTTP ${pkgRes.status}`);
         }
-        const remotePackage = await response.json();
+
+        const remotePackage = await pkgRes.json();
         const remoteVersion = remotePackage.version as string;
+
+        let apkSize: number | undefined;
+        if (sizeRes && sizeRes.ok) {
+          try {
+            const sizeData = await sizeRes.json();
+            // 根据用户提供的生成方式，字段名为 apksize
+            apkSize = Number(sizeData.apksize);
+          } catch (e) {
+            logger.warn('解析 apksize.json 失败', e);
+          }
+        }
+
         return {
           version: remoteVersion,
           downloadUrl: UPDATE_CONFIG.getDownloadUrl(remoteVersion),
+          apkSize,
         };
       } catch (e) {
         logger.warn(`checkVersion attempt ${attempt}/${maxRetries}`, e);
