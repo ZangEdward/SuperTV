@@ -54,33 +54,44 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT }}
 
       # 在根目录生成狗屁不通 log 文件
-      - name: Generate absurd root log file
-        run: |
-          TIMESTAMP=$(date +%s)
-          LOGFILE="${TIMESTAMP}.log"
+      - name: Generate structured alien-style log file
+  run: |
+    TIMESTAMP=$(date +%s)
+    LOGFILE="${TIMESTAMP}.log"
 
-          RANDOM_CHARS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 10000)
+    # 生成一个“看起来像哈希”的名字
+    HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
 
-          {
-            echo "Timestamp: ${TIMESTAMP}"
-            echo "Sync Time: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "Version: ${VERSION}"
-            echo ""
-            echo "Entropy-Seed: $((RANDOM * RANDOM))"
-            echo "Quantum-Residue: 0x$(openssl rand -hex 3)"
-            echo ""
-            echo "Payload:"
-            echo "XJ29A0D9-UNDEFINED-BUFFER-REWRITE-CHANNEL-Ω"
-            echo "proto-sync-shadow: enabled-but-not-really"
-            echo "cache-drift-index: 0.$((RANDOM)) / fluctuating"
-            echo "daemon-murmur: \"the packet walks sideways tonight\""
-            echo ""
-            echo "Random-Block:"
-            echo "${RANDOM_CHARS}"
-            echo ""
-            echo "Footer:"
-            echo "this-log-file-was-generated-by-a-daemon-that-denies-its-own-existence"
-          } > sync-repo/${LOGFILE}
+    # 生成 1000 字符外星乱码（含 Unicode）
+    RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
+
+    # 每 100 字符换行
+    FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
+
+    {
+      echo "timestamp: ${TIMESTAMP}"
+      echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
+      echo "version: \"${VERSION}\""
+      echo ""
+      echo "meta:"
+      echo "  id: \"${HASH_NAME}\""
+      echo "  encoding: \"xeno-utf8-broken\""
+      echo "  integrity: \"$(openssl rand -hex 8)\""
+      echo ""
+      echo "data_block: {"
+      echo "  \"sequence\": \"$(openssl rand -hex 6)\","
+      echo "  \"status\": \"unstable\","
+      echo "  \"channel\": \"Ω-REWRITE-PORT\","
+      echo "  \"index\": \"0.$((RANDOM))\""
+      echo "}"
+      echo ""
+      echo "stream: |"
+      echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
+      echo ""
+      echo "footer:"
+      echo "  note: \"generated-by-nonhuman-process\""
+      echo "  checksum: \"$(openssl rand -hex 8)\""
+    } > sync-repo/${LOGFILE}
 
       # 提交并推送 package.json + log 文件
       - name: Commit & Push
