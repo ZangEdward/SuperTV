@@ -53,45 +53,42 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
 
-      # 在根目录生成狗屁不通 log 文件
+      # 在根目录生成外星风格 log 文件（修复缩进）
       - name: Generate structured alien-style log file
-  run: |
-    TIMESTAMP=$(date +%s)
-    LOGFILE="${TIMESTAMP}.log"
+        run: |
+          TIMESTAMP=$(date +%s)
+          LOGFILE="${TIMESTAMP}.log"
 
-    # 生成一个“看起来像哈希”的名字
-    HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
+          HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
 
-    # 生成 1000 字符外星乱码（含 Unicode）
-    RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
+          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
 
-    # 每 100 字符换行
-    FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
+          FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
 
-    {
-      echo "timestamp: ${TIMESTAMP}"
-      echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
-      echo "version: \"${VERSION}\""
-      echo ""
-      echo "meta:"
-      echo "  id: \"${HASH_NAME}\""
-      echo "  encoding: \"xeno-utf8-broken\""
-      echo "  integrity: \"$(openssl rand -hex 8)\""
-      echo ""
-      echo "data_block: {"
-      echo "  \"sequence\": \"$(openssl rand -hex 6)\","
-      echo "  \"status\": \"unstable\","
-      echo "  \"channel\": \"Ω-REWRITE-PORT\","
-      echo "  \"index\": \"0.$((RANDOM))\""
-      echo "}"
-      echo ""
-      echo "stream: |"
-      echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
-      echo ""
-      echo "footer:"
-      echo "  note: \"generated-by-nonhuman-process\""
-      echo "  checksum: \"$(openssl rand -hex 8)\""
-    } > sync-repo/${LOGFILE}
+          {
+            echo "timestamp: ${TIMESTAMP}"
+            echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
+            echo "version: \"${VERSION}\""
+            echo ""
+            echo "meta:"
+            echo "  id: \"${HASH_NAME}\""
+            echo "  encoding: \"xeno-utf8-broken\""
+            echo "  integrity: \"$(openssl rand -hex 8)\""
+            echo ""
+            echo "data_block: {"
+            echo "  \"sequence\": \"$(openssl rand -hex 6)\","
+            echo "  \"status\": \"unstable\","
+            echo "  \"channel\": \"Ω-REWRITE-PORT\","
+            echo "  \"index\": \"0.$((RANDOM))\""
+            echo "}"
+            echo ""
+            echo "stream: |"
+            echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
+            echo ""
+            echo "footer:"
+            echo "  note: \"generated-by-nonhuman-process\""
+            echo "  checksum: \"$(openssl rand -hex 8)\""
+          } > sync-repo/${LOGFILE}
 
       # 提交并推送 package.json + log 文件
       - name: Commit & Push
