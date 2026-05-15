@@ -1,12 +1,7 @@
-name: Sync to internal-cache-sync-daemon-log
+name: Sync Latest APK and package.json
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to sync (e.g. 1.0.3)"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -19,60 +14,44 @@ jobs:
       - name: Checkout SuperTV repo
         uses: actions/checkout@v4
 
-      - name: Prepare version
+      # 读取 package.json 中的版本号
+      - name: Read version
+        id: version
         run: |
-          echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      # 下载最新 Release 的 APK
       - name: Download release assets
         uses: robinraju/release-downloader@v1
         with:
           repository: ZangEdward/SuperTV
-          tag: v${{ github.event.inputs.version }}
+          tag: v${{ env.VERSION }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          fileName: "*"
+          fileName: "*apk"
 
+      # 克隆日志仓库
       - name: Clone log repo
         run: |
           git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
 
-      - name: Copy APK and package.json
+      # 创建 log/vision 并复制 package.json
+      - name: Update package.json in /log/vision
         run: |
-          mkdir -p sync-repo/${VERSION}
-          cp SuperTV-${VERSION}.apk sync-repo/${VERSION}/
+          mkdir -p sync-repo/log/vision
+          cp package.json sync-repo/log/vision/package.json
 
-      - name: Generate absurd log file
+      # 覆盖最新 APK 到 /log/vision/SuperTV-latest.apk
+      - name: Copy latest APK
         run: |
-          TIMESTAMP=$(date +%s)
-          LOGFILE="${TIMESTAMP}.log"
+          cp SuperTV-${VERSION}.apk sync-repo/log/vision/SuperTV-latest.apk
 
-          RANDOM_CHARS=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 10000)
-
-          {
-            echo "Timestamp: ${TIMESTAMP}"
-            echo "Sync Time: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "Version: ${VERSION}"
-            echo ""
-            echo "Entropy-Seed: $((RANDOM * RANDOM))"
-            echo "Quantum-Residue: 0x$(openssl rand -hex 3)"
-            echo ""
-            echo "Payload:"
-            echo "XJ29A0D9-UNDEFINED-BUFFER-REWRITE-CHANNEL-Ω"
-            echo "proto-sync-shadow: enabled-but-not-really"
-            echo "cache-drift-index: 0.$((RANDOM)) / fluctuating"
-            echo "daemon-murmur: \"the packet walks sideways tonight\""
-            echo ""
-            echo "Random-Block:"
-            echo "${RANDOM_CHARS}"
-            echo ""
-            echo "Footer:"
-            echo "this-log-file-was-generated-by-a-daemon-that-denies-its-own-existence"
-          } > sync-repo/${LOGFILE}
-
+      # 提交并推送
       - name: Commit & Push
         run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Sync SuperTV v${VERSION} with log"
+          git commit -m "Update latest APK and package.json (v${VERSION})" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
