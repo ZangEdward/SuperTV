@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
@@ -31,123 +31,192 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   const pathname = usePathname();
   const { spacing, deviceType } = useResponsiveLayout();
   
-  // 在手机端过滤掉直播 tab
-  const filteredTabs = tabs.filter(tab => 
-    deviceType !== 'mobile' || tab.key !== 'live'
+  const filteredTabs = useMemo(() =>
+    tabs.filter(tab => deviceType !== 'mobile' || tab.key !== 'live'),
+    [deviceType]
   );
   
-  const currentIndex = filteredTabs.findIndex(t => {
-    if (t.route === '/' && pathname === '/') return true;
-    if (t.route !== '/' && pathname === t.route) return true;
-    return false;
-  });
+  const currentIndex = useMemo(() => {
+    return filteredTabs.findIndex(t => {
+      if (t.route === '/' && pathname === '/') return true;
+      if (t.route !== '/' && pathname.startsWith(t.route)) return true;
+      return false;
+    });
+  }, [pathname, filteredTabs]);
 
-  const indicatorAnim = useRef(new Animated.Value(0)).current;
+  const isTabRoute = currentIndex !== -1;
   const screenWidth = Dimensions.get('window').width;
   const tabBarWidth = screenWidth - spacing * 2;
   const tabWidth = tabBarWidth / filteredTabs.length;
 
+  // 动画值使用 Ref 保持
+  const dragX = useRef(new Animated.Value(0)).current; // 实时拖拽偏移
+  const indicatorBasePos = useRef(new Animated.Value(0)).current; // 基础高亮位置
+
+  // 实时高亮位置 = 基础位置 + (手势位移的反向映射)
+  const indicatorOffset = dragX.interpolate({
+    inputRange: [-screenWidth, 0, screenWidth],
+    outputRange: [tabWidth, 0, -tabWidth],
+  });
+  const totalIndicatorPos = Animated.add(indicatorBasePos, indicatorOffset);
+
+  // 同步基础位置
   useEffect(() => {
-    if (currentIndex !== -1) {
-      Animated.spring(indicatorAnim, {
+    if (isTabRoute) {
+      Animated.spring(indicatorBasePos, {
         toValue: currentIndex * tabWidth,
         useNativeDriver: true,
-        tension: 50,
-        friction: 8,
+        bounciness: 0,
+        speed: 12,
       }).start();
     }
-  }, [currentIndex, tabWidth]);
+  }, [currentIndex, tabWidth, isTabRoute]);
 
-  const handleTabPress = (route: string, withAnim = true, direction = 'forward') => {
-    // 点击按钮切换不要动画
+  const handleTabPress = (route: string, direction = 'forward') => {
+    if (pathname === route) return;
     router.replace({
       pathname: route,
-      params: {
-        noAnim: !withAnim ? 'true' : 'false',
-        dir: direction
-      }
+      params: { noAnim: 'true', dir: direction }
     } as any);
   };
 
-  const onGestureEvent = (event: any) => {
-    if (event.nativeEvent.state === State.END) {
-      const { translationX, velocityX } = event.nativeEvent;
+  // 响应手势事件：跟手核心
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: dragX } }],
+    { useNativeDriver: true }
+  );
 
-      // 识别滑动逻辑：位移超过 80 或 速度较快
-      if (translationX > 80 || velocityX > 400) {
-        // 向右划 (Finger L->R) -> 切换到左边的 Tab
+  const onHandlerStateChange = (event: any) => {
+    if (!isTabRoute) return;
+
+    const { state, translationX, velocityX } = event.nativeEvent;
+
+    if (state === State.END || state === State.CANCELLED) {
+      const threshold = screenWidth * 0.25; // 降低阈值，更灵敏
+      const fastSwipeThreshold = 500;
+
+      // 决定去向
+      let targetTranslate = 0;
+      let targetIndex = currentIndex;
+
+      if (translationX > threshold || velocityX > fastSwipeThreshold) {
+        // 向右划 -> 尝试去左边的 Tab
         if (currentIndex > 0) {
-          handleTabPress(filteredTabs[currentIndex - 1].route, true, 'back');
+          targetTranslate = screenWidth;
+          targetIndex = currentIndex - 1;
         }
-      } else if (translationX < -80 || velocityX < -400) {
-        // 向左划 (Finger R->L) -> 切换到右边的 Tab
+      } else if (translationX < -threshold || velocityX < -fastSwipeThreshold) {
+        // 向左划 -> 尝试去右边的 Tab
         if (currentIndex < filteredTabs.length - 1) {
-          handleTabPress(filteredTabs[currentIndex + 1].route, true, 'forward');
+          targetTranslate = -screenWidth;
+          targetIndex = currentIndex + 1;
         }
       }
+
+      // 执行物理动画：平滑且可打断感
+      Animated.spring(dragX, {
+        toValue: targetTranslate,
+        velocity: velocityX / 1000, // 将原生速度传入，实现惯性衔接
+        useNativeDriver: true,
+        bounciness: 0,
+        restSpeedThreshold: 1,
+        restDisplacementThreshold: 1,
+      }).start(({ finished }) => {
+        if (finished && targetTranslate !== 0) {
+          // 动画完成后瞬间切换路由
+          const direction = targetTranslate > 0 ? 'back' : 'forward';
+          handleTabPress(filteredTabs[targetIndex].route, direction);
+          // 瞬间复位拖拽值，因为路由已经变了
+          dragX.setValue(0);
+        } else if (finished) {
+          // 回弹完成
+          dragX.setValue(0);
+        }
+      });
     }
   };
 
   const dynamicStyles = createStyles(spacing, tabWidth);
 
+  if (deviceType !== 'mobile') return <>{children}</>;
+
   return (
     <View style={dynamicStyles.container}>
       {/* 内容区域：包装手势处理器 */}
       <PanGestureHandler
-        onHandlerStateChange={onGestureEvent}
-        activeOffsetX={[-20, 20]}
-        failOffsetY={[-20, 20]}
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
+        activeOffsetX={[-10, 10]} // 极大提升手势触发灵敏度
+        failOffsetY={[-30, 30]}  // 允许一定的上下误差，但不影响滚动
       >
-        <View style={dynamicStyles.content}>
+        <Animated.View style={[
+          dynamicStyles.content,
+          {
+            transform: [{ translateX: dragX }],
+            opacity: dragX.interpolate({
+              inputRange: [-screenWidth, 0, screenWidth],
+              outputRange: [0.8, 1, 0.8] // 增加透明度变化，提升视觉反馈
+            })
+          }
+        ]}>
           {children}
-        </View>
+        </Animated.View>
       </PanGestureHandler>
       
       {/* 底部导航栏 */}
-      <View style={dynamicStyles.tabBar}>
-        <View style={dynamicStyles.tabBarInner}>
-          {/* 绿色高亮指示器：背景层，不随标签移动 */}
-          <Animated.View
-            style={[
-              dynamicStyles.indicator,
-              { transform: [{ translateX: indicatorAnim }] }
-            ]}
-          />
-          
-          {filteredTabs.map((tab, index) => {
-            const isActive = index === currentIndex;
-            const IconComponent = tab.icon;
+      {isTabRoute && (
+        <View style={dynamicStyles.tabBar}>
+          <View style={dynamicStyles.tabBarInner}>
+            {/* 绿色高亮指示器：实时映射手势位移 */}
+            <Animated.View
+              style={[
+                dynamicStyles.indicator,
+                { transform: [{ translateX: totalIndicatorPos }] }
+              ]}
+            />
 
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={dynamicStyles.tab}
-                onPress={() => handleTabPress(tab.route, false)} // 点击按钮不要动画
-                activeOpacity={0.7}
-              >
-                <IconComponent
-                  size={20}
-                  color={isActive ? Colors.dark.primary : '#888'}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-                <Text style={[
-                  dynamicStyles.tabLabel,
-                  isActive && dynamicStyles.activeTabLabel
-                ]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+            {filteredTabs.map((tab, index) => {
+              const isActive = index === currentIndex;
+              const IconComponent = tab.icon;
+
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={dynamicStyles.tab}
+                  onPress={() => {
+                    // 点击切换：平滑移动高亮后切页
+                    Animated.spring(indicatorBasePos, {
+                      toValue: index * tabWidth,
+                      useNativeDriver: true,
+                      bounciness: 0,
+                    }).start(() => handleTabPress(tab.route, index < currentIndex ? 'back' : 'forward'));
+                  }}
+                  activeOpacity={1}
+                >
+                  <IconComponent
+                    size={20}
+                    color={isActive ? Colors.dark.primary : '#888'}
+                    strokeWidth={isActive ? 2.5 : 2}
+                  />
+                  <Text style={[
+                    dynamicStyles.tabLabel,
+                    isActive && dynamicStyles.activeTabLabel
+                  ]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 };
 
 const createStyles = (spacing: number, tabWidth: number) => {
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
-  
+
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -174,15 +243,15 @@ const createStyles = (spacing: number, tabWidth: number) => {
       justifyContent: 'center',
       minHeight: minTouchTarget,
       paddingVertical: spacing / 2,
-      zIndex: 1, // 确保标签在指示器之上
+      zIndex: 1,
     },
     indicator: {
       position: 'absolute',
-      top: spacing / 4,
-      bottom: spacing / 4,
+      top: 0,
+      bottom: 0,
       width: tabWidth,
-      backgroundColor: 'rgba(0, 187, 94, 0.15)', // 绿色高亮
-      borderRadius: 8,
+      backgroundColor: 'rgba(0, 187, 94, 0.15)',
+      borderRadius: 12,
     },
     tabLabel: {
       fontSize: 11,
