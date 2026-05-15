@@ -150,33 +150,17 @@ export default function SettingsScreen() {
 
 
   // TV遥控器事件处理 - 仅在TV设备上启用
+  // 注意：删除了手动管理 focusIndex 的逻辑，由系统原生焦点引擎处理，避免干扰按钮选择
  const handleTVEvent = React.useCallback(
   (event: any) => {
     if (deviceType !== "tv") return;
 
-    if (event.eventType === "down") {
-      const nextIndex = Math.min(currentFocusIndex + 1, sections.length);
-      setCurrentFocusIndex(nextIndex);
-      if (nextIndex === sections.length) {
-        saveButtonRef.current?.focus();
-      }
-    } 
-    
-    else if (event.eventType === "up") {
-      const prevIndex = Math.max(currentFocusIndex - 1, 0);
-      setCurrentFocusIndex(prevIndex);
-    }
-
-    // ⭐⭐⭐ 最关键：TV 按 OK → 执行当前 Section 的 onPress
-    else if (event.eventType === "select") {
-      const currentSection = sections[currentFocusIndex];
-
-      if (currentSection?.component?.props?.onPress) {
-        currentSection.component.props.onPress();
-      }
+    // 如果某些 Section 需要全局 select 事件监听可以留着，但通常内部 Pressable 会自行处理
+    if (event.eventType === "select") {
+      // 这里的逻辑可以保留作为兜底，但主要依赖组件自身的 onPress
     }
   },
-  [currentFocusIndex, sections.length, deviceType, sections]
+  [deviceType]
 );
 
   useTVEventHandler(deviceType === "tv" ? handleTVEvent : () => { });
@@ -193,6 +177,8 @@ export default function SettingsScreen() {
       keyboardShouldPersistTaps="always"
       scrollEnabled={true}
       style={{ flex: 1, backgroundColor }}
+      // TV 优化：确保列表项不会因为超出屏幕而被剪裁掉导致无法聚焦
+      removeClippedSubviews={false}
     >
 
       <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
@@ -202,20 +188,6 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* <View style={dynamicStyles.scrollView}>
-          <FlatList
-            data={sections}
-            renderItem={({ item }) => {
-              if (item) {
-                return item.component;
-              }
-              return null;
-            }}
-            keyExtractor={(item) => (item ? item.key : "default")}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={dynamicStyles.listContent}
-          />
-        </View> */}
 <View style={dynamicStyles.scrollView}>
   {sections.map(item =>
     React.cloneElement(item.component, {
@@ -230,6 +202,7 @@ export default function SettingsScreen() {
 
         <View style={dynamicStyles.footer}>
           <StyledButton
+            ref={saveButtonRef}
             text={isLoading ? "保存中..." : "保存设置"}
             onPress={handleSave}
             variant="primary"
