@@ -25,37 +25,41 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
     const variantStyles = {
       default: StyleSheet.create({
         button: {
-          backgroundColor: colors.border,
+          backgroundColor: "#3a3a3c", // 更有质感的深灰色背景
+          borderColor: "#48484a",
+          borderWidth: 1,
         },
         text: {
           color: colors.text,
         },
         selectedButton: {
-          backgroundColor: colors.primary,
+          backgroundColor: Colors.dark.primary,
+          borderColor: Colors.dark.primary,
         },
         focusedButton: {
-          borderColor: colors.primary,
+          borderColor: Colors.dark.primary,
+          backgroundColor: "#48484a",
         },
         selectedText: {
-          color: Colors.dark.text,
+          color: "#fff",
         },
       }),
       primary: StyleSheet.create({
         button: {
-          backgroundColor: "transparent",
+          backgroundColor: Colors.dark.primary,
         },
         text: {
-          color: colors.text,
+          color: "#fff",
         },
         focusedButton: {
-          backgroundColor: colors.primary,
-          borderColor: colors.background,
+          backgroundColor: Colors.dark.primary,
+          borderColor: "#fff",
         },
         selectedButton: {
-          backgroundColor: colors.primary,
+          backgroundColor: Colors.dark.primary,
         },
         selectedText: {
-          color: colors.link,
+          color: "#fff",
         },
       }),
       ghost: StyleSheet.create({
@@ -66,8 +70,8 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
           color: colors.text,
         },
         focusedButton: {
-          backgroundColor: "rgba(119, 119, 119, 0.2)",
-          borderColor: colors.primary,
+          backgroundColor: "rgba(255, 255, 255, 0.1)",
+          borderColor: Colors.dark.primary,
         },
         selectedButton: {},
         selectedText: {},
@@ -78,8 +82,8 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
       button: {
         paddingHorizontal: 16,
         paddingVertical: 10,
-        borderRadius: 8,
-        borderWidth: 2,
+        borderRadius: 10,
+        borderWidth: 1,
         borderColor: "transparent",
         flexDirection: "row",
         alignItems: "center",
@@ -88,53 +92,47 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
       focusedButton: {
         backgroundColor: colors.link,
         borderColor: colors.background,
-        elevation: 5,
-        shadowColor: colors.link,
+        elevation: 8,
+        shadowColor: Colors.dark.primary,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 15,
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
       },
       selectedButton: {
-        backgroundColor: colors.tint,
+        backgroundColor: Colors.dark.primary,
       },
       text: {
         fontSize: 16,
-        fontWeight: "500",
+        fontWeight: "600",
         color: colors.text,
       },
       selectedText: {
-        color: Colors.dark.text,
+        color: "#fff",
       },
     });
 
-    // 分离布局样式和装饰样式，彻底解决“两个框”的问题
+    // 彻底解决“两个框”的问题：分离布局和装饰样式，并过滤 undefined
     const flattenedStyle = StyleSheet.flatten(style) || {};
-    const {
-      // 布局相关：放在 Animated.View (container)
-      width, height, minWidth, minHeight, maxWidth, maxHeight,
-      margin, marginBottom, marginTop, marginLeft, marginRight, marginHorizontal, marginVertical,
-      flex, flexBasis, flexGrow, flexShrink,
-      position, top, left, right, bottom, zIndex, alignSelf,
+    const layoutProps = [
+      'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
+      'margin', 'marginBottom', 'marginTop', 'marginLeft', 'marginRight', 'marginHorizontal', 'marginVertical',
+      'flex', 'flexBasis', 'flexGrow', 'flexShrink',
+      'position', 'top', 'left', 'right', 'bottom', 'zIndex', 'alignSelf'
+    ];
 
-      // 装饰相关：放在 Pressable (inner)
-      backgroundColor, borderRadius, borderWidth, borderColor,
-      padding, paddingHorizontal, paddingVertical, paddingLeft, paddingRight, paddingTop, paddingBottom,
+    const containerStyle: any = {};
+    const decorationStyle: any = {};
 
-      ...restStyle
-    } = flattenedStyle as any;
+    Object.keys(flattenedStyle).forEach(key => {
+      const val = (flattenedStyle as any)[key];
+      if (val === undefined) return;
 
-    const containerStyle = {
-      width, height, minWidth, minHeight, maxWidth, maxHeight,
-      margin, marginBottom, marginTop, marginLeft, marginRight, marginHorizontal, marginVertical,
-      flex, flexBasis, flexGrow, flexShrink,
-      position, top, left, right, bottom, zIndex, alignSelf
-    };
-
-    const decorationStyle = {
-      backgroundColor, borderRadius, borderWidth, borderColor,
-      padding, paddingHorizontal, paddingVertical, paddingLeft, paddingRight, paddingTop, paddingBottom,
-      ...restStyle
-    };
+      if (layoutProps.includes(key)) {
+        containerStyle[key] = val;
+      } else {
+        decorationStyle[key] = val;
+      }
+    });
 
     return (
       <Animated.View style={[animationStyle, containerStyle]}>
