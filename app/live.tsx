@@ -107,7 +107,28 @@ export default function LiveScreen() {
 
   const renderLiveContent = () => (
     <>
-      <LivePlayer 
+      {deviceType === 'tv' && (
+        <View style={dynamicStyles.headerContainer}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <StyledButton
+                variant="ghost"
+                isSelected={false}
+                text="视频"
+                style={{ marginRight: 20 }}
+                textStyle={dynamicStyles.headerTitle}
+                onPress={() => router.push("/")}
+            />
+            <StyledButton
+                variant="ghost"
+                isSelected={true}
+                text="直播"
+                textStyle={dynamicStyles.headerTitle}
+                onPress={() => {}}
+            />
+            </View>
+        </View>
+      )}
+      <LivePlayer
         streamUrl={selectedChannelUrl} 
         channelTitle={channelTitle} 
         onPlaybackStatusUpdate={() => {}} 
@@ -191,6 +212,18 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
   return StyleSheet.create({
     container: {
       flex: 1,
+    },
+    headerContainer: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+      alignItems: "center",
+      paddingHorizontal: spacing * 1.5,
+      marginTop: 40,
+      marginBottom: spacing,
+    },
+    headerTitle: {
+      fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,
+      fontWeight: "bold",
     },
     modalContainer: {
       flex: 1,
