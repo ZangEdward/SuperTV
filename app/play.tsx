@@ -194,6 +194,11 @@ export default function PlayScreen() {
 
   useEffect(() => {
     const backAction = () => {
+      // 优先处理投屏模态框关闭
+      if (usePlayerStore.getState().showCastModal) {
+        usePlayerStore.getState().setShowCastModal(false);
+        return true;
+      }
       if (showControls) {
         setShowControls(false);
         return true;
