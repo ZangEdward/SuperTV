@@ -153,6 +153,8 @@ export default function PlayScreen() {
     logger.info(`[PERF] PlayScreen useEffect START - source: ${source}, id: ${id}, title: ${title}`);
 
     setVideoRef(videoRef);
+    // 确保进入播放页时投屏模态框处于关闭状态，避免自动弹出
+    setShowCastModal(false);
     if (source && id && title) {
       logger.info(`[PERF] Calling loadVideo with episodeIndex: ${episodeIndex}, position: ${position}`);
       loadVideo({ source, id, episodeIndex, position, title });

@@ -128,7 +128,7 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       )
     );
 
-    Animated.parallel([
+    const composite = Animated.parallel([
       floatAnimation,
       pulseAnimation,
       ...bounceAnimations,
@@ -136,7 +136,17 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       gradientAnimation,
       textFadeAnimation,
       ...shapeAnimations,
-    ]).start();
+    ]);
+
+    composite.start();
+
+    return () => {
+      try {
+        composite.stop();
+      } catch (e) {
+        // ignore stop errors
+      }
+    };
   }, []);
 
   const animatedStyles = {
