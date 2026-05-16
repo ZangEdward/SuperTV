@@ -125,10 +125,10 @@ export default function RootLayout() {
                 <Stack.Screen name="cache" />
                 <Stack.Screen name="cache-management" />
                 {Platform.OS !== "web" && <Stack.Screen name="play" />}
-                <Stack.Screen name="search" />
+                <Stack.Screen name="search" options={{ gestureEnabled: true }} />
                 <Stack.Screen name="live" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="favorites" />
+                <Stack.Screen name="settings" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="favorites" options={{ gestureEnabled: true }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
             </MobileTabContainer>

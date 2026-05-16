@@ -15,7 +15,6 @@ import { LiveStreamSection } from "@/components/settings/LiveStreamSection";
 import { RemoteInputSection } from "@/components/settings/RemoteInputSection";
 import { UpdateSection } from "@/components/settings/UpdateSection";
 import { CacheSection } from "@/components/settings/CacheSection";
-import { VideoSourceSection } from "@/components/settings/VideoSourceSection";
 import Toast from "react-native-toast-message";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
@@ -147,10 +146,7 @@ export default function SettingsScreen() {
       component: <CacheSection />,
       key: "cache",
     },
-    {
-      component: <VideoSourceSection onChanged={markAsChanged} onFocus={() => setCurrentSection("videoSource")} />,
-      key: "videoSource",
-    },
+    // 视频源配置已移除
     Platform.OS === "android" && {
       component: <UpdateSection />,
       key: "update",
