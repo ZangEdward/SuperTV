@@ -11,7 +11,7 @@ const UPDATE_CONFIG = {
 
   // 获取平台特定的下载URL
   getDownloadUrl(version: string): string {
-    return `https://ghfast.top/https://github.com/ZangEdward/internal-cache-sync-daemon-log/releases/download/v${version}/SuperTV.${version}.apk`;
+    return `https://ghfast.top/https://github.com/ZangEdward/internal-cache-sync-daemon-log/releases/download/v${version}/SuperTV-${version}.apk`;
   },
 
   // 是否显示更新日志

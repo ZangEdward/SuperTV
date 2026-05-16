@@ -53,6 +53,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   const dragX = useRef(new Animated.Value(0)).current;
   const indicatorBasePos = useRef(new Animated.Value(0)).current;
   const isTransitioning = useRef(false);
+  const skipIndicatorAnimation = useRef(false);
 
   // 实时位置映射
   const indicatorOffset = dragX.interpolate({
@@ -61,27 +62,28 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   });
   const totalIndicatorPos = Animated.add(indicatorBasePos, indicatorOffset);
 
-  // 核心：页面透明度随着 dragX 实时淡入淡出
-  const contentOpacity = dragX.interpolate({
-    inputRange: [-screenWidth, -screenWidth * 0.5, 0, screenWidth * 0.5, screenWidth],
-    outputRange: [0, 0.5, 1, 0.5, 0],
-    extrapolate: 'clamp'
-  });
-
   // 监听索引变化同步高亮
   useEffect(() => {
-    if (isTabRoute) {
-      Animated.spring(indicatorBasePos, {
-        toValue: currentIndex * tabWidth,
-        useNativeDriver: true,
-        bounciness: 0,
-        speed: 15,
-      }).start();
-    }
-  }, [currentIndex, isTabRoute]);
+    if (!isTabRoute) return;
 
-  const handleTabPress = (route: string, direction = 'forward') => {
+    const nextPosition = currentIndex * tabWidth;
+    if (skipIndicatorAnimation.current) {
+      indicatorBasePos.setValue(nextPosition);
+      skipIndicatorAnimation.current = false;
+      return;
+    }
+
+    Animated.spring(indicatorBasePos, {
+      toValue: nextPosition,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 15,
+    }).start();
+  }, [currentIndex, indicatorBasePos, isTabRoute, tabWidth]);
+
+  const handleTabPress = (route: string, direction = 'forward', skipAnimation = false) => {
     if (pathname === route) return;
+    skipIndicatorAnimation.current = skipAnimation;
     router.replace({
       pathname: route,
       params: { noAnim: 'true', dir: direction }
@@ -135,7 +137,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
         if (finished && targetTranslate !== 0) {
           const direction = targetTranslate > 0 ? 'back' : 'forward';
           // 导航到目标路由；避免在本地做额外的入场动画，直接重置位置
-          handleTabPress(filteredTabs[targetIndex].route, direction);
+          handleTabPress(filteredTabs[targetIndex].route, direction, true);
 
           // 直接重置 dragX 到 0，避免与路由切换产生双重动画
           dragX.setValue(0);
@@ -166,7 +168,6 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
           dynamicStyles.content,
           {
             transform: [{ translateX: dragX }],
-            opacity: contentOpacity // 全程由手指和物理弹簧驱动的透明度
           }
         ]}>
           {children}
