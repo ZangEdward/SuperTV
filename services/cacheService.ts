@@ -120,7 +120,7 @@ export class CacheService {
     const extensionMatch = url.match(/\.(mp4|m3u8|ts|mov|webm)(?:[?#].*)?$/i);
     let extension = extensionMatch ? extensionMatch[1].toLowerCase() : "mp4";
     if (extension === "m3u8") {
-      extension = "mp4";
+      extension = "ts";
     }
     const normalizedSource = source.replace(/[^a-zA-Z0-9_-]/g, "_");
     const normalizedId = id.toString().replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -265,7 +265,6 @@ export class CacheService {
       }
       const base64 = response.base64();
       await writeStream.write(base64);
-      // report progress as fraction of segments downloaded
       try {
         progressCb?.(index / total);
       } catch {}

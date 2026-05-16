@@ -45,6 +45,18 @@ export default function CacheManagementScreen() {
     return null;
   }, [currentDownloadId, downloadProgress, queue]);
 
+  const queuedCount = React.useMemo(
+    () => queue.reduce((count, group) => count + group.episodes.filter((ep) => ep.status === 'queued' || ep.status === 'pending').length, 0),
+    [queue]
+  );
+
+  const currentStatusLabel = activeDownload ? '正在缓存' : queuedCount > 0 ? '等待缓存' : '当前状态';
+  const currentStatusValue = activeDownload
+    ? `${activeDownload.title} · 第 ${activeDownload.episodeIndex + 1} 集 · ${Math.round(activeDownload.progress * 100)}%`
+    : queuedCount > 0
+    ? `队列中 ${queuedCount} 集，正在等待下载`
+    : '暂无进行中的缓存';
+
   return (
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
@@ -85,36 +97,34 @@ export default function CacheManagementScreen() {
         {/* 下载队列 */}
         <View style={{ marginBottom: spacing }}>
           <ThemedText style={[styles.title, { marginBottom: 8 }]}>下载列表</ThemedText>
-          {activeDownload ? (
-            <View style={styles.currentStatusRow}>
-              <ThemedText style={styles.currentStatusLabel}>正在缓存</ThemedText>
-              <ThemedText style={styles.currentStatusValue}>
-                {activeDownload.title} · 第 {activeDownload.episodeIndex + 1} 集 · {Math.round(activeDownload.progress * 100)}%
-              </ThemedText>
-            </View>
-          ) : (
-            <View style={styles.currentStatusRow}>
-              <ThemedText style={styles.currentStatusLabel}>当前状态</ThemedText>
-              <ThemedText style={styles.currentStatusValue}>暂无进行中的缓存</ThemedText>
-            </View>
-          )}
+          <View style={styles.currentStatusRow}>
+            <ThemedText style={styles.currentStatusLabel}>{currentStatusLabel}</ThemedText>
+            <ThemedText style={styles.currentStatusValue}>{currentStatusValue}</ThemedText>
+          </View>
           {queue.length === 0 ? (
             <ThemedText type="subtitle">下载列表为空</ThemedText>
           ) : (
             queue.map((g) => (
               <View key={g.groupId} style={[styles.card, { marginBottom: 8 }]}> 
                 <TouchableOpacity onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Image source={{ uri: g.poster }} style={{ width: 80, height: 100, borderRadius: 6, margin: 10 }} />
-                    <View style={{ flex: 1 }}>
-                      <ThemedText style={styles.title}>{g.title}</ThemedText>
+                  <View style={styles.groupHeader}>
+                    <Image source={{ uri: g.poster }} style={styles.groupPoster} />
+                    <View style={styles.groupMeta}>
+                      <ThemedText style={styles.title} numberOfLines={2}>{g.title}</ThemedText>
                       <ThemedText style={styles.meta}>{g.episodes.length} 集待处理</ThemedText>
                     </View>
-                    <View style={{ paddingRight: 12 }}>
-                      <StyledButton text={expandedGroups[g.groupId] ? '收起' : '展开'} onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))} />
-                    </View>
-                    <View style={{ paddingRight: 8 }}>
-                      <StyledButton text="取消分组" variant="ghost" onPress={() => cancelGroup(g.groupId)} />
+                    <View style={styles.groupActions}>
+                      <StyledButton
+                        text={expandedGroups[g.groupId] ? '收起' : '展开'}
+                        onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))}
+                        style={styles.groupActionButton}
+                      />
+                      <StyledButton
+                        text="取消分组"
+                        variant="ghost"
+                        onPress={() => cancelGroup(g.groupId)}
+                        style={styles.groupActionButton}
+                      />
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -134,9 +144,19 @@ export default function CacheManagementScreen() {
                               <ThemedText style={styles.progressPercentage}>{progressPercent}%</ThemedText>
                             </View>
                           ) : null}
-                          <View style={{ width: 120, flexDirection: 'row' }}>
-                            <StyledButton text="下载" onPress={() => downloadQueuedEpisode(g.groupId, ep.index)} disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`} style={{ marginRight: 6 }} />
-                            <StyledButton text="取消" variant="ghost" onPress={() => cancelQueuedEpisode(g.groupId, ep.index)} />
+                          <View style={styles.episodeActionRow}>
+                            <StyledButton
+                              text="下载"
+                              onPress={() => downloadQueuedEpisode(g.groupId, ep.index)}
+                              disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`}
+                              style={[styles.episodeActionButton, { marginRight: 6 }]}
+                            />
+                            <StyledButton
+                              text="取消"
+                              variant="ghost"
+                              onPress={() => cancelQueuedEpisode(g.groupId, ep.index)}
+                              style={styles.episodeActionButton}
+                            />
                           </View>
                         </View>
                       );
@@ -205,6 +225,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: "row",
+    flexWrap: "wrap",
     backgroundColor: "#1f1f1f",
     borderRadius: 12,
     overflow: "hidden",
@@ -258,8 +279,51 @@ const styles = StyleSheet.create({
   currentStatusValue: {
     color: '#fff',
     fontSize: 13,
-    maxWidth: '70%',
+    flex: 1,
+    minWidth: 0,
     textAlign: 'right',
+    marginLeft: 12,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    padding: 10,
+  },
+  groupPoster: {
+    width: 80,
+    height: 100,
+    borderRadius: 6,
+    marginRight: 12,
+    marginBottom: 8,
+  },
+  groupMeta: {
+    flex: 1,
+    minWidth: 140,
+    marginBottom: 8,
+  },
+  groupActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 120,
+  },
+  groupActionButton: {
+    minWidth: 68,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  episodeActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    minWidth: 120,
+  },
+  episodeActionButton: {
+    minWidth: 64,
+    marginBottom: 4,
   },
   content: {
     flex: 1,
