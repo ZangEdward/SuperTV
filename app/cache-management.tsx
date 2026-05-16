@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { View, StyleSheet, Image, ScrollView, TouchableOpacity } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import useCacheStore from "@/stores/cacheStore";
 import { ThemedView } from "@/components/ThemedView";
@@ -26,6 +26,37 @@ export default function CacheManagementScreen() {
 
   const handlePlayCached = (fileUri: string, title: string) => {
     router.push(`/play?title=${encodeURIComponent(title)}&fileUri=${encodeURIComponent(fileUri)}`);
+  };
+
+  // modal state for collection detail
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState("");
+  const [modalEpisodes, setModalEpisodes] = useState<{ index: number; status: string; progress?: number; fileUri?: string }[]>([]);
+
+  const groupedCollections = useMemo(() => {
+    const map = new Map<string, { title: string; poster: string }>();
+    items.forEach((it) => {
+      if (!map.has(it.title)) map.set(it.title, { title: it.title, poster: it.poster });
+    });
+    return Array.from(map.values());
+  }, [items]);
+
+  const openCollectionModal = (title?: string) => {
+    if (!title) return;
+    // find queued group first
+    const group = queue.find((g) => g.title === title);
+    if (group) {
+      setModalTitle(group.title);
+      setModalEpisodes(group.episodes.map((ep) => ({ index: ep.index, status: ep.status, progress: ep.progress })));
+      setModalVisible(true);
+      return;
+    }
+
+    // else find cached items
+    const matched = items.filter((it) => it.title === title).sort((a, b) => a.episodeIndex - b.episodeIndex);
+    setModalTitle(title);
+    setModalEpisodes(matched.map((it) => ({ index: it.episodeIndex, status: 'completed', progress: 1, fileUri: it.fileUri })));
+    setModalVisible(true);
   };
 
   const activeDownload = React.useMemo(() => {
@@ -92,7 +123,7 @@ export default function CacheManagementScreen() {
               ))}
             </View>
           )}
-          <ThemedText type="subtitle" style={styles.concurrencyHint}>选择并发下载数量，最多 10 个任务并行</ThemedText>
+          <ThemedText type="subtitle" style={styles.concurrencyHint}>选择并发下载数量</ThemedText>
         </View>
         {/* 下载队列 */}
         <View style={{ marginBottom: spacing }}>
@@ -173,43 +204,41 @@ export default function CacheManagementScreen() {
               <ThemedText type="subtitle">暂无缓存内容</ThemedText>
             </View>
           ) : (
-            items.map((item) => (
-              <View key={item.id} style={[styles.card, { marginBottom: spacing }]}> 
-                <TouchableOpacity onPress={() => handlePlayCached(item.fileUri, item.title)}>
-                  <Image source={{ uri: item.poster }} style={styles.poster} />
-                </TouchableOpacity>
-                <View style={styles.content}>
-                  <ThemedText style={styles.title} numberOfLines={2}>{item.title}</ThemedText>
-                  <ThemedText style={styles.meta}>{item.source_name} · 第 {item.episodeIndex + 1} 集</ThemedText>
-                  <ThemedText style={styles.meta}>已缓存 {item.totalEpisodes} 集</ThemedText>
-                  {downloadProgress && downloadProgress[item.id] != null && downloadProgress[item.id] < 1 ? (
-                    <View style={styles.progressWrap}>
-                      <View style={styles.progressBarBackground}>
-                        <View style={[styles.progressBarFill, { width: `${Math.round((downloadProgress[item.id] || 0) * 100)}%` }]} />
-                      </View>
-                      <ThemedText style={styles.progressText}>{Math.round((downloadProgress[item.id] || 0) * 100)}%</ThemedText>
-                    </View>
-                  ) : null}
-                  <View style={styles.actions}>
-                    <StyledButton
-                      text="播放"
-                      variant="primary"
-                      onPress={() => handlePlayCached(item.fileUri, item.title)}
-                      style={styles.actionButton}
-                      disabled={currentDownloadId === item.id}
-                    />
-                    <StyledButton
-                      text="删除"
-                      variant="ghost"
-                      onPress={() => removeCacheItem(item.id)}
-                      style={styles.actionButton}
-                    />
-                  </View>
+            <View style={styles.grid}>
+              {groupedCollections.map((c) => (
+                <View key={c.title} style={styles.posterCard}>
+                  <TouchableOpacity onPress={() => openCollectionModal(c.title)}>
+                    <Image source={{ uri: c.poster }} style={styles.posterLarge} />
+                  </TouchableOpacity>
+                  <ThemedText style={styles.posterTitle} numberOfLines={2}>{c.title}</ThemedText>
                 </View>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </ScrollView>
+
+        <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ThemedText style={styles.modalTitle}>{modalTitle}</ThemedText>
+              <ScrollView style={styles.modalList}>
+                {modalEpisodes.map((ep) => (
+                  <View key={ep.index} style={styles.modalEpisodeRow}>
+                    <ThemedText style={styles.modalEpisodeText}>第 {ep.index + 1} 集</ThemedText>
+                    {ep.status === 'downloading' ? (
+                      <ThemedText style={styles.modalEpisodeStatus}>{Math.round((ep.progress || 0) * 100)}%</ThemedText>
+                    ) : ep.status === 'completed' ? (
+                      <StyledButton text="播放" variant="primary" onPress={() => ep.fileUri && handlePlayCached(ep.fileUri, modalTitle)} />
+                    ) : (
+                      <ThemedText style={styles.modalEpisodeStatusSmall}>{ep.status}</ThemedText>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+              <StyledButton text="关闭" onPress={() => setModalVisible(false)} style={{ marginTop: 12 }} />
+            </View>
+          </View>
+        </Modal>
       </ThemedView>
     </ResponsiveNavigation>
   );
@@ -411,5 +440,69 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginTop: 10,
     textAlign: 'center',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    gap: 12,
+  },
+  posterCard: {
+    width: 140,
+    marginRight: 12,
+    marginBottom: 16,
+  },
+  posterLarge: {
+    width: 140,
+    height: 200,
+    borderRadius: 8,
+    backgroundColor: '#111',
+  },
+  posterTitle: {
+    color: '#fff',
+    marginTop: 8,
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '80%',
+    backgroundColor: '#121212',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  modalList: {
+    maxHeight: '70%',
+  },
+  modalEpisodeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  modalEpisodeText: {
+    color: '#ddd',
+  },
+  modalEpisodeStatus: {
+    color: '#0f0',
+    minWidth: 48,
+    textAlign: 'right',
+  },
+  modalEpisodeStatusSmall: {
+    color: '#aaa',
   },
 });

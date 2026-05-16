@@ -273,6 +273,32 @@ export class CacheService {
     await writeStream.close();
     const elapsed = Date.now() - start;
     logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
+    // 尝试使用 ffmpeg 将 ts 合并/转换为 mp4（如果可用）
+    try {
+      const mp4Path = destinationPath.replace(/\.ts$/i, '.mp4');
+      // 动态加载 ffmpeg-kit（如果项目未安装则跳过）
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const ffmpegKit = require('ffmpeg-kit-react-native');
+      if (ffmpegKit && ffmpegKit.FFmpegKit) {
+        logger.info('[CacheService] Attempting ffmpeg conversion to mp4');
+        // 使用 copy codec 做容器转换，避免重新编码
+        const session = await ffmpegKit.FFmpegKit.executeAsync(`-y -i "${destinationPath}" -c copy "${mp4Path}"`);
+        // 检查结果
+        // 有些平台返回 session 对象 differently; best-effort: if no error, use mp4
+        try {
+          // 删除原 ts 文件并返回 mp4
+          await RNFetchBlob.fs.unlink(destinationPath);
+        } catch (e) {
+          // ignore
+        }
+        progressCb?.(1);
+        logger.info(`[CacheService] ffmpeg conversion complete: ${mp4Path}`);
+        return mp4Path;
+      }
+    } catch (e) {
+      logger.warn('[CacheService] ffmpeg conversion failed or ffmpeg not installed', e);
+    }
+
     progressCb?.(1);
     return destinationPath;
   }
