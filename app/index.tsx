@@ -199,12 +199,21 @@ export default function HomeScreen() {
     return (
       <View style={dynamicStyles.headerContainer}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <ThemedText style={dynamicStyles.headerTitle}>首页</ThemedText>
-          <Pressable android_ripple={Platform.isTV || deviceType !== 'tv'? { color: 'transparent' } : { color: Colors.dark.link }} style={{ marginLeft: 20 }} onPress={() => router.push("/live")}>
-            {({ focused }) => (
-              <ThemedText style={[dynamicStyles.headerTitle, { color: focused ? "white" : "grey" }]}>直播</ThemedText>
-            )}
-          </Pressable>
+          <StyledButton
+            variant="ghost"
+            isSelected={true}
+            text="视频"
+            style={{ marginRight: 20 }}
+            textStyle={dynamicStyles.headerTitle}
+            onPress={() => {}}
+          />
+          <StyledButton
+            variant="ghost"
+            isSelected={false}
+            text="直播"
+            textStyle={[dynamicStyles.headerTitle, { color: 'grey' }]}
+            onPress={() => router.push("/live")}
+          />
         </View>
         <View style={dynamicStyles.rightHeaderButtons}>
           <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push("/favorites")} variant="ghost">
