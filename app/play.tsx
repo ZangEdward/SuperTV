@@ -8,9 +8,11 @@ import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
 import { SourceSelectionModal } from "@/components/SourceSelectionModal";
 import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
+import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 // import { NextEpisodeOverlay } from "@/components/NextEpisodeOverlay";
-import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
+import { ArrowLeft } from "lucide-react-native";
+import { ArtIconCast } from "@/components/ArtIcons";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import Toast from "react-native-toast-message";
@@ -66,6 +68,19 @@ const createResponsiveStyles = (deviceType: string) => {
       alignItems: "center",
       zIndex: 10,
     },
+    mobileTopBar: {
+      position: 'absolute',
+      top: 30,
+      left: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      zIndex: 20,
+    },
+    iconButton: {
+      padding: 10,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      borderRadius: 25,
+    },
   });
 };
 
@@ -107,6 +122,7 @@ export default function PlayScreen() {
     setVideoRef,
     handlePlaybackStatusUpdate,
     setShowControls,
+    setShowCastModal,
     // setShowNextEpisodeOverlay,
     reset,
     loadVideo,
@@ -232,6 +248,24 @@ export default function PlayScreen() {
           <PlayerControls showControls={showControls} setShowControls={setShowControls} />
         )}
 
+        {showControls && deviceType !== "tv" && (
+          <View style={dynamicStyles.mobileTopBar}>
+            <TouchableOpacity
+              style={dynamicStyles.iconButton}
+              onPress={() => router.back()}
+            >
+              <ArrowLeft color="white" size={26} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[dynamicStyles.iconButton, { marginLeft: 15 }]}
+              onPress={() => setShowCastModal(true)}
+            >
+              <ArtIconCast size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <SeekingBar />
 
         {/* 只在Video组件存在且正在加载时显示加载动画覆盖层 */}
@@ -247,6 +281,7 @@ export default function PlayScreen() {
       <EpisodeSelectionModal />
       <SourceSelectionModal />
       <SpeedSelectionModal />
+      <CastModal />
     </ThemedView>
   );
 }
