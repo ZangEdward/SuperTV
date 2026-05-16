@@ -134,18 +134,12 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       }).start(({ finished }) => {
         if (finished && targetTranslate !== 0) {
           const direction = targetTranslate > 0 ? 'back' : 'forward';
+          // 导航到目标路由；避免在本地做额外的入场动画，直接重置位置
           handleTabPress(filteredTabs[targetIndex].route, direction);
 
-          // 【进场衔接】：新页面从镜像位置顺滑归位
-          dragX.setValue(-targetTranslate);
-          Animated.spring(dragX, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 0,
-            speed: 14,
-          }).start(() => {
-            isTransitioning.current = false;
-          });
+          // 直接重置 dragX 到 0，避免与路由切换产生双重动画
+          dragX.setValue(0);
+          isTransitioning.current = false;
         } else {
           // 如果没有触发切页，则回弹原位
           dragX.setValue(0);
