@@ -75,7 +75,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
       } else {
         router.push({
           pathname: "/detail",
-          params: { source, q: title },
+          params: { source, q: title, id },
         });
       }
     };

@@ -111,6 +111,13 @@ const useDetailStore = create<DetailState>((set, get) => ({
           return (a.latency || 0) - (b.latency || 0);
         });
 
+        const preferredId = id?.toString();
+        const preferredMatch = preferredId
+          ? finalResults.find(
+              (result) => result.id.toString() === preferredId && result.source === preferredSource
+            )
+          : null;
+
         return {
           searchResults: finalResults,
           sources: finalResults.map((r) => ({
@@ -118,7 +125,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
             source_name: r.source_name,
             resolution: r.resolution,
           })),
-          detail: state.detail ?? finalResults[0] ?? null,
+          detail: state.detail ?? preferredMatch ?? finalResults[0] ?? null,
         };
       });
     };

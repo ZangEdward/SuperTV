@@ -45,7 +45,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   }, [pathname, filteredTabs]);
 
   const isTabRoute = currentIndex !== -1;
-  const enableSwipe = pathname === '/' && isTabRoute;
+  const enableSwipe = isTabRoute;
   const screenWidth = Dimensions.get('window').width;
   const tabBarWidth = screenWidth - spacing * 2;
   const tabWidth = tabBarWidth / filteredTabs.length;
