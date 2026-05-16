@@ -65,7 +65,14 @@ const useCacheStore = create<CacheState>((set, get) => ({
       const fileName = CacheService.buildFileName(source, id, episodeIndex, episodeUrl);
       const fileUri = `${CacheService.getDownloadDirectory()}${fileName}`;
 
-      const result = await FileSystem.downloadAsync(episodeUrl, fileUri);
+      let downloadUri = fileUri;
+      if (episodeUrl.toLowerCase().includes(".m3u8")) {
+        downloadUri = await CacheService.downloadM3U8AsMp4(episodeUrl, fileUri);
+      } else {
+        const result = await FileSystem.downloadAsync(episodeUrl, fileUri);
+        downloadUri = result.uri;
+      }
+
       const cachedItem: CachedVideoItem = {
         id: itemId,
         source,
@@ -74,7 +81,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         poster,
         episodeIndex,
         episodeTitle,
-        fileUri: result.uri,
+        fileUri: downloadUri,
         totalEpisodes,
         downloadedAt: Date.now(),
         resolution,
