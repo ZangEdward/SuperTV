@@ -195,7 +195,12 @@ export class CacheService {
     })[0];
   }
 
-  static async downloadM3U8AsMp4(url: string, destinationPath: string, signal?: AbortSignal): Promise<string> {
+  static async downloadM3U8AsMp4(
+    url: string,
+    destinationPath: string,
+    signal?: AbortSignal,
+    progressCb?: (progress: number) => void
+  ): Promise<string> {
     const start = Date.now();
     logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url}`);
     const fetchText = async (uri: string): Promise<string> => {
@@ -243,6 +248,7 @@ export class CacheService {
     const writeStream = await RNFetchBlob.fs.writeStream(destinationPath, "base64", true);
 
     let index = 0;
+    const total = mediaParsed.segments.length;
     for (const segment of mediaParsed.segments) {
       if (signal?.aborted) {
         await writeStream.close();
@@ -259,12 +265,52 @@ export class CacheService {
       }
       const base64 = response.base64();
       await writeStream.write(base64);
+      // report progress as fraction of segments downloaded
+      try {
+        progressCb?.(index / total);
+      } catch {}
     }
 
     await writeStream.close();
     const elapsed = Date.now() - start;
     logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
+    progressCb?.(1);
     return destinationPath;
+  }
+
+  static async downloadFileWithProgress(
+    url: string,
+    destinationPath: string,
+    progressCb?: (progress: number) => void,
+    options?: FileSystem.DownloadOptions
+  ): Promise<string> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const resumable = FileSystem.createDownloadResumable(
+          url,
+          destinationPath,
+          options || {},
+          (downloadProgress) => {
+            const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+            if (totalBytesExpectedToWrite > 0) {
+              const p = totalBytesWritten / totalBytesExpectedToWrite;
+              try {
+                progressCb?.(p);
+              } catch {}
+            }
+          }
+        );
+
+        const result = await resumable.downloadAsync();
+        progressCb?.(1);
+        if (!result || !result.uri) {
+          throw new Error('下载失败，未获取到文件路径');
+        }
+        resolve(result.uri);
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   static getDownloadDirectory(): string {

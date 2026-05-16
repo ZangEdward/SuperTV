@@ -13,6 +13,7 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 export default function CacheManagementScreen() {
   const router = useRouter();
   const { items, loadCache, removeCacheItem, loading } = useCacheStore();
+  const { downloadProgress, currentDownloadId } = useCacheStore();
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { spacing } = responsiveConfig;
@@ -44,12 +45,21 @@ export default function CacheManagementScreen() {
                   <ThemedText style={styles.title} numberOfLines={2}>{item.title}</ThemedText>
                   <ThemedText style={styles.meta}>{item.source_name} · 第 {item.episodeIndex + 1} 集</ThemedText>
                   <ThemedText style={styles.meta}>已缓存 {item.totalEpisodes} 集</ThemedText>
+                  {downloadProgress && downloadProgress[item.id] != null && downloadProgress[item.id] < 1 ? (
+                    <View style={styles.progressWrap}>
+                      <View style={styles.progressBarBackground}>
+                        <View style={[styles.progressBarFill, { width: `${Math.round((downloadProgress[item.id] || 0) * 100)}%` }]} />
+                      </View>
+                      <ThemedText style={styles.progressText}>{Math.round((downloadProgress[item.id] || 0) * 100)}%</ThemedText>
+                    </View>
+                  ) : null}
                   <View style={styles.actions}>
                     <StyledButton
                       text="播放"
                       variant="primary"
                       onPress={() => handlePlayCached(item.fileUri, item.title)}
                       style={styles.actionButton}
+                      disabled={currentDownloadId === item.id}
                     />
                     <StyledButton
                       text="删除"
@@ -85,6 +95,29 @@ const styles = StyleSheet.create({
   poster: {
     width: 120,
     height: 170,
+  },
+  progressWrap: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBarBackground: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#333',
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginRight: 8,
+  },
+  progressBarFill: {
+    height: 8,
+    backgroundColor: '#00bb5e',
+  },
+  progressText: {
+    color: '#ddd',
+    fontSize: 12,
+    minWidth: 36,
+    textAlign: 'right',
   },
   content: {
     flex: 1,

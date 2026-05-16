@@ -11,6 +11,7 @@ export interface CacheState {
   loading: boolean;
   error: string | null;
   currentDownloadId: string | null;
+  downloadProgress: { [id: string]: number };
   loadCache: () => Promise<void>;
   downloadEpisode: (options: {
     source: string;
@@ -33,6 +34,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
   loading: false,
   error: null,
   currentDownloadId: null,
+  downloadProgress: {},
 
   loadCache: async () => {
     set({ loading: true, error: null });
@@ -58,7 +60,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     resolution,
   }) => {
     const itemId = `${source}_${id}_${episodeIndex}`;
-    set({ currentDownloadId: itemId });
+    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
 
     try {
       await CacheService.ensureDownloadDirectory();
@@ -67,10 +69,13 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
       let downloadUri = fileUri;
       if (episodeUrl.toLowerCase().includes(".m3u8")) {
-        downloadUri = await CacheService.downloadM3U8AsMp4(episodeUrl, fileUri);
+        downloadUri = await CacheService.downloadM3U8AsMp4(episodeUrl, fileUri, undefined, (p) => {
+          set((state) => ({ downloadProgress: { ...(state.downloadProgress || {}), [itemId]: p } }));
+        });
       } else {
-        const result = await FileSystem.downloadAsync(episodeUrl, fileUri);
-        downloadUri = result.uri;
+        downloadUri = await CacheService.downloadFileWithProgress(episodeUrl, fileUri, (p) => {
+          set((state) => ({ downloadProgress: { ...(state.downloadProgress || {}), [itemId]: p } }));
+        });
       }
 
       const cachedItem: CachedVideoItem = {
@@ -88,11 +93,11 @@ const useCacheStore = create<CacheState>((set, get) => ({
       };
 
       await CacheService.add(cachedItem);
-      set((state) => ({ items: [cachedItem, ...state.items], currentDownloadId: null }));
+      set((state) => ({ items: [cachedItem, ...state.items], currentDownloadId: null, downloadProgress: { ...(state.downloadProgress || {}), [itemId]: 1 } }));
       Toast.show({ type: "success", text1: "下载完成", text2: `${title} ${episodeTitle}` });
     } catch (error) {
       logger.warn("downloadEpisode failed", error);
-      set({ currentDownloadId: null });
+      set({ currentDownloadId: null, downloadProgress: { ...(get().downloadProgress || {}) } });
       Toast.show({ type: "error", text1: "下载失败", text2: `${title} ${episodeTitle}` });
     }
   },
@@ -105,7 +110,10 @@ const useCacheStore = create<CacheState>((set, get) => ({
         await CacheService.deleteFile(existing.fileUri);
       }
       await CacheService.remove(id);
-      set((state) => ({ items: state.items.filter((item) => item.id !== id), loading: false }));
+      const next = get().items.filter((item) => item.id !== id);
+      const dp = { ...(get().downloadProgress || {}) };
+      delete dp[id];
+      set((state) => ({ items: next, loading: false, downloadProgress: dp }));
       Toast.show({ type: "success", text1: "已删除缓存" });
     } catch (error) {
       logger.warn("removeCacheItem failed", error);
@@ -117,7 +125,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await CacheService.clearAll();
-      set({ items: [], loading: false });
+      set({ items: [], loading: false, downloadProgress: {} });
       Toast.show({ type: "success", text1: "缓存已清除" });
     } catch (error) {
       logger.warn("clearCache failed", error);
