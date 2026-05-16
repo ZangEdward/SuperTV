@@ -45,6 +45,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   }, [pathname, filteredTabs]);
 
   const isTabRoute = currentIndex !== -1;
+  const enableSwipe = pathname === '/' && isTabRoute;
   const screenWidth = Dimensions.get('window').width;
   const tabBarWidth = screenWidth - spacing * 2;
   const tabWidth = tabBarWidth / filteredTabs.length;
@@ -157,22 +158,26 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
   return (
     <View style={dynamicStyles.container}>
-      <PanGestureHandler
-        onGestureEvent={onGestureEvent}
-        onHandlerStateChange={onHandlerStateChange}
-        activeOffsetX={[-5, 5]} // 极高灵敏度
-        failOffsetY={[-50, 50]}  // 允许更大的垂直误差，不轻易中断滑动
-        shouldCancelWhenOutside={false}
-      >
-        <Animated.View style={[
-          dynamicStyles.content,
-          {
-            transform: [{ translateX: dragX }],
-          }
-        ]}>
-          {children}
-        </Animated.View>
-      </PanGestureHandler>
+      {enableSwipe ? (
+        <PanGestureHandler
+          onGestureEvent={onGestureEvent}
+          onHandlerStateChange={onHandlerStateChange}
+          activeOffsetX={[-5, 5]} // 极高灵敏度
+          failOffsetY={[-50, 50]}  // 允许更大的垂直误差，不轻易中断滑动
+          shouldCancelWhenOutside={false}
+        >
+          <Animated.View style={[
+            dynamicStyles.content,
+            {
+              transform: [{ translateX: dragX }],
+            }
+          ]}>
+            {children}
+          </Animated.View>
+        </PanGestureHandler>
+      ) : (
+        <View style={dynamicStyles.content}>{children}</View>
+      )}
       
       {isTabRoute && (
         <View style={dynamicStyles.tabBar}>

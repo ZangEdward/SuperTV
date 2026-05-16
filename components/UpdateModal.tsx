@@ -18,6 +18,7 @@ export function UpdateModal() {
     startDownload,
     installUpdate,
     skipThisVersion,
+    cancelDownload,
     downloadedPath,
   } = useUpdateStore();
 
@@ -107,6 +108,12 @@ export function UpdateModal() {
                 <ThemedText style={styles.buttonText}>{getButtonText()}</ThemedText>
               )}
             </StyledButton>
+
+            {downloading && !downloadedPath && (
+              <StyledButton onPress={() => cancelDownload()} variant="ghost" style={styles.button}>
+                <ThemedText style={styles.buttonText}>取消下载</ThemedText>
+              </StyledButton>
+            )}
 
             {!downloading && !downloadedPath && (
               <>

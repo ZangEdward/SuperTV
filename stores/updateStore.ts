@@ -29,6 +29,7 @@ interface UpdateState {
   setShowUpdateModal: (show: boolean) => void;
   skipThisVersion: () => Promise<void>;
   reset: () => void;
+  cancelDownload: () => Promise<void>;
 }
 
 const STORAGE_KEYS = {
@@ -171,6 +172,16 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   // 设置显示更新弹窗
   setShowUpdateModal: (show: boolean) => {
     set({ showUpdateModal: show });
+  },
+
+  cancelDownload: async () => {
+    try {
+      await updateService.cancelCurrentDownload();
+      set({ downloading: false, error: '下载已取消' });
+    } catch (error) {
+      logger.warn('cancelDownload failed', error);
+      set({ downloading: false, error: '取消失败' });
+    }
   },
 
   // 跳过此版本

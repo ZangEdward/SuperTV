@@ -12,7 +12,7 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 
 export default function CacheManagementScreen() {
   const router = useRouter();
-  const { items, loadCache, removeCacheItem, loading } = useCacheStore();
+  const { items, loadCache, removeCacheItem, loading, concurrency, setConcurrency } = useCacheStore();
   const { queue, downloadQueuedEpisode, cancelQueuedEpisode, cancelGroup, downloadProgress, currentDownloadId } = useCacheStore();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
   const responsiveConfig = useResponsiveLayout();
@@ -31,6 +31,16 @@ export default function CacheManagementScreen() {
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
+        {/* 并发设置 */}
+        <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}> 
+          <ThemedText style={[styles.subtitle, { marginBottom: 8 }]}>并发下载</ThemedText>
+          <View style={styles.concurrencyRow}>
+            <StyledButton text="-" onPress={() => setConcurrency(Math.max(1, concurrency - 1))} disabled={concurrency <= 1} style={styles.concurrencyButton} />
+            <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
+            <StyledButton text="+" onPress={() => setConcurrency(Math.min(10, concurrency + 1))} disabled={concurrency >= 10} style={styles.concurrencyButton} />
+          </View>
+          <ThemedText type="subtitle" style={styles.concurrencyHint}>当前并发下载数：{concurrency} / 10</ThemedText>
+        </View>
         {/* 下载队列 */}
         <View style={{ marginBottom: spacing }}>
           <ThemedText style={[styles.title, { marginBottom: 8 }]}>下载列表</ThemedText>
@@ -188,5 +198,33 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     marginRight: 10,
+  },
+  concurrencyContainer: {
+    backgroundColor: '#1d1d1d',
+    borderRadius: 12,
+    padding: 14,
+  },
+  concurrencyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  concurrencyButton: {
+    minWidth: 52,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  concurrencyValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    minWidth: 32,
+    textAlign: 'center',
+  },
+  concurrencyHint: {
+    color: '#aaa',
+    marginTop: 10,
+    textAlign: 'center',
   },
 });

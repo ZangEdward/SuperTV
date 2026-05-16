@@ -16,6 +16,8 @@ export interface CacheState {
   queue: GroupedDownload[];
   concurrency: number;
   activeCount: number;
+  setConcurrency: (value: number) => void;
+  processQueue?: () => void;
   enqueueSeries: (series: Omit<GroupedDownload, 'groupId' | 'episodes'> & { episodes: { index: number; url: string }[] }) => void;
   downloadQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
   cancelQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
@@ -64,6 +66,22 @@ const useCacheStore = create<CacheState>((set, get) => ({
   concurrency: 2,
   activeCount: 0,
 
+  setConcurrency: (value) => {
+    const nextValue = Math.max(1, Math.min(10, value));
+    set({ concurrency: nextValue });
+    (get() as any).processQueue?.();
+  },
+
+  processQueue: () => {
+    let state = get();
+    while (state.activeCount < state.concurrency) {
+      const next = state.queue.flatMap((group) => group.episodes.map((episode) => ({ groupId: group.groupId, episode })) ).find((item) => item.episode.status === 'queued');
+      if (!next) break;
+      get().downloadQueuedEpisode(next.groupId, next.episode.index);
+      state = get();
+    }
+  },
+
   loadCache: async () => {
     set({ loading: true, error: null });
     try {
@@ -87,6 +105,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
       episodes,
     };
     set((state) => ({ queue: [...state.queue, group] }));
+    (get() as any).processQueue?.();
   },
 
   // start download for a queued episode respecting concurrency
@@ -165,17 +184,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
       set((s) => ({ currentDownloadId: null, activeCount: Math.max(0, s.activeCount - 1), queue: [...s.queue] }));
     }
 
-    // process next queued episode
-    const nextGroup = get().queue.find((g) => g.episodes.some((e) => e.status === 'queued'));
-    if (nextGroup) {
-      const nextEp = nextGroup.episodes.find((e) => e.status === 'queued');
-      if (nextEp) {
-        nextEp.status = 'pending';
-        set({ queue: [...get().queue] });
-        // fire and forget
-        get().downloadQueuedEpisode(nextGroup.groupId, nextEp.index);
-      }
-    }
+    // process next queued episode(s) if there is now available capacity
+    (get() as any).processQueue?.();
   },
 
   cancelQueuedEpisode: async (groupId, episodeIndex) => {
@@ -196,6 +206,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
       } catch (e) {}
       delete controllers[itemId];
       set((s) => ({ queue: [...s.queue], activeCount: Math.max(0, s.activeCount - 1) }));
+      (get() as any).processQueue?.();
     }
     ep.status = 'cancelled';
     ep.progress = 0;
@@ -212,6 +223,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }
     // remove group
     set((s) => ({ queue: s.queue.filter((g) => g.groupId !== groupId) }));
+    (get() as any).processQueue?.();
   },
 
   downloadEpisode: async ({

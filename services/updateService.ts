@@ -22,6 +22,16 @@ interface VersionInfo {
 const ANDROID_MIME_TYPE = 'application/vnd.android.package-archive';
 
 class UpdateService {
+  private currentDownloadResumable: FileSystem.DownloadResumable | null = null;
+  async cancelCurrentDownload(): Promise<void> {
+    if (!this.currentDownloadResumable) return;
+    try {
+      await this.currentDownloadResumable.pauseAsync();
+    } catch (e) {
+      logger.warn('cancelCurrentDownload failed', e);
+    }
+    this.currentDownloadResumable = null;
+  }
   private static instance: UpdateService;
   static getInstance(): UpdateService {
     if (!UpdateService.instance) {
@@ -175,8 +185,10 @@ class UpdateService {
             }
           },
         );
+        this.currentDownloadResumable = downloadResumable;
 
         const result = await downloadResumable.downloadAsync();
+        this.currentDownloadResumable = null;
         if (result && result.uri) {
           logger.debug(`APK downloaded to ${result.uri}`);
           return result.uri;
@@ -184,6 +196,12 @@ class UpdateService {
           throw new Error('Download failed: No URI available');
         }
       } catch (e) {
+        this.currentDownloadResumable = null;
+        try {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+        } catch (cleanupError) {
+          logger.warn('cleanup failed after download error', cleanupError);
+        }
         logger.warn(`downloadApk attempt ${attempt}/${maxRetries}`, e);
         if (attempt === maxRetries) {
           Toast.show({
