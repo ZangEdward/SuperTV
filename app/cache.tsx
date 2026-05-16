@@ -19,6 +19,7 @@ export default function CacheScreen() {
   const { downloadEpisode, currentDownloadId, enqueueSeries } = useCacheStore();
   const [showAllSources, setShowAllSources] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResultWithResolution | null>(null);
+  const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
 
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
@@ -46,6 +47,43 @@ export default function CacheScreen() {
   const handleSelectSource = async (sourceItem: SearchResultWithResolution) => {
     await setDetail(sourceItem);
     setSelectedSource(sourceItem);
+    setSelectedEpisodes([]);
+  };
+
+  const toggleEpisodeSelection = (episodeIndex: number) => {
+    setSelectedEpisodes((prev) => {
+      if (prev.includes(episodeIndex)) {
+        return prev.filter((index) => index !== episodeIndex);
+      }
+      return [...prev, episodeIndex];
+    });
+  };
+
+  const handleSelectAllEpisodes = () => {
+    if (!selectedSource) return;
+    setSelectedEpisodes(selectedSource.episodes.map((_, index) => index));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedEpisodes([]);
+  };
+
+  const handleBatchCache = () => {
+    if (!selectedSource) return;
+    const episodeIndexes = selectedEpisodes.length > 0 ? selectedEpisodes : selectedSource.episodes.map((_, index) => index);
+    if (!episodeIndexes.length) {
+      Alert.alert('请选择要缓存的集数');
+      return;
+    }
+    enqueueSeries({
+      source: selectedSource.source,
+      id: selectedSource.id.toString(),
+      title: selectedSource.title,
+      poster: selectedSource.poster,
+      episodes: episodeIndexes.map((index) => ({ index, url: selectedSource.episodes[index] })),
+    });
+    Alert.alert('已加入下载列表', `已加入 ${episodeIndexes.length} 集到缓存队列`);
+    setSelectedEpisodes([]);
   };
 
   const handleDownloadEpisode = async (episodeIndex: number) => {
@@ -110,17 +148,30 @@ export default function CacheScreen() {
             </View>
           </View>
           <View style={dynamicStyles.section}>
-            <StyledButton
-              text="加入下载列表"
-              variant="primary"
-              onPress={() => {
-                if (!selectedSource) return;
-                // enqueue series with all episodes (user can pick in 下载列表页面)
-                enqueueSeries({ source: selectedSource.source, id: selectedSource.id.toString(), title: selectedSource.title, poster: selectedSource.poster, episodes: selectedSource.episodes.map((url, idx) => ({ index: idx, url })) });
-                Alert.alert('已加入下载列表', '请到 缓存管理 页面选择需要下载的分集');
-              }}
-              style={dynamicStyles.returnButton}
-            />
+            <View style={dynamicStyles.selectionHeader}>
+              <ThemedText style={dynamicStyles.sectionTitle}>已选集数</ThemedText>
+              <ThemedText style={dynamicStyles.selectionCount}>{selectedEpisodes.length} / {selectedSource?.episodes.length || 0}</ThemedText>
+            </View>
+            <View style={dynamicStyles.buttonRow}>
+              <StyledButton
+                text="全选"
+                variant="ghost"
+                onPress={handleSelectAllEpisodes}
+                style={dynamicStyles.filterButton}
+              />
+              <StyledButton
+                text="清除"
+                variant="ghost"
+                onPress={handleClearSelection}
+                style={dynamicStyles.filterButton}
+              />
+              <StyledButton
+                text={`加入下载列表${selectedEpisodes.length > 0 ? ` (${selectedEpisodes.length})` : ''}`}
+                variant="primary"
+                onPress={handleBatchCache}
+                style={dynamicStyles.returnButton}
+              />
+            </View>
           </View>
 
           <View style={dynamicStyles.section}>
@@ -156,18 +207,19 @@ export default function CacheScreen() {
             <View style={dynamicStyles.episodeList}>
               {selectedSource?.episodes.map((episode, index) => {
                 const buttonId = `${selectedSource.source}_${selectedSource.id}_${index}`;
+                const isSelected = selectedEpisodes.includes(index);
                 return (
                   <StyledButton
                     key={buttonId}
-                    onPress={() => handleDownloadEpisode(index)}
-                    variant="primary"
+                    onPress={() => toggleEpisodeSelection(index)}
+                    variant={isSelected ? "primary" : "default"}
                     style={dynamicStyles.episodeButton}
                     text={
                       currentDownloadId === buttonId
                         ? `下载中 第 ${index + 1} 集...`
                         : `第 ${index + 1} 集`
                     }
-                    disabled={currentDownloadId !== null}
+                    textStyle={isSelected ? dynamicStyles.selectedEpisodeText : undefined}
                   />
                 );
               })}
@@ -243,6 +295,26 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       fontWeight: "bold",
       color: "white",
     },
+    selectionHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: spacing / 2,
+    },
+    selectionCount: {
+      color: "#ddd",
+      fontSize: 14,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: spacing / 2,
+      marginBottom: spacing,
+    },
+    filterButton: {
+      minWidth: 88,
+    },
     showAllButton: {
       minHeight: 32,
       minWidth: 120,
@@ -281,6 +353,10 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       marginRight: spacing / 2,
       marginBottom: spacing / 2,
       minWidth: 110,
+    },
+    selectedEpisodeText: {
+      fontWeight: "700",
+      color: "#fff",
     },
   });
 };

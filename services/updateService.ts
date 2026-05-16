@@ -49,18 +49,18 @@ class UpdateService {
       throw new Error('Update configuration is missing');
     }
     const maxRetries = 3;
+    let pkgUrl = UPDATE_CONFIG.GITHUB_RAW_URL;
+    let sizeUrl = pkgUrl.replace('package.json', 'apksize.json');
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
         // 并行获取 package.json 和 apksize.json
-        const pkgUrl = UPDATE_CONFIG.GITHUB_RAW_URL;
-        const sizeUrl = pkgUrl.replace('package.json', 'apksize.json');
-
         const [pkgRes, sizeRes] = await Promise.all([
           fetch(pkgUrl, { signal: controller.signal }),
-          fetch(sizeUrl, { signal: controller.signal }).catch(() => null)
+          fetch(sizeUrl, { signal: controller.signal }).catch(() => null),
         ]);
 
         clearTimeout(timeoutId);
@@ -76,7 +76,6 @@ class UpdateService {
         if (sizeRes && sizeRes.ok) {
           try {
             const sizeData = await sizeRes.json();
-            // 根据用户提供的生成方式，字段名为 apksize
             apkSize = Number(sizeData.apksize);
           } catch (e) {
             logger.warn('解析 apksize.json 失败', e);
@@ -98,11 +97,16 @@ class UpdateService {
           });
           throw e;
         }
-        // 指数退避
+
+        if (attempt === 1 && pkgUrl.startsWith('https://ghfast.top/https://')) {
+          pkgUrl = pkgUrl.replace('https://ghfast.top/https://', 'https://');
+          sizeUrl = sizeUrl.replace('https://ghfast.top/https://', 'https://');
+          logger.warn('切换到直接 GitHub raw URL 进行更新检查');
+        }
+
         await new Promise(r => setTimeout(r, 2_000 * attempt));
       }
     }
-    // 这句永远走不到，仅为 TypeScript 报错
     throw new Error('Unexpected');
   }
 
@@ -152,30 +156,40 @@ class UpdateService {
     const maxRetries = 3;
     await this.cleanOldApkFiles();
 
+    let fileUri: string | null = null;
+    let downloadResumable: FileSystem.DownloadResumable | null = null;
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const timestamp = Date.now();
         const fileName = `OrionTV_v${timestamp}.apk`;
-        const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+        fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
         // Try to resolve the final download URL (follow redirects) and validate headers
         let finalUrl = url;
         try {
-          const probe = await fetch(url, { method: 'GET' });
+          const probe = await fetch(url, { method: 'HEAD' });
           if (probe && probe.ok && probe.url) {
             finalUrl = probe.url;
           }
         } catch (e) {
-          logger.warn('Failed to probe download URL, proceeding with original URL', e);
+          logger.warn('Failed to probe download URL via HEAD, retrying GET probe', e);
+          try {
+            const probe = await fetch(url, { method: 'GET' });
+            if (probe && probe.ok && probe.url) {
+              finalUrl = probe.url;
+            }
+          } catch (inner) {
+            logger.warn('Failed to probe download URL via GET, proceeding with original URL', inner);
+          }
         }
 
         const headers = {
           Accept: 'application/vnd.android.package-archive, application/octet-stream, */*',
-          // Some proxies (like GitHub raw proxies) may require a UA
           'User-Agent': 'SuperTV-Updater/1.0',
         };
 
-        const downloadResumable = FileSystem.createDownloadResumable(
+        downloadResumable = FileSystem.createDownloadResumable(
           finalUrl,
           fileUri,
           { headers },
@@ -197,10 +211,12 @@ class UpdateService {
         }
       } catch (e) {
         this.currentDownloadResumable = null;
-        try {
-          await FileSystem.deleteAsync(fileUri, { idempotent: true });
-        } catch (cleanupError) {
-          logger.warn('cleanup failed after download error', cleanupError);
+        if (fileUri) {
+          try {
+            await FileSystem.deleteAsync(fileUri, { idempotent: true });
+          } catch (cleanupError) {
+            logger.warn('cleanup failed after download error', cleanupError);
+          }
         }
         logger.warn(`downloadApk attempt ${attempt}/${maxRetries}`, e);
         if (attempt === maxRetries) {
@@ -211,11 +227,9 @@ class UpdateService {
           });
           throw e;
         }
-        // 指数退避
         await new Promise(r => setTimeout(r, 3_000 * attempt));
       }
     }
-    // 同上，理论不会到这里
     throw new Error('Download failed');
   }
 

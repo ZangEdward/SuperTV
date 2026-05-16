@@ -15,6 +15,7 @@ export default function CacheManagementScreen() {
   const { items, loadCache, removeCacheItem, loading, concurrency, setConcurrency } = useCacheStore();
   const { queue, downloadQueuedEpisode, cancelQueuedEpisode, cancelGroup, downloadProgress, currentDownloadId } = useCacheStore();
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
+  const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { spacing } = responsiveConfig;
@@ -27,23 +28,76 @@ export default function CacheManagementScreen() {
     router.push(`/play?title=${encodeURIComponent(title)}&fileUri=${encodeURIComponent(fileUri)}`);
   };
 
+  const activeDownload = React.useMemo(() => {
+    if (!currentDownloadId) return null;
+    for (const group of queue) {
+      for (const ep of group.episodes) {
+        const itemId = `${group.source}_${group.id}_${ep.index}`;
+        if (itemId === currentDownloadId) {
+          return {
+            title: group.title,
+            episodeIndex: ep.index,
+            progress: downloadProgress?.[itemId] ?? ep.progress ?? 0,
+          };
+        }
+      }
+    }
+    return null;
+  }, [currentDownloadId, downloadProgress, queue]);
+
   return (
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
         {/* 并发设置 */}
         <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}> 
-          <ThemedText style={[styles.subtitle, { marginBottom: 8 }]}>并发下载</ThemedText>
-          <View style={styles.concurrencyRow}>
-            <StyledButton text="-" onPress={() => setConcurrency(Math.max(1, concurrency - 1))} disabled={concurrency <= 1} style={styles.concurrencyButton} />
-            <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
-            <StyledButton text="+" onPress={() => setConcurrency(Math.min(10, concurrency + 1))} disabled={concurrency >= 10} style={styles.concurrencyButton} />
-          </View>
-          <ThemedText type="subtitle" style={styles.concurrencyHint}>当前并发下载数：{concurrency} / 10</ThemedText>
+          <ThemedText style={[styles.concurrencyLabel, { marginBottom: 8 }]}>并发下载</ThemedText>
+          <TouchableOpacity
+            style={styles.concurrencySelector}
+            onPress={() => setConcurrencyOpen((open) => !open)}
+          >
+            <ThemedText style={styles.concurrencyLabel}>当前并发下载数</ThemedText>
+            <View style={styles.selectorValueWrap}>
+              <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
+              <ThemedText style={styles.concurrencyArrow}>{concurrencyOpen ? '▲' : '▼'}</ThemedText>
+            </View>
+          </TouchableOpacity>
+          {concurrencyOpen && (
+            <View style={styles.concurrencyOptions}>
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                <StyledButton
+                  key={value}
+                  text={`${value}`}
+                  onPress={() => {
+                    setConcurrency(value);
+                    setConcurrencyOpen(false);
+                  }}
+                  isSelected={value === concurrency}
+                  variant={value === concurrency ? 'primary' : 'default'}
+                  style={styles.optionButton}
+                  textStyle={styles.optionText}
+                />
+              ))}
+            </View>
+          )}
+          <ThemedText type="subtitle" style={styles.concurrencyHint}>选择并发下载数量，最多 10 个任务并行</ThemedText>
         </View>
         {/* 下载队列 */}
         <View style={{ marginBottom: spacing }}>
           <ThemedText style={[styles.title, { marginBottom: 8 }]}>下载列表</ThemedText>
+          {activeDownload ? (
+            <View style={styles.currentStatusRow}>
+              <ThemedText style={styles.currentStatusLabel}>正在缓存</ThemedText>
+              <ThemedText style={styles.currentStatusValue}>
+                {activeDownload.title} · 第 {activeDownload.episodeIndex + 1} 集 · {Math.round(activeDownload.progress * 100)}%
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.currentStatusRow}>
+              <ThemedText style={styles.currentStatusLabel}>当前状态</ThemedText>
+              <ThemedText style={styles.currentStatusValue}>暂无进行中的缓存</ThemedText>
+            </View>
+          )}
           {queue.length === 0 ? (
             <ThemedText type="subtitle">下载列表为空</ThemedText>
           ) : (
@@ -66,22 +120,27 @@ export default function CacheManagementScreen() {
                 </TouchableOpacity>
                 {expandedGroups[g.groupId] && (
                   <View style={{ padding: 12 }}>
-                    {g.episodes.map((ep) => (
-                      <View key={ep.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                        <ThemedText style={{ flex: 1 }}>第 {ep.index + 1} 集</ThemedText>
-                        {ep.status === 'downloading' || (downloadProgress && downloadProgress[`${g.source}_${g.id}_${ep.index}`]) ? (
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            <View style={styles.progressBarBackground}>
-                              <View style={[styles.progressBarFill, { width: `${Math.round((ep.progress || downloadProgress[`${g.source}_${g.id}_${ep.index}`] || 0) * 100)}%` }]} />
+                    {g.episodes.map((ep) => {
+                      const progressValue = ep.progress ?? downloadProgress?.[`${g.source}_${g.id}_${ep.index}`] ?? 0;
+                      const progressPercent = Math.round(progressValue * 100);
+                      return (
+                        <View key={ep.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                          <ThemedText style={{ flex: 1 }}>第 {ep.index + 1} 集</ThemedText>
+                          {ep.status === 'downloading' || progressValue > 0 ? (
+                            <View style={{ flex: 1, marginRight: 8 }}>
+                              <View style={styles.progressBarBackground}>
+                                <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+                              </View>
+                              <ThemedText style={styles.progressPercentage}>{progressPercent}%</ThemedText>
                             </View>
+                          ) : null}
+                          <View style={{ width: 120, flexDirection: 'row' }}>
+                            <StyledButton text="下载" onPress={() => downloadQueuedEpisode(g.groupId, ep.index)} disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`} style={{ marginRight: 6 }} />
+                            <StyledButton text="取消" variant="ghost" onPress={() => cancelQueuedEpisode(g.groupId, ep.index)} />
                           </View>
-                        ) : null}
-                        <View style={{ width: 120, flexDirection: 'row' }}>
-                          <StyledButton text="下载" onPress={() => downloadQueuedEpisode(g.groupId, ep.index)} disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`} style={{ marginRight: 6 }} />
-                          <StyledButton text="取消" variant="ghost" onPress={() => cancelQueuedEpisode(g.groupId, ep.index)} />
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
               </View>
@@ -171,10 +230,35 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: '#00bb5e',
   },
+  progressPercentage: {
+    marginTop: 4,
+    color: '#ccc',
+    fontSize: 12,
+    textAlign: 'right',
+  },
   progressText: {
     color: '#ddd',
     fontSize: 12,
     minWidth: 36,
+    textAlign: 'right',
+  },
+  currentStatusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#141414',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  currentStatusLabel: {
+    color: '#aaa',
+    fontSize: 13,
+  },
+  currentStatusValue: {
+    color: '#fff',
+    fontSize: 13,
+    maxWidth: '70%',
     textAlign: 'right',
   },
   content: {
@@ -203,6 +287,43 @@ const styles = StyleSheet.create({
     backgroundColor: '#1d1d1d',
     borderRadius: 12,
     padding: 14,
+  },
+  concurrencySelector: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3a3a3c',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  concurrencyLabel: {
+    color: '#bbb',
+    fontSize: 14,
+  },
+  selectorValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  concurrencyArrow: {
+    color: '#ccc',
+    fontSize: 14,
+  },
+  concurrencyOptions: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  optionButton: {
+    minWidth: 52,
+    marginBottom: 10,
+  },
+  optionText: {
+    textAlign: 'center',
   },
   concurrencyRow: {
     flexDirection: 'row',
