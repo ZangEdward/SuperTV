@@ -99,12 +99,14 @@ export default function PlayScreen() {
     source: sourceStr,
     id: videoId,
     title: videoTitle,
+    fileUri,
   } = useLocalSearchParams<{
     episodeIndex: string;
     position?: string;
     source?: string;
     id?: string;
     title?: string;
+    fileUri?: string;
   }>();
   const episodeIndex = parseInt(episodeIndexStr || "0", 10);
   const position = positionStr ? parseInt(positionStr, 10) : undefined;

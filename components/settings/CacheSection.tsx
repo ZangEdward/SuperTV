@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { View, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
 import { ThemedText } from "../ThemedText";
 import { StyledButton } from "../StyledButton";
 import { SettingsSection } from "./SettingsSection";
-import { SearchHistoryManager, PlayRecordManager } from "@/services/storage";
-import * as FileSystem from 'expo-file-system';
+import { PlayRecordManager } from "@/services/storage";
+import { CacheService } from "@/services/cacheService";
+import useCacheStore from "@/stores/cacheStore";
 import Toast from "react-native-toast-message";
 
 export function CacheSection() {
+  const router = useRouter();
+  const { clearCache } = useCacheStore();
   const [clearing, setClearing] = useState(false);
   const [cacheSize, setCacheSize] = useState<string>("0 MB");
 
@@ -17,25 +21,7 @@ export function CacheSection() {
 
   const calculateCacheSize = async () => {
     try {
-      let totalSize = 0;
-
-      // 1. APK 缓存目录
-      const dirUri = FileSystem.documentDirectory;
-      if (dirUri) {
-        const listing = await FileSystem.readDirectoryAsync(dirUri);
-        for (const file of listing) {
-          if (file.endsWith('.apk')) {
-            const info = await FileSystem.getInfoAsync(dirUri + file);
-            if (info.exists) {
-              totalSize += info.size;
-            }
-          }
-        }
-      }
-
-      // 2. 这里的缓存可以根据实际情况添加更多目录
-      // 例如 expo-image 缓存等
-
+      const totalSize = await CacheService.calculateCacheSize();
       setCacheSize((totalSize / (1024 * 1024)).toFixed(2) + " MB");
     } catch (e) {
       console.warn("计算缓存大小失败:", e);
@@ -45,7 +31,7 @@ export function CacheSection() {
   const handleClearCache = async () => {
     Alert.alert(
       "清除缓存",
-      "确定要清除搜索历史和临时文件吗？",
+      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
       [
         { text: "取消", style: "cancel" },
         {
@@ -53,24 +39,11 @@ export function CacheSection() {
           onPress: async () => {
             setClearing(true);
             try {
-              // 1. 清除搜索历史
-              await SearchHistoryManager.clear();
-
-              // 2. 清除 APK 缓存
-              const dirUri = FileSystem.documentDirectory;
-              if (dirUri) {
-                const listing = await FileSystem.readDirectoryAsync(dirUri);
-                for (const file of listing) {
-                  if (file.endsWith('.apk')) {
-                    await FileSystem.deleteAsync(dirUri + file, { idempotent: true });
-                  }
-                }
-              }
-
+              await clearCache();
               await calculateCacheSize();
               Toast.show({
                 type: "success",
-                text1: "清理完成",
+                text1: "缓存已清除",
               });
             } catch (e) {
               Alert.alert("错误", "清理缓存失败");
@@ -117,7 +90,7 @@ export function CacheSection() {
 
         <View style={styles.row}>
           <View style={styles.info}>
-            <ThemedText style={styles.label}>临时文件缓存</ThemedText>
+            <ThemedText style={styles.label}>已下载缓存</ThemedText>
             <ThemedText style={styles.value}>{cacheSize}</ThemedText>
           </View>
           <StyledButton
@@ -142,6 +115,18 @@ export function CacheSection() {
           >
             <ThemedText style={[styles.buttonText, { color: '#ff4d4f' }]}>清除历史</ThemedText>
           </StyledButton>
+        </View>
+
+        <View style={[styles.row, { marginTop: 16 }]}> 
+          <View style={styles.info}>
+            <ThemedText style={styles.label}>缓存管理</ThemedText>
+            <ThemedText style={styles.subtitle}>进入缓存管理页面查看已下载视频</ThemedText>
+          </View>
+          <StyledButton
+            text="查看"
+            onPress={() => router.push("/cache-management")}
+            style={styles.actionButton}
+          />
         </View>
       </View>
     </SettingsSection>

@@ -39,6 +39,7 @@ interface PlayerState {
     title: string;
     episodeIndex: number;
     position?: number;
+    fileUri?: string;
   }) => Promise<void>;
   playEpisode: (index: number) => void;
   togglePlayPause: () => void;
@@ -86,12 +87,24 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
   setVideoRef: (ref) => set({ videoRef: ref }),
 
-  loadVideo: async ({ source, id, episodeIndex, position, title }) => {
+  loadVideo: async ({ source, id, episodeIndex, position, title, fileUri }) => {
     const perfStart = performance.now();
     logger.info(`[PERF] PlayerStore.loadVideo START - source: ${source}, id: ${id}, title: ${title}`);
 
     let detail = useDetailStore.getState().detail;
     let episodes: string[] = [];
+
+    if (fileUri) {
+      logger.info(`[INFO] Playing local cached file ${fileUri}`);
+      set({
+        isLoading: false,
+        currentEpisodeIndex: 0,
+        initialPosition: position || 0,
+        playbackRate: 1.0,
+        episodes: [{ url: fileUri, title: title || "离线视频" }],
+      });
+      return;
+    }
 
     // 如果有detail，使用detail的source获取episodes；否则使用传入的source
     if (detail && detail.source) {

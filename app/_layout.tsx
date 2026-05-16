@@ -117,10 +117,13 @@ export default function RootLayout() {
                   headerShown: false,
                   contentStyle: { backgroundColor: Colors.dark.background },
                   animation: animation,
+                  gestureEnabled: false,
                 };
               }}>
-                <Stack.Screen name="index" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="index" options={{ gestureEnabled: true }} />
                 <Stack.Screen name="detail" />
+                <Stack.Screen name="cache" />
+                <Stack.Screen name="cache-management" />
                 {Platform.OS !== "web" && <Stack.Screen name="play" />}
                 <Stack.Screen name="search" />
                 <Stack.Screen name="live" />

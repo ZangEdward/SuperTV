@@ -51,13 +51,19 @@ export default function DetailScreen() {
     router.push({
       pathname: "/play",
       params: {
-        // Pass necessary identifiers, the rest will be in the store
         q: detail.title,
         source: detail.source,
         id: detail.id.toString(),
         episodeIndex: episodeIndex.toString(),
       },
     });
+  };
+
+  const handleOpenCache = () => {
+    if (!detail) return;
+    router.push(
+      `/cache?q=${encodeURIComponent(detail.title)}&source=${encodeURIComponent(detail.source)}&id=${encodeURIComponent(detail.id.toString())}`
+    );
   };
 
   if (loading) {
@@ -120,13 +126,21 @@ export default function DetailScreen() {
                 <ThemedText style={dynamicStyles.title} numberOfLines={2}>
                   {detail.title}
                 </ThemedText>
-                <StyledButton onPress={toggleFavorite} variant="ghost" style={dynamicStyles.favoriteButton}>
-                  <FontAwesome
-                    name={isFavorited ? "heart" : "heart-o"}
-                    size={20}
-                    color={isFavorited ? "#feff5f" : "#ccc"}
+                <View style={dynamicStyles.actionButtons}>
+                  <StyledButton onPress={toggleFavorite} variant="ghost" style={dynamicStyles.favoriteButton}>
+                    <FontAwesome
+                      name={isFavorited ? "heart" : "heart-o"}
+                      size={20}
+                      color={isFavorited ? "#feff5f" : "#ccc"}
+                    />
+                  </StyledButton>
+                  <StyledButton
+                    onPress={() => handleOpenCache()}
+                    variant="primary"
+                    text="缓存"
+                    style={dynamicStyles.cacheButton}
                   />
-                </StyledButton>
+                </View>
               </View>
               <View style={dynamicStyles.metaContainer}>
                 <ThemedText style={dynamicStyles.metaText}>{detail.year}</ThemedText>
@@ -379,6 +393,15 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       padding: 10,
       marginLeft: 10,
       backgroundColor: "transparent",
+    },
+    actionButtons: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    cacheButton: {
+      minWidth: 70,
+      paddingHorizontal: 12,
+      marginLeft: 8,
     },
     metaContainer: {
       flexDirection: "row",

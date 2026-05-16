@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, StyleSheet, Alert, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
+import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
@@ -14,7 +15,7 @@ import { LiveStreamSection } from "@/components/settings/LiveStreamSection";
 import { RemoteInputSection } from "@/components/settings/RemoteInputSection";
 import { UpdateSection } from "@/components/settings/UpdateSection";
 import { CacheSection } from "@/components/settings/CacheSection";
-// import { VideoSourceSection } from "@/components/settings/VideoSourceSection";
+import { VideoSourceSection } from "@/components/settings/VideoSourceSection";
 import Toast from "react-native-toast-message";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
@@ -36,6 +37,7 @@ function isSectionItem(
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { loadSettings, saveSettings, setApiBaseUrl, setM3uUrl } = useSettingsStore();
   const { lastMessage, targetPage, clearMessage } = useRemoteControlStore();
   const backgroundColor = useThemeColor({}, "background");
@@ -144,6 +146,10 @@ export default function SettingsScreen() {
     {
       component: <CacheSection />,
       key: "cache",
+    },
+    {
+      component: <VideoSourceSection onChanged={markAsChanged} onFocus={() => setCurrentSection("videoSource")} />,
+      key: "videoSource",
     },
     Platform.OS === "android" && {
       component: <UpdateSection />,
