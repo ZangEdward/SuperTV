@@ -10,6 +10,7 @@ import { SourceSelectionModal } from "@/components/SourceSelectionModal";
 import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
 import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
+import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 // import { NextEpisodeOverlay } from "@/components/NextEpisodeOverlay";
 import { ArrowLeft } from "lucide-react-native";
 import { ArtIconCast } from "@/components/ArtIcons";
