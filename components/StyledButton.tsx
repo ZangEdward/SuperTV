@@ -53,7 +53,8 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
         },
         focusedButton: {
           backgroundColor: Colors.dark.primary,
-          borderColor: "#fff",
+          borderColor: "#fff", // primary 按钮焦点时用白色边框区分绿色背景
+          borderWidth: 3,
         },
         selectedButton: {
           backgroundColor: Colors.dark.primary,
@@ -73,8 +74,14 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
           backgroundColor: "rgba(255, 255, 255, 0.1)",
           borderColor: Colors.dark.primary,
         },
-        selectedButton: {},
-        selectedText: {},
+        selectedButton: {
+          borderBottomWidth: 2,
+          borderBottomColor: Colors.dark.primary,
+        },
+        selectedText: {
+          color: Colors.dark.primary,
+          fontWeight: 'bold',
+        },
       }),
     };
 
@@ -83,7 +90,7 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 10,
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: "transparent",
         flexDirection: "row",
         alignItems: "center",
@@ -91,12 +98,12 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
       },
       focusedButton: {
         backgroundColor: colors.link,
-        borderColor: colors.background,
-        elevation: 8,
+        borderColor: Colors.dark.primary,
+        elevation: 12,
         shadowColor: Colors.dark.primary,
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
+        shadowOpacity: 0.8,
+        shadowRadius: 15,
       },
       selectedButton: {
         backgroundColor: Colors.dark.primary,
@@ -120,7 +127,10 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
       'position', 'top', 'left', 'right', 'bottom', 'zIndex', 'alignSelf'
     ];
 
-    const containerStyle: any = {};
+    const containerStyle: any = {
+      overflow: 'visible', // 允许投影和边框溢出
+      padding: 4, // 为焦点边框和阴影留出空间，解决“显示不完整”问题
+    };
     const decorationStyle: any = {};
 
     Object.keys(flattenedStyle).forEach(key => {
@@ -135,7 +145,14 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
     });
 
     return (
-      <Animated.View style={[animationStyle, containerStyle]}>
+      <Animated.View
+        style={[
+          animationStyle,
+          containerStyle,
+          { overflow: 'visible' },
+          isFocused && { zIndex: 10 } // 确保选中的按钮在最上层
+        ]}
+      >
         <Pressable
           android_ripple={Platform.isTV || deviceType !== 'tv'? { color: 'transparent' } : { color: Colors.dark.link }}
           ref={ref}
