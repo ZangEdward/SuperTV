@@ -49,28 +49,36 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   const tabBarWidth = screenWidth - spacing * 2;
   const tabWidth = tabBarWidth / filteredTabs.length;
 
-  // 动画值使用 Ref 保持
-  const dragX = useRef(new Animated.Value(0)).current; // 实时拖拽偏移
-  const indicatorBasePos = useRef(new Animated.Value(0)).current; // 基础高亮位置
+  // 动画核心
+  const dragX = useRef(new Animated.Value(0)).current;
+  const indicatorBasePos = useRef(new Animated.Value(0)).current;
+  const isTransitioning = useRef(false);
 
-  // 实时高亮位置 = 基础位置 + (手势位移的反向映射)
+  // 实时位置映射
   const indicatorOffset = dragX.interpolate({
     inputRange: [-screenWidth, 0, screenWidth],
     outputRange: [tabWidth, 0, -tabWidth],
   });
   const totalIndicatorPos = Animated.add(indicatorBasePos, indicatorOffset);
 
-  // 同步基础位置
+  // 核心：页面透明度随着 dragX 实时淡入淡出
+  const contentOpacity = dragX.interpolate({
+    inputRange: [-screenWidth, -screenWidth * 0.5, 0, screenWidth * 0.5, screenWidth],
+    outputRange: [0, 0.5, 1, 0.5, 0],
+    extrapolate: 'clamp'
+  });
+
+  // 监听索引变化同步高亮
   useEffect(() => {
     if (isTabRoute) {
       Animated.spring(indicatorBasePos, {
         toValue: currentIndex * tabWidth,
         useNativeDriver: true,
         bounciness: 0,
-        speed: 12,
+        speed: 15,
       }).start();
     }
-  }, [currentIndex, tabWidth, isTabRoute]);
+  }, [currentIndex, isTabRoute]);
 
   const handleTabPress = (route: string, direction = 'forward') => {
     if (pathname === route) return;
@@ -80,7 +88,6 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
     } as any);
   };
 
-  // 响应手势事件：跟手核心
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: dragX } }],
     { useNativeDriver: true }
@@ -91,46 +98,58 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
     const { state, translationX, velocityX } = event.nativeEvent;
 
-    if (state === State.END || state === State.CANCELLED) {
-      const threshold = screenWidth * 0.25; // 降低阈值，更灵敏
-      const fastSwipeThreshold = 500;
+    // 手指触摸瞬间，如果正在动画，则立即停止（打断）
+    if (state === State.BEGAN) {
+      dragX.stopAnimation();
+      isTransitioning.current = false;
+    }
 
-      // 决定去向
+    if (state === State.END || state === State.CANCELLED) {
+      const threshold = screenWidth * 0.2; // 极其灵敏的触发阈值
+      const fastSwipeThreshold = 400;
+
       let targetTranslate = 0;
       let targetIndex = currentIndex;
 
       if (translationX > threshold || velocityX > fastSwipeThreshold) {
-        // 向右划 -> 尝试去左边的 Tab
         if (currentIndex > 0) {
           targetTranslate = screenWidth;
           targetIndex = currentIndex - 1;
         }
       } else if (translationX < -threshold || velocityX < -fastSwipeThreshold) {
-        // 向左划 -> 尝试去右边的 Tab
         if (currentIndex < filteredTabs.length - 1) {
           targetTranslate = -screenWidth;
           targetIndex = currentIndex + 1;
         }
       }
 
-      // 执行物理动画：平滑且可打断感
+      isTransitioning.current = true;
       Animated.spring(dragX, {
         toValue: targetTranslate,
-        velocity: velocityX / 1000, // 将原生速度传入，实现惯性衔接
+        velocity: velocityX / 1000,
         useNativeDriver: true,
         bounciness: 0,
-        restSpeedThreshold: 1,
-        restDisplacementThreshold: 1,
+        restSpeedThreshold: 20, // 提高停止速度，减少吸附等待
+        restDisplacementThreshold: 20,
       }).start(({ finished }) => {
         if (finished && targetTranslate !== 0) {
-          // 动画完成后瞬间切换路由
           const direction = targetTranslate > 0 ? 'back' : 'forward';
           handleTabPress(filteredTabs[targetIndex].route, direction);
-          // 瞬间复位拖拽值，因为路由已经变了
+
+          // 【进场衔接】：新页面从镜像位置顺滑归位
+          dragX.setValue(-targetTranslate);
+          Animated.spring(dragX, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 0,
+            speed: 14,
+          }).start(() => {
+            isTransitioning.current = false;
+          });
+        } else {
+          // 如果没有触发切页，则回弹原位
           dragX.setValue(0);
-        } else if (finished) {
-          // 回弹完成
-          dragX.setValue(0);
+          isTransitioning.current = false;
         }
       });
     }
@@ -142,32 +161,27 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
   return (
     <View style={dynamicStyles.container}>
-      {/* 内容区域：包装手势处理器 */}
       <PanGestureHandler
         onGestureEvent={onGestureEvent}
         onHandlerStateChange={onHandlerStateChange}
-        activeOffsetX={[-10, 10]} // 极大提升手势触发灵敏度
-        failOffsetY={[-30, 30]}  // 允许一定的上下误差，但不影响滚动
+        activeOffsetX={[-5, 5]} // 极高灵敏度
+        failOffsetY={[-50, 50]}  // 允许更大的垂直误差，不轻易中断滑动
+        shouldCancelWhenOutside={false}
       >
         <Animated.View style={[
           dynamicStyles.content,
           {
             transform: [{ translateX: dragX }],
-            opacity: dragX.interpolate({
-              inputRange: [-screenWidth, 0, screenWidth],
-              outputRange: [0.8, 1, 0.8] // 增加透明度变化，提升视觉反馈
-            })
+            opacity: contentOpacity // 全程由手指和物理弹簧驱动的透明度
           }
         ]}>
           {children}
         </Animated.View>
       </PanGestureHandler>
       
-      {/* 底部导航栏 */}
       {isTabRoute && (
         <View style={dynamicStyles.tabBar}>
           <View style={dynamicStyles.tabBarInner}>
-            {/* 绿色高亮指示器：实时映射手势位移 */}
             <Animated.View
               style={[
                 dynamicStyles.indicator,
@@ -183,14 +197,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
                 <TouchableOpacity
                   key={tab.key}
                   style={dynamicStyles.tab}
-                  onPress={() => {
-                    // 点击切换：平滑移动高亮后切页
-                    Animated.spring(indicatorBasePos, {
-                      toValue: index * tabWidth,
-                      useNativeDriver: true,
-                      bounciness: 0,
-                    }).start(() => handleTabPress(tab.route, index < currentIndex ? 'back' : 'forward'));
-                  }}
+                  onPress={() => handleTabPress(tab.route, index < currentIndex ? 'back' : 'forward')}
                   activeOpacity={1}
                 >
                   <IconComponent
