@@ -13,7 +13,8 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 export default function CacheManagementScreen() {
   const router = useRouter();
   const { items, loadCache, removeCacheItem, loading } = useCacheStore();
-  const { downloadProgress, currentDownloadId } = useCacheStore();
+  const { queue, downloadQueuedEpisode, cancelQueuedEpisode, cancelGroup, downloadProgress, currentDownloadId } = useCacheStore();
+  const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { spacing } = responsiveConfig;
@@ -30,6 +31,53 @@ export default function CacheManagementScreen() {
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
+        {/* 下载队列 */}
+        <View style={{ marginBottom: spacing }}>
+          <ThemedText style={[styles.title, { marginBottom: 8 }]}>下载列表</ThemedText>
+          {queue.length === 0 ? (
+            <ThemedText type="subtitle">下载列表为空</ThemedText>
+          ) : (
+            queue.map((g) => (
+              <View key={g.groupId} style={[styles.card, { marginBottom: 8 }]}> 
+                <TouchableOpacity onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Image source={{ uri: g.poster }} style={{ width: 80, height: 100, borderRadius: 6, margin: 10 }} />
+                    <View style={{ flex: 1 }}>
+                      <ThemedText style={styles.title}>{g.title}</ThemedText>
+                      <ThemedText style={styles.meta}>{g.episodes.length} 集待处理</ThemedText>
+                    </View>
+                    <View style={{ paddingRight: 12 }}>
+                      <StyledButton text={expandedGroups[g.groupId] ? '收起' : '展开'} onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))} />
+                    </View>
+                    <View style={{ paddingRight: 8 }}>
+                      <StyledButton text="取消分组" variant="ghost" onPress={() => cancelGroup(g.groupId)} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+                {expandedGroups[g.groupId] && (
+                  <View style={{ padding: 12 }}>
+                    {g.episodes.map((ep) => (
+                      <View key={ep.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                        <ThemedText style={{ flex: 1 }}>第 {ep.index + 1} 集</ThemedText>
+                        {ep.status === 'downloading' || (downloadProgress && downloadProgress[`${g.source}_${g.id}_${ep.index}`]) ? (
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <View style={styles.progressBarBackground}>
+                              <View style={[styles.progressBarFill, { width: `${Math.round((ep.progress || downloadProgress[`${g.source}_${g.id}_${ep.index}`] || 0) * 100)}%` }]} />
+                            </View>
+                          </View>
+                        ) : null}
+                        <View style={{ width: 120, flexDirection: 'row' }}>
+                          <StyledButton text="下载" onPress={() => downloadQueuedEpisode(g.groupId, ep.index)} disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`} style={{ marginRight: 6 }} />
+                          <StyledButton text="取消" variant="ghost" onPress={() => cancelQueuedEpisode(g.groupId, ep.index)} />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+        </View>
         <ScrollView>
           {items.length === 0 ? (
             <View style={styles.emptyBox}>

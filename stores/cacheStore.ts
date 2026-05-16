@@ -12,6 +12,14 @@ export interface CacheState {
   error: string | null;
   currentDownloadId: string | null;
   downloadProgress: { [id: string]: number };
+  // download queue and concurrency control
+  queue: GroupedDownload[];
+  concurrency: number;
+  activeCount: number;
+  enqueueSeries: (series: Omit<GroupedDownload, 'groupId' | 'episodes'> & { episodes: { index: number; url: string }[] }) => void;
+  downloadQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
+  cancelQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
+  cancelGroup: (groupId: string) => Promise<void>;
   loadCache: () => Promise<void>;
   downloadEpisode: (options: {
     source: string;
@@ -29,12 +37,32 @@ export interface CacheState {
   clearCache: () => Promise<void>;
 }
 
+export type QueuedEpisode = {
+  index: number;
+  url: string;
+  status: 'pending' | 'queued' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+  progress?: number;
+  id?: string; // constructed id string
+};
+
+export type GroupedDownload = {
+  groupId: string;
+  source: string;
+  title: string;
+  poster: string;
+  id: string; // original content id
+  episodes: QueuedEpisode[];
+};
+
 const useCacheStore = create<CacheState>((set, get) => ({
   items: [],
   loading: false,
   error: null,
   currentDownloadId: null,
   downloadProgress: {},
+  queue: [],
+  concurrency: 2,
+  activeCount: 0,
 
   loadCache: async () => {
     set({ loading: true, error: null });
@@ -45,6 +73,145 @@ const useCacheStore = create<CacheState>((set, get) => ({
       logger.warn("loadCache failed", error);
       set({ loading: false, error: "加载缓存失败" });
     }
+  },
+
+  enqueueSeries: (series) => {
+    const groupId = `${series.source}_${series.id}_${Date.now()}`;
+    const episodes: QueuedEpisode[] = series.episodes.map((ep) => ({ index: ep.index, url: ep.url, status: 'pending' as const, progress: 0, id: `${series.source}_${series.id}_${ep.index}` }));
+    const group: GroupedDownload = {
+      groupId,
+      source: series.source,
+      title: series.title,
+      poster: series.poster,
+      id: series.id,
+      episodes,
+    };
+    set((state) => ({ queue: [...state.queue, group] }));
+  },
+
+  // start download for a queued episode respecting concurrency
+  downloadQueuedEpisode: async (groupId, episodeIndex) => {
+    const state = get();
+    const group = state.queue.find((g) => g.groupId === groupId);
+    if (!group) return;
+    const ep = group.episodes.find((e) => e.index === episodeIndex);
+    if (!ep) return;
+
+    // mark as queued if concurrency full
+    if (state.activeCount >= state.concurrency) {
+      ep.status = 'queued';
+      set({ queue: [...state.queue] });
+      return;
+    }
+
+    // start downloading
+    ep.status = 'downloading';
+    ep.progress = 0;
+    set((s) => ({ activeCount: s.activeCount + 1, queue: [...s.queue] }));
+    const itemId = `${group.source}_${group.id}_${ep.index}`;
+    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
+
+    try {
+      await CacheService.ensureDownloadDirectory();
+      const fileName = CacheService.buildFileName(group.source, group.id, ep.index, ep.url);
+      const fileUri = `${CacheService.getDownloadDirectory()}${fileName}`;
+
+      let downloadUri = fileUri;
+      if (ep.url.toLowerCase().includes('.m3u8')) {
+        const controller = new AbortController();
+        // store controller in a temporary map on the store instance
+        (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: controller };
+        downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, controller.signal, (p) => {
+          ep.progress = p;
+          set((s) => ({ downloadProgress: { ...(s.downloadProgress || {}), [itemId]: p }, queue: [...s.queue] }));
+        });
+        delete (get() as any)._controllers[itemId];
+      } else {
+        // create DownloadResumable here so we can cancel later
+        const resumable = FileSystem.createDownloadResumable(ep.url, fileUri, {}, (progress) => {
+          if (progress.totalBytesExpectedToWrite > 0) {
+            const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+            ep.progress = p;
+            set((s) => ({ downloadProgress: { ...(s.downloadProgress || {}), [itemId]: p }, queue: [...s.queue] }));
+          }
+        });
+        (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: resumable };
+        const res = await resumable.downloadAsync();
+        if (!res || !res.uri) throw new Error('下载失败');
+        downloadUri = res.uri;
+        delete (get() as any)._controllers[itemId];
+      }
+
+      const cachedItem: CachedVideoItem = {
+        id: itemId,
+        source: group.source,
+        source_name: group.title,
+        title: group.title,
+        poster: group.poster,
+        episodeIndex: ep.index,
+        episodeTitle: `第 ${ep.index + 1} 集`,
+        fileUri: downloadUri,
+        totalEpisodes: group.episodes.length,
+        downloadedAt: Date.now(),
+      };
+      await CacheService.add(cachedItem);
+      // mark completed
+      ep.status = 'completed';
+      ep.progress = 1;
+      set((s) => ({ items: [cachedItem, ...s.items], currentDownloadId: null, activeCount: s.activeCount - 1, downloadProgress: { ...(s.downloadProgress || {}), [itemId]: 1 }, queue: [...s.queue] }));
+    } catch (err) {
+      logger.warn('downloadQueuedEpisode failed', err);
+      ep.status = 'failed';
+      set((s) => ({ currentDownloadId: null, activeCount: Math.max(0, s.activeCount - 1), queue: [...s.queue] }));
+    }
+
+    // process next queued episode
+    const nextGroup = get().queue.find((g) => g.episodes.some((e) => e.status === 'queued'));
+    if (nextGroup) {
+      const nextEp = nextGroup.episodes.find((e) => e.status === 'queued');
+      if (nextEp) {
+        nextEp.status = 'pending';
+        set({ queue: [...get().queue] });
+        // fire and forget
+        get().downloadQueuedEpisode(nextGroup.groupId, nextEp.index);
+      }
+    }
+  },
+
+  cancelQueuedEpisode: async (groupId, episodeIndex) => {
+    const group = get().queue.find((g) => g.groupId === groupId);
+    if (!group) return;
+    const ep = group.episodes.find((e) => e.index === episodeIndex);
+    if (!ep) return;
+    const itemId = `${group.source}_${group.id}_${ep.index}`;
+    const controllers = (get() as any)._controllers || {};
+    const ctrl = controllers[itemId];
+    if (ctrl) {
+      try {
+        if (typeof ctrl.abort === 'function') {
+          ctrl.abort();
+        } else if (typeof ctrl.pauseAsync === 'function') {
+          await ctrl.pauseAsync();
+        }
+      } catch (e) {}
+      delete controllers[itemId];
+      set((s) => ({ queue: [...s.queue], activeCount: Math.max(0, s.activeCount - 1) }));
+    }
+    ep.status = 'cancelled';
+    ep.progress = 0;
+    set({ queue: [...get().queue] });
+  },
+
+  cancelGroup: async (groupId) => {
+    const group = get().queue.find((g) => g.groupId === groupId);
+    if (!group) return;
+    for (const ep of group.episodes) {
+      if (ep.status === 'downloading' || ep.status === 'queued' || ep.status === 'pending') {
+        await get().cancelQueuedEpisode(groupId, ep.index);
+      }
+    }
+    // remove group
+    set((s) => ({ queue: s.queue.filter((g) => g.groupId !== groupId) }));
   },
 
   downloadEpisode: async ({

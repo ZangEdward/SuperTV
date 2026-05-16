@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator } from "re
 import { useLocalSearchParams, useRouter } from "expo-router";
 import useDetailStore, { SearchResultWithResolution } from "@/stores/detailStore";
 import useCacheStore from "@/stores/cacheStore";
+import { Alert } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import { StyledButton } from "@/components/StyledButton";
@@ -15,7 +16,7 @@ export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
   const router = useRouter();
   const { detail, searchResults, loading, error, init, setDetail } = useDetailStore();
-  const { downloadEpisode, currentDownloadId } = useCacheStore();
+  const { downloadEpisode, currentDownloadId, enqueueSeries } = useCacheStore();
   const [showAllSources, setShowAllSources] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResultWithResolution | null>(null);
 
@@ -107,6 +108,19 @@ export default function CacheScreen() {
                 style={dynamicStyles.returnButton}
               />
             </View>
+          </View>
+          <View style={dynamicStyles.section}>
+            <StyledButton
+              text="加入下载列表"
+              variant="primary"
+              onPress={() => {
+                if (!selectedSource) return;
+                // enqueue series with all episodes (user can pick in 下载列表页面)
+                enqueueSeries({ source: selectedSource.source, id: selectedSource.id.toString(), title: selectedSource.title, poster: selectedSource.poster, episodes: selectedSource.episodes.map((url, idx) => ({ index: idx, url })) });
+                Alert.alert('已加入下载列表', '请到 缓存管理 页面选择需要下载的分集');
+              }}
+              style={dynamicStyles.returnButton}
+            />
           </View>
 
           <View style={dynamicStyles.section}>
