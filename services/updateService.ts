@@ -148,10 +148,27 @@ class UpdateService {
         const fileName = `OrionTV_v${timestamp}.apk`;
         const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
+        // Try to resolve the final download URL (follow redirects) and validate headers
+        let finalUrl = url;
+        try {
+          const probe = await fetch(url, { method: 'GET' });
+          if (probe && probe.ok && probe.url) {
+            finalUrl = probe.url;
+          }
+        } catch (e) {
+          logger.warn('Failed to probe download URL, proceeding with original URL', e);
+        }
+
+        const headers = {
+          Accept: 'application/vnd.android.package-archive, application/octet-stream, */*',
+          // Some proxies (like GitHub raw proxies) may require a UA
+          'User-Agent': 'SuperTV-Updater/1.0',
+        };
+
         const downloadResumable = FileSystem.createDownloadResumable(
-          url,
+          finalUrl,
           fileUri,
-          {},
+          { headers },
           progress => {
             if (onProgress) {
               onProgress(progress.totalBytesWritten, progress.totalBytesExpectedToWrite);
