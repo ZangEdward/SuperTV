@@ -12,9 +12,8 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 
 export default function CacheManagementScreen() {
   const router = useRouter();
-  const { items, loadCache, removeCacheItem, loading, concurrency, setConcurrency } = useCacheStore();
-  const { queue, downloadQueuedEpisode, cancelQueuedEpisode, cancelGroup, downloadProgress, currentDownloadId } = useCacheStore();
-  const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
+  const { items, loadCache, concurrency, setConcurrency } = useCacheStore();
+  const { queue, downloadProgress, currentDownloadId } = useCacheStore();
   const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
@@ -29,13 +28,16 @@ export default function CacheManagementScreen() {
     return () => clearInterval(timer);
   }, [loadCache]);
 
-  const groupedCollections = useMemo(() => {
+  const combinedCollections = useMemo(() => {
     const map = new Map<string, { title: string; poster: string }>();
+    queue.forEach((g) => {
+      if (!map.has(g.title)) map.set(g.title, { title: g.title, poster: g.poster });
+    });
     items.forEach((it) => {
       if (!map.has(it.title)) map.set(it.title, { title: it.title, poster: it.poster });
     });
     return Array.from(map.values());
-  }, [items]);
+  }, [items, queue]);
 
   const openCollectionDetail = (title?: string) => {
     if (!title) return;
@@ -45,34 +47,10 @@ export default function CacheManagementScreen() {
     });
   };
 
-  const activeDownload = React.useMemo(() => {
-    if (!currentDownloadId) return null;
-    for (const group of queue) {
-      for (const ep of group.episodes) {
-        const itemId = `${group.source}_${group.id}_${ep.index}`;
-        if (itemId === currentDownloadId) {
-          return {
-            title: group.title,
-            episodeIndex: ep.index,
-            progress: downloadProgress?.[itemId] ?? ep.progress ?? 0,
-          };
-        }
-      }
-    }
-    return null;
-  }, [currentDownloadId, downloadProgress, queue]);
-
   const queuedCount = React.useMemo(
-    () => queue.reduce((count, group) => count + group.episodes.filter((ep) => ep.status === 'queued' || ep.status === 'pending').length, 0),
+    () => queue.reduce((count, group) => count + group.episodes.filter((ep) => ep.status === 'queued' || ep.status === 'pending' || ep.status === 'downloading').length, 0),
     [queue]
   );
-
-  const currentStatusLabel = activeDownload ? '正在缓存' : queuedCount > 0 ? '等待缓存' : '当前状态';
-  const currentStatusValue = activeDownload
-    ? `${activeDownload.title} · 第 ${activeDownload.episodeIndex + 1} 集 · ${Math.round(activeDownload.progress * 100)}%`
-    : queuedCount > 0
-    ? `队列中 ${queuedCount} 集，正在等待下载`
-    : '暂无进行中的缓存';
 
   return (
     <ResponsiveNavigation>
@@ -80,12 +58,11 @@ export default function CacheManagementScreen() {
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
         {/* 并发设置 */}
         <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}> 
-          <ThemedText style={[styles.concurrencyLabel, { marginBottom: 8 }]}>并发下载</ThemedText>
           <TouchableOpacity
             style={styles.concurrencySelector}
             onPress={() => setConcurrencyOpen((open) => !open)}
           >
-            <ThemedText style={styles.concurrencyLabel}>当前并发下载数</ThemedText>
+            <ThemedText style={styles.concurrencyLabel}>并发下载：当前并发下载数</ThemedText>
             <View style={styles.selectorValueWrap}>
               <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
               <ThemedText style={styles.concurrencyArrow}>{concurrencyOpen ? '▲' : '▼'}</ThemedText>
@@ -109,99 +86,35 @@ export default function CacheManagementScreen() {
               ))}
             </View>
           )}
-          <ThemedText type="subtitle" style={styles.concurrencyHint}>选择并发下载数量</ThemedText>
         </View>
-        {/* 下载队列 */}
+        {/* 下载列表 */}
         <View style={{ marginBottom: spacing }}>
-          <ThemedText style={[styles.title, { marginBottom: 8 }]}>下载列表</ThemedText>
-          <View style={styles.currentStatusRow}>
-            <ThemedText style={styles.currentStatusLabel}>{currentStatusLabel}</ThemedText>
-            <ThemedText style={styles.currentStatusValue}>{currentStatusValue}</ThemedText>
+          <View style={styles.headerRow}>
+            <ThemedText style={styles.title}>下载列表</ThemedText>
+            <ThemedText style={styles.headerCount}>
+              队列中 {queuedCount} 集，已完成 {items.length} 集
+            </ThemedText>
           </View>
-          {queue.length === 0 ? (
-            <ThemedText type="subtitle">下载列表为空</ThemedText>
-          ) : (
-            queue.map((g) => (
-              <View key={g.groupId} style={[styles.card, { marginBottom: 8 }]}> 
-                <TouchableOpacity onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))}>
-                  <View style={styles.groupHeader}>
-                    <Image source={{ uri: g.poster }} style={styles.groupPoster} />
-                    <View style={styles.groupMeta}>
-                      <ThemedText style={styles.title} numberOfLines={2}>{g.title}</ThemedText>
-                      <ThemedText style={styles.meta}>{g.episodes.length} 集待处理</ThemedText>
-                    </View>
-                    <View style={styles.groupActions}>
-                      <StyledButton
-                        text={expandedGroups[g.groupId] ? '收起' : '展开'}
-                        onPress={() => setExpandedGroups((s) => ({ ...s, [g.groupId]: !s[g.groupId] }))}
-                        style={styles.groupActionButton}
-                      />
-                      <StyledButton
-                        text="取消分组"
-                        variant="ghost"
-                        onPress={() => cancelGroup(g.groupId)}
-                        style={styles.groupActionButton}
-                      />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-                {expandedGroups[g.groupId] && (
-                  <View style={{ padding: 12 }}>
-                    {g.episodes.map((ep) => {
-                      const progressValue = ep.progress ?? downloadProgress?.[`${g.source}_${g.id}_${ep.index}`] ?? 0;
-                      const progressPercent = Math.round(progressValue * 100);
-                      return (
-                        <View key={ep.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                          <ThemedText style={{ flex: 1 }}>第 {ep.index + 1} 集</ThemedText>
-                          {ep.status === 'downloading' || progressValue > 0 ? (
-                            <View style={{ flex: 1, marginRight: 8 }}>
-                              <View style={styles.progressBarBackground}>
-                                <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-                              </View>
-                              <ThemedText style={styles.progressPercentage}>{progressPercent}%</ThemedText>
-                            </View>
-                          ) : null}
-                          <View style={styles.episodeActionRow}>
-                            <StyledButton
-                              text="下载"
-                              onPress={() => downloadQueuedEpisode(g.groupId, ep.index)}
-                              disabled={ep.status === 'downloading' || ep.status === 'completed' || currentDownloadId === `${g.source}_${g.id}_${ep.index}`}
-                              style={[styles.episodeActionButton, { marginRight: 6 }]}
-                            />
-                            <StyledButton
-                              text="取消"
-                              variant="ghost"
-                              onPress={() => cancelQueuedEpisode(g.groupId, ep.index)}
-                              style={styles.episodeActionButton}
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
+
+          <ScrollView>
+            {combinedCollections.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <ThemedText type="subtitle">暂无缓存内容</ThemedText>
               </View>
-            ))
-          )}
+            ) : (
+              <View style={styles.grid}>
+                {combinedCollections.map((c) => (
+                  <View key={c.title} style={styles.posterCard}>
+                    <TouchableOpacity onPress={() => openCollectionDetail(c.title)}>
+                      <Image source={{ uri: c.poster }} style={styles.posterLarge} />
+                      <ThemedText style={styles.posterTitle} numberOfLines={2}>{c.title}</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </ScrollView>
         </View>
-        <ScrollView>
-          {items.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <ThemedText type="subtitle">暂无缓存内容</ThemedText>
-            </View>
-          ) : (
-            <View style={styles.grid}>
-              {groupedCollections.map((c) => (
-                <View key={c.title} style={styles.posterCard}>
-                  <TouchableOpacity onPress={() => openCollectionDetail(c.title)}>
-                    <Image source={{ uri: c.poster }} style={styles.posterLarge} />
-                  </TouchableOpacity>
-                  <ThemedText style={styles.posterTitle} numberOfLines={2}>{c.title}</ThemedText>
-                </View>
-              ))}
-            </View>
-          )}
-        </ScrollView>
       </ThemedView>
     </ResponsiveNavigation>
   );
@@ -210,6 +123,16 @@ export default function CacheManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  headerCount: {
+    color: '#aaa',
+    fontSize: 14,
   },
   emptyBox: {
     paddingTop: 60,

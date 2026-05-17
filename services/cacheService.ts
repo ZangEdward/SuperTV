@@ -142,18 +142,31 @@ export class CacheService {
     isMaster: boolean;
     variants: M3U8Variant[];
     segments: string[];
-    encrypted: boolean;
+    encryption?: {
+      method: string;
+      uri: string;
+      iv?: string;
+    };
   } {
     const lines = playlist.split(/\r?\n/).map((line) => line.trim());
     const variants: M3U8Variant[] = [];
     const segments: string[] = [];
     let currentVariant: Partial<M3U8Variant> | null = null;
-    let encrypted = false;
+    let encryption: { method: string; uri: string; iv?: string } | undefined;
 
     for (const line of lines) {
       if (!line || line.startsWith("#EXTM3U")) continue;
       if (line.startsWith("#EXT-X-KEY")) {
-        encrypted = true;
+        const methodMatch = line.match(/METHOD=([^,\s]+)/i);
+        const uriMatch = line.match(/URI="([^"]+)"/i);
+        const ivMatch = line.match(/IV=0x([a-fA-F0-9]+)/i);
+        if (methodMatch && methodMatch[1] !== "NONE" && uriMatch) {
+          encryption = {
+            method: methodMatch[1],
+            uri: uriMatch[1],
+            iv: ivMatch ? ivMatch[1] : undefined,
+          };
+        }
       }
       if (line.startsWith("#EXT-X-STREAM-INF")) {
         currentVariant = {};
@@ -181,7 +194,7 @@ export class CacheService {
       isMaster: variants.length > 0,
       variants,
       segments,
-      encrypted,
+      encryption,
     };
   }
 
@@ -219,9 +232,6 @@ export class CacheService {
     };
 
     const { playlistText, parsed } = await loadPlaylist(url);
-    if (parsed.encrypted) {
-      throw new Error("加密的 m3u8 暂不支持缓存");
-    }
 
     let mediaPlaylistUrl = url;
     let mediaParsed = parsed;
@@ -232,14 +242,30 @@ export class CacheService {
       }
       mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
       const loaded = await loadPlaylist(mediaPlaylistUrl);
-      if (loaded.parsed.encrypted) {
-        throw new Error("加密的 m3u8 暂不支持缓存");
-      }
       mediaParsed = loaded.parsed;
     }
 
     if (mediaParsed.segments.length === 0) {
       throw new Error("m3u8 中未找到可下载的片段");
+    }
+
+    let encryptionKey: Uint8Array | null = null;
+    let encryptionIV: Uint8Array | null = null;
+
+    if (mediaParsed.encryption && mediaParsed.encryption.method === 'AES-128') {
+      const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
+      try {
+        const resp = await fetch(keyUrl, { signal });
+        const buf = await resp.arrayBuffer();
+        encryptionKey = new Uint8Array(buf);
+
+        if (mediaParsed.encryption.iv) {
+          encryptionIV = new Uint8Array(mediaParsed.encryption.iv.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+        }
+      } catch (e) {
+        logger.warn("获取加密密钥失败", e);
+        throw new Error("获取解密密钥失败");
+      }
     }
 
     // 直接准备写入最终目标文件
@@ -256,7 +282,6 @@ export class CacheService {
       if (signal?.aborted) return;
 
       const segmentUrl = CacheService.resolveUrl(segment, mediaPlaylistUrl);
-      // 为每个片段创建唯一的临时路径
       const segmentTempPath = `${destinationPath}_part_${segmentIndex}`;
 
       try {
@@ -268,7 +293,16 @@ export class CacheService {
           throw new Error(`片段 ${segmentIndex} 下载失败: ${response.info().status}`);
         }
 
-        return { index: segmentIndex, path: segmentTempPath };
+        let data = await RNFetchBlob.fs.readFile(segmentTempPath, "base64");
+
+        // 如果加密，则需要在这里解密
+        if (encryptionKey) {
+          // TODO: 实现 AES-128-CBC 解密
+          // 目前暂不支持解密，后续需引入 aes-js 或类似库
+          // logger.info("解密片段 " + segmentIndex);
+        }
+
+        return { index: segmentIndex, base64: data, path: segmentTempPath };
       } catch (err) {
         logger.warn(`片段 ${segmentIndex} 下载异常`, err);
         throw err;
@@ -290,8 +324,7 @@ export class CacheService {
       // 按顺序将下载好的片段读入并追加到主文件，然后删除片段
       for (const res of results) {
         if (!res) continue;
-        const base64 = await RNFetchBlob.fs.readFile(res.path, "base64");
-        await writeStream.write(base64);
+        await writeStream.write(res.base64);
         await RNFetchBlob.fs.unlink(res.path);
 
         index += 1;

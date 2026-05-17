@@ -17,7 +17,7 @@ import Toast from "react-native-toast-message";
 export default function CacheDetailScreen() {
   const router = useRouter();
   const { title } = useLocalSearchParams<{ title: string }>();
-  const { items, queue, downloadProgress, currentDownloadId, downloadQueuedEpisode } = useCacheStore();
+  const { items, queue, downloadProgress, currentDownloadId, downloadQueuedEpisode, removeCacheItem, cancelQueuedEpisode } = useCacheStore();
 
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
@@ -89,14 +89,22 @@ export default function CacheDetailScreen() {
     }
   };
 
-  const handleDownload = (groupId?: string, index?: number) => {
+  const handleDelete = async (index: number) => {
+    const itemToDelete = items.find(it => it.title === title && it.episodeIndex === index);
+    if (itemToDelete) {
+      await removeCacheItem(itemToDelete.id);
+    }
+  };
+
+  const handleCancel = async (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
-      downloadQueuedEpisode(groupId, index);
+      await cancelQueuedEpisode(groupId, index);
     }
   };
 
   const renderEpisodeItem = ({ item }: { item: typeof episodes[0] }) => {
     const epTitle = `第 ${item.index + 1} 集`;
+    const progressPercent = Math.round((item.progress || 0) * 100);
     const isDownloading = item.status === 'downloading' || (item.progress !== undefined && item.progress > 0 && item.progress < 1);
 
     return (
@@ -104,40 +112,36 @@ export default function CacheDetailScreen() {
         <ThemedText style={styles.episodeText}>{epTitle}</ThemedText>
 
         {item.status === 'completed' ? (
-          <View style={{ flexDirection: 'row' }}>
+          <View style={styles.statusRow}>
+            <ThemedText style={styles.statusLabel}>已完成</ThemedText>
             <StyledButton
               variant="primary"
               onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
-              style={[styles.actionButton, { marginRight: 8 }]}
-            >
-              <View style={styles.buttonContent}>
-                <FontAwesome name="play" size={14} color="white" />
-                <ThemedText style={styles.buttonText}>播放</ThemedText>
-              </View>
-            </StyledButton>
+              style={[styles.miniButton, { marginRight: 8 }]}
+              text="播放"
+            />
             <StyledButton
               variant="ghost"
-              onPress={() => item.fileUri && handleExport(item.fileUri, epTitle)}
-              style={styles.actionButton}
-            >
-              <View style={styles.buttonContent}>
-                <FontAwesome name="download" size={14} color="#aaa" />
-                <ThemedText style={[styles.buttonText, { color: '#aaa' }]}>导出</ThemedText>
-              </View>
-            </StyledButton>
+              onPress={() => handleDelete(item.index)}
+              style={styles.miniButton}
+              text="删除"
+            />
           </View>
         ) : isDownloading ? (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBarBackground}>
-              <View style={[styles.progressBarFill, { width: `${Math.round((item.progress || 0) * 100)}%` }]} />
-            </View>
-            <ThemedText style={styles.progressText}>{Math.round((item.progress || 0) * 100)}%</ThemedText>
+          <View style={styles.statusRow}>
+            <ThemedText style={styles.statusLabel}>缓存进度 {progressPercent}%</ThemedText>
+            <StyledButton
+              variant="ghost"
+              onPress={() => handleCancel(item.groupId, item.index)}
+              style={styles.miniButton}
+              text="取消下载"
+            />
           </View>
         ) : (
           <StyledButton
             variant="default"
             onPress={() => handleDownload(item.groupId, item.index)}
-            style={styles.actionButton}
+            style={styles.miniButton}
             text={item.status === 'queued' ? "等待中" : item.status === 'failed' ? "重试" : "下载"}
           />
         )}
@@ -216,9 +220,19 @@ const styles = StyleSheet.create({
     color: "#eee",
     flex: 1,
   },
-  actionButton: {
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusLabel: {
+    fontSize: 14,
+    color: "#aaa",
+    marginRight: 12,
+  },
+  miniButton: {
     minWidth: 80,
-    height: 36,
+    height: 32,
+    paddingHorizontal: 12,
   },
   buttonContent: {
     flexDirection: "row",
