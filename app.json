@@ -44,7 +44,7 @@
             "abiFilters": ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"],
             "extraLines": [
               "allprojects { repositories { flatDir { dirs \"${rootDir}/../android-libs\" } } }",
-              "configurations.all { resolutionStrategy { force 'com.arthenica:ffmpeg-kit-https:6.0.1' } }"
+              "configurations.all { resolutionStrategy { force 'com.arthenica:ffmpeg-kit-https:6.0-1' } }"
             ]
           }
         }

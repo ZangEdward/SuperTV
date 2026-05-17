@@ -52,18 +52,18 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      - name: Patch ffmpeg-kit dependency (Local AAR Mode)
+      - name: Patch FFmpeg dependency (Local AAR Mode)
         run: |
           echo "Preparing local AAR environment..."
           mkdir -p android/app/libs
           
-          # Use AAR from repository if present, otherwise try to download
-          if [ -f "android-libs/ffmpeg-kit-https-6.0.1.aar" ]; then
+          # Use AAR from repository (synchronized via Git)
+          if [ -f "android-libs/ffmpeg-kit-https-6.0-1.aar" ]; then
             echo "Using AAR from repository folder..."
-            cp android-libs/ffmpeg-kit-https-6.0.1.aar android/app/libs/
+            cp android-libs/ffmpeg-kit-https-6.0-1.aar android/app/libs/
           else
-            echo "AAR not found in repo, attempting emergency download..."
-            curl -L -o android/app/libs/ffmpeg-kit-https-6.0.1.aar https://repo1.maven.org/maven2/com/arthenica/ffmpeg-kit-https/6.0.1/ffmpeg-kit-https-6.0.1.aar || true
+            echo "AAR not found in repo, attempting emergency download from mirror..."
+            curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://maven.aliyun.com/nexus/content/groups/public/com/arthenica/ffmpeg-kit-https/6.0-1/ffmpeg-kit-https-6.0-1.aar || true
           fi
 
           # Inject flatDir configuration into root build.gradle
