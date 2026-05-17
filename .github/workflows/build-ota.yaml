@@ -54,21 +54,26 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      # -------------------------------
-      # 🔥 ffmpeg-kit 修复补丁（关键步骤）
-      # -------------------------------
-      - name: Patch ffmpeg-kit missing version
+      # 🔧 关键补丁：修正 ffmpeg-kit 依赖版本
+      - name: Patch ffmpeg-kit dependency
         run: |
-          echo "🔧 修复 ffmpeg-kit-react-native 6.0.1 错误依赖版本..."
+          echo "Patching ffmpeg-kit-react-native dependency version..."
 
-          # 替换 app/build.gradle 中的错误版本 6.0-1 → 6.0
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+          # 如果 node_modules 里的 android/build.gradle 写死了 6.0-1/6.0-2，可以顺手修一下（容错）
+          if [ -f node_modules/ffmpeg-kit-react-native/android/build.gradle ]; then
+            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          fi
 
-          # 替换 android/build.gradle 中的错误版本
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/build.gradle || true
+          # 修 app 里的依赖（expo prebuild 生成的）
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+          fi
 
-          # 强制 Gradle 使用正确版本
-          cat >> android/build.gradle << 'EOF'
+          # 在顶层 build.gradle 加一个兜底的 resolutionStrategy，强制用 6.0
+          if [ -f android/build.gradle ]; then
+            cat >> android/build.gradle << 'EOF'
 
 subprojects { project ->
     project.configurations.all {
@@ -78,6 +83,7 @@ subprojects { project ->
     }
 }
 EOF
+          fi
 
       - name: Decode Keystore
         run: |
@@ -184,16 +190,34 @@ EOF
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
           {
             echo "timestamp: ${TIMESTAMP}"
-            echo "hash: ${HASH_NAME}"
+            echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
+            echo "version: \"${VERSION}\""
             echo ""
-            echo "$FORMATTED_RANDOM"
-          } > sync-repo/log/vision/${LOGFILE}
+            echo "meta:"
+            echo "  id: \"${HASH_NAME}\""
+            echo "  encoding: \"xeno-utf8-broken\""
+            echo "  integrity: \"$(openssl rand -hex 8)\""
+            echo ""
+            echo "data_block: {"
+            echo "  \"sequence\": \"$(openssl rand -hex 6)\","
+            echo "  \"status\": \"unstable\","
+            echo "  \"channel\": \"Ω-REWRITE-PORT\","
+            echo "  \"index\": \"0.$((RANDOM))\""
+            echo "}"
+            echo ""
+            echo "stream: |"
+            echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
+            echo ""
+            echo "footer:"
+            echo "  note: \"generated-by-nonhuman-process\""
+            echo "  checksum: \"$(openssl rand -hex 8)\""
+          } > sync-repo/${LOGFILE}
 
-      - name: Commit & Push log repo
+      - name: Commit & Push
         run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "OTA update for version ${VERSION}"
-          git push
+          git commit -m "Update v${VERSION} + apksize.json + log ${LOGFILE}" || true
+          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
