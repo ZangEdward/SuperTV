@@ -253,25 +253,52 @@ export class CacheService {
 
     let index = 0;
     const total = mediaParsed.segments.length;
-    for (const segment of mediaParsed.segments) {
-      if (signal?.aborted) {
-        await writeStream.close();
-        throw new Error("下载已取消");
-      }
-      index += 1;
+    const CONCURRENCY = 5; // 并发下载片段数，类似 LunaTV 的并发逻辑
+
+    const downloadSegment = async (segment: string, segmentIndex: number) => {
+      if (signal?.aborted) return;
+
       const segmentUrl = CacheService.resolveUrl(segment, mediaPlaylistUrl);
-      logger.info(`[CacheService] 下载片段 ${index}/${mediaParsed.segments.length}: ${segmentUrl}`);
-      const response = await RNFetchBlob.fetch("GET", segmentUrl);
-      const status = response.info().status;
-      if (status !== 200) {
-        await writeStream.close();
-        throw new Error(`片段下载失败：${segmentUrl} (${status})`);
-      }
-      const base64 = response.base64();
-      await writeStream.write(base64);
+      const segmentTempPath = `${tempPath}_${segmentIndex}`;
+
       try {
-        progressCb?.(index / total * 0.9); // 下载占 90%
-      } catch {}
+        const response = await RNFetchBlob.config({
+          path: segmentTempPath,
+        }).fetch("GET", segmentUrl);
+
+        if (response.info().status !== 200) {
+          throw new Error(`片段 ${segmentIndex} 下载失败: ${response.info().status}`);
+        }
+
+        return { index: segmentIndex, path: segmentTempPath };
+      } catch (err) {
+        logger.warn(`片段 ${segmentIndex} 下载异常`, err);
+        throw err;
+      }
+    };
+
+    // 分批次并发下载
+    for (let i = 0; i < total; i += CONCURRENCY) {
+      if (signal?.aborted) throw new Error("下载已取消");
+
+      const batch = mediaParsed.segments.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map((seg, batchIndex) => downloadSegment(seg, i + batchIndex))
+      );
+
+      // 按顺序写入主文件
+      for (const res of results) {
+        if (!res) continue;
+        const base64 = await RNFetchBlob.fs.readFile(res.path, "base64");
+        await writeStream.write(base64);
+        // 删除临时片段文件
+        await RNFetchBlob.fs.unlink(res.path);
+
+        index += 1;
+        try {
+          progressCb?.((index / total) * 0.9);
+        } catch {}
+      }
     }
 
     await writeStream.close();

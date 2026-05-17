@@ -96,12 +96,29 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (fileUri) {
       logger.info(`[INFO] Playing local cached file ${fileUri}`);
+
+      // 使用本地 HTTP Server 代理播放，类似 LunaTV 逻辑
+      let playUrl = fileUri;
+      try {
+        const TCPHttpServer = require('@/services/tcpHttpServer').default;
+        if (!TCPHttpServer.getIsRunning()) {
+          await TCPHttpServer.start();
+        }
+        const localUrl = TCPHttpServer.getLocalUrl(fileUri);
+        if (localUrl) {
+          logger.info(`[INFO] Proxying local file through HTTP: ${localUrl}`);
+          playUrl = localUrl;
+        }
+      } catch (e) {
+        logger.warn('[WARN] Failed to start local server for proxying, falling back to file://', e);
+      }
+
       set({
         isLoading: false,
         currentEpisodeIndex: 0,
         initialPosition: position || 0,
         playbackRate: 1.0,
-        episodes: [{ url: fileUri, title: title || "离线视频" }],
+        episodes: [{ url: playUrl, title: title || "离线视频" }],
       });
       return;
     }
