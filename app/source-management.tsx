@@ -65,7 +65,7 @@ export default function SourceManagementScreen() {
         {isLoadingSources ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={Colors.dark.primary} />
-          </ThemedText>
+          </View>
         ) : (
           <ScrollView contentContainerStyle={[styles.list, { padding: spacing }]}>
             <View style={styles.grid}>
