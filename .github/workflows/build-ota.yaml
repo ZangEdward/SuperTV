@@ -19,10 +19,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
-
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,22 +55,23 @@ jobs:
       - name: Patch ffmpeg-kit dependency
         run: |
           echo "Patching ffmpeg-kit-react-native dependency version..."
+          
+          # Patch node_modules
+          if [ -f node_modules/ffmpeg-kit-react-native/android/build.gradle ]; then
+            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle
+            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle
+          fi
 
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          # Patch generated android project
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle
+            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle
+          fi
 
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
-
-          cat >> android/build.gradle << 'EOF'
-subprojects { project ->
-    project.configurations.all {
-        resolutionStrategy {
-            force "com.arthenica:ffmpeg-kit-https:6.0"
-        }
-    }
-}
-EOF
+          # Force resolution strategy in root build.gradle
+          if [ -f android/build.gradle ]; then
+            printf "\nsubprojects { project ->\n    project.configurations.all {\n        resolutionStrategy {\n            force \"com.arthenica:ffmpeg-kit-https:6.0\"\n        }\n    }\n}\n" >> android/build.gradle
+          fi
 
       - name: Decode Keystore
         run: |
@@ -99,7 +98,7 @@ EOF
       - name: Copy APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${VERSION}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v1
@@ -122,7 +121,6 @@ EOF
     needs: build
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'ota' }}
-
     steps:
       - name: Checkout SuperTV repo
         uses: actions/checkout@v4
@@ -140,7 +138,7 @@ EOF
 
       - name: Rename artifact APK
         run: |
-          mv SuperTV-*.apk SuperTV-${VERSION}.apk || true
+          mv SuperTV-*.apk SuperTV-${{ env.VERSION }}.apk || true
 
       - name: Clone log repo
         run: |
@@ -155,7 +153,7 @@ EOF
         run: |
           mkdir -p sync-repo/log/vision
           rm -f sync-repo/log/vision/apksize.json
-          APK_SIZE=$(stat -c%s "SuperTV-${VERSION}.apk")
+          APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
 
       - name: Upload APK to log repo Releases
@@ -176,11 +174,10 @@ EOF
           HASH_NAME="ID-$(openssl rand -hex 16)"
           RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
-
           {
             echo "timestamp: ${TIMESTAMP}"
             echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
-            echo "version: \"${VERSION}\""
+            echo "version: \"${{ env.VERSION }}\""
             echo ""
             echo "meta:"
             echo "  id: \"${HASH_NAME}\""
@@ -207,5 +204,5 @@ EOF
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update v${VERSION} + apksize.json + log ${LOGFILE}" || true
+          git commit -m "Update v${{ env.VERSION }} + apksize.json + log ${LOGFILE}" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
