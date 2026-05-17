@@ -65,7 +65,6 @@ jobs:
           sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
 
           cat >> android/build.gradle << 'EOF'
-
 subprojects { project ->
     project.configurations.all {
         resolutionStrategy {
@@ -174,8 +173,8 @@ EOF
         run: |
           TIMESTAMP=$(date +%s)
           LOGFILE="${TIMESTAMP}.log"
-          HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
-          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
+          HASH_NAME="ID-$(openssl rand -hex 16)"
+          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
 
           {
@@ -185,21 +184,20 @@ EOF
             echo ""
             echo "meta:"
             echo "  id: \"${HASH_NAME}\""
-            echo "  encoding: \"xeno-utf8-broken\""
+            echo "  encoding: \"ascii-safe\""
             echo "  integrity: \"$(openssl rand -hex 8)\""
             echo ""
-            echo "data_block: {"
-            echo "  \"sequence\": \"$(openssl rand -hex 6)\","
-            echo "  \"status\": \"unstable\","
-            echo "  \"channel\": \"Ω-REWRITE-PORT\","
-            echo "  \"index\": \"0.$((RANDOM))\""
-            echo "}"
+            echo "data_block:"
+            echo "  sequence: \"$(openssl rand -hex 6)\""
+            echo "  status: \"ok\""
+            echo "  channel: \"release\""
+            echo "  index: \"0.$((RANDOM))\""
             echo ""
             echo "stream: |"
             echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
             echo ""
             echo "footer:"
-            echo "  note: \"generated-by-nonhuman-process\""
+            echo "  note: \"generated-by-ci\""
             echo "  checksum: \"$(openssl rand -hex 8)\""
           } > sync-repo/${LOGFILE}
 
