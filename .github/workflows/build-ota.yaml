@@ -55,19 +55,28 @@ jobs:
       - name: Patch ffmpeg-kit dependency
         run: |
           echo "Patching ffmpeg-kit-react-native dependency version..."
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+          
+          # 1. 将第三方库和原生配置中可能存在的旧版本全部替换为 6.0-2
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0-2/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0-2/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0-2/g' android/app/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0-2/g' android/app/build.gradle || true
+          
+          # 2. 注入全局强制解析策略，锁定到 6.0-2
           cat >> android/build.gradle << 'EOF'
           subprojects { project ->
               project.configurations.all {
                   resolutionStrategy {
-                      force "com.arthenica:ffmpeg-kit-https:6.0"
+                      force "com.arthenica:ffmpeg-kit-https:6.0-2"
                   }
               }
           }
           EOF
+          
+          # 3. 在 settings.gradle 中补充中央仓库，确保 Gradle 能顺利检索到依赖包
+          if [ -f "android/settings.gradle" ]; then
+            sed -i '/repositories {/a \        mavenCentral()\n        maven { url "https://www.jitpack.io" }' android/settings.gradle || true
+          fi
 
       - name: Decode Keystore
         run: |
@@ -171,7 +180,6 @@ jobs:
           RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
           
-          # 修复了之前的大括号 Shell 语法
           {
             echo "timestamp: ${TIMESTAMP}"
             echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
