@@ -125,7 +125,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
     // start downloading
     ep.status = 'downloading';
-    ep.progress = 0;
+    ep.progress = ep.progress || 0;
     set((s) => ({ activeCount: s.activeCount + 1, queue: [...s.queue] }));
     const itemId = `${group.source}_${group.id}_${ep.index}`;
     set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
@@ -209,7 +209,6 @@ const useCacheStore = create<CacheState>((set, get) => ({
       (get() as any).processQueue?.();
     }
     ep.status = 'cancelled';
-    ep.progress = 0;
     set({ queue: [...get().queue] });
   },
 

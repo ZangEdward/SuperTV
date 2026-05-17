@@ -272,7 +272,8 @@ export class CacheService {
     if (await RNFetchBlob.fs.exists(destinationPath)) {
       await RNFetchBlob.fs.unlink(destinationPath);
     }
-    const writeStream = await RNFetchBlob.fs.writeStream(destinationPath, "base64", true);
+    // 创建一个空文件
+    await RNFetchBlob.fs.createFile(destinationPath, '', 'utf8');
 
     let index = 0;
     const total = mediaParsed.segments.length;
@@ -287,22 +288,21 @@ export class CacheService {
       try {
         const response = await RNFetchBlob.config({
           path: segmentTempPath,
+          // 增加超时设置
+          timeout: 30000,
         }).fetch("GET", segmentUrl);
 
         if (response.info().status !== 200) {
           throw new Error(`片段 ${segmentIndex} 下载失败: ${response.info().status}`);
         }
 
-        let data = await RNFetchBlob.fs.readFile(segmentTempPath, "base64");
-
-        // 如果加密，则需要在这里解密
         if (encryptionKey) {
-          // TODO: 实现 AES-128-CBC 解密
-          // 目前暂不支持解密，后续需引入 aes-js 或类似库
-          // logger.info("解密片段 " + segmentIndex);
+          let data = await RNFetchBlob.fs.readFile(segmentTempPath, "base64");
+          // TODO: AES-128-CBC 解密
+          return { index: segmentIndex, data, isRaw: false, path: segmentTempPath };
         }
 
-        return { index: segmentIndex, base64: data, path: segmentTempPath };
+        return { index: segmentIndex, isRaw: true, path: segmentTempPath };
       } catch (err) {
         logger.warn(`片段 ${segmentIndex} 下载异常`, err);
         throw err;
@@ -312,29 +312,42 @@ export class CacheService {
     // 分批次并发下载并顺序合并
     for (let i = 0; i < total; i += CONCURRENCY) {
       if (signal?.aborted) {
-        await writeStream.close();
         throw new Error("下载已取消");
       }
 
       const batch = mediaParsed.segments.slice(i, i + CONCURRENCY);
-      const results = await Promise.all(
-        batch.map((seg, batchIndex) => downloadSegment(seg, i + batchIndex))
-      );
+      try {
+        const results = await Promise.all(
+          batch.map((seg, batchIndex) => downloadSegment(seg, i + batchIndex))
+        );
 
-      // 按顺序将下载好的片段读入并追加到主文件，然后删除片段
-      for (const res of results) {
-        if (!res) continue;
-        await writeStream.write(res.base64);
-        await RNFetchBlob.fs.unlink(res.path);
+        // 按顺序将下载好的片段追加到主文件
+        for (const res of results) {
+          if (!res) continue;
+          if (res.isRaw) {
+            await RNFetchBlob.fs.appendFile(destinationPath, res.path, "uri");
+          } else {
+            await RNFetchBlob.fs.appendFile(destinationPath, res.data as string, "base64");
+          }
+          await RNFetchBlob.fs.unlink(res.path);
 
-        index += 1;
-        try {
-          progressCb?.(index / total);
-        } catch {}
+          index += 1;
+          // 只有进度发生显著变化时才回调，减少 UI 刷新压力
+          if (index % 5 === 0 || index === total) {
+            try {
+              progressCb?.(index / total);
+            } catch {}
+          }
+        }
+      } catch (err) {
+        logger.warn(`Batch download failed at index ${i}`, err);
+        // 如果是终止信号则退出
+        if (signal?.aborted) throw new Error("下载已取消");
+        // 否则可以尝试重试逻辑，这里先简单抛出
+        throw err;
       }
     }
 
-    await writeStream.close();
     const elapsed = Date.now() - start;
     logger.info(`[CacheService] downloadAndMergeM3U8 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
 

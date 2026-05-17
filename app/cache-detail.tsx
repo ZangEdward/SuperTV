@@ -89,16 +89,9 @@ export default function CacheDetailScreen() {
     }
   };
 
-  const handleDelete = async (index: number) => {
-    const itemToDelete = items.find(it => it.title === title && it.episodeIndex === index);
-    if (itemToDelete) {
-      await removeCacheItem(itemToDelete.id);
-    }
-  };
-
-  const handleCancel = async (groupId?: string, index?: number) => {
+  const handleDownload = (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
-      await cancelQueuedEpisode(groupId, index);
+      downloadQueuedEpisode(groupId, index);
     }
   };
 
@@ -113,7 +106,7 @@ export default function CacheDetailScreen() {
 
         {item.status === 'completed' ? (
           <View style={styles.statusRow}>
-            <ThemedText style={styles.statusLabel}>已完成</ThemedText>
+            <ThemedText style={styles.statusLabel}>缓存完成</ThemedText>
             <StyledButton
               variant="primary"
               onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
@@ -129,12 +122,18 @@ export default function CacheDetailScreen() {
           </View>
         ) : isDownloading ? (
           <View style={styles.statusRow}>
-            <ThemedText style={styles.statusLabel}>缓存进度 {progressPercent}%</ThemedText>
+            <ThemedText style={styles.statusLabel}>已缓存{progressPercent}%</ThemedText>
+            <StyledButton
+              variant="default"
+              onPress={() => handleCancel(item.groupId, item.index)}
+              style={[styles.miniButton, { marginRight: 8 }]}
+              text="暂停"
+            />
             <StyledButton
               variant="ghost"
               onPress={() => handleCancel(item.groupId, item.index)}
               style={styles.miniButton}
-              text="取消下载"
+              text="取消"
             />
           </View>
         ) : (
