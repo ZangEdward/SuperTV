@@ -1,0 +1,87 @@
+name: Build SuperTV APK (Signed)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      # 读取版本号
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      # Prebuild
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --no-install
+
+      # 写入 JKS
+      - name: Decode Keystore
+        run: |
+          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+
+      # 写入签名配置
+      - name: Configure Signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      # 构建 APK（只构建一次）
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      # 复制 APK
+      - name: Copy APK
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            output/SuperTV-${VERSION}.apk
+
+
+      # 上传到 GitHub Releases
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: |
+            output/SuperTV-${{ env.VERSION }}.apk
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

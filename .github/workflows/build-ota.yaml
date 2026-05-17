@@ -1,0 +1,192 @@
+name: Build & OTA 发布 SuperTV
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: '请选择任务类型：仅构建APK(build-only) 或 构建+OTA(ota)'
+        required: true
+        default: 'ota'
+        type: choice
+        options:
+          - build-only
+          - ota
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
+
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "::set-output name=VERSION::$VERSION"
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Decode Keystore
+        run: |
+          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+
+      - name: Configure Signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Build APK
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Copy APK
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${VERSION}.apk
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: |
+            output/SuperTV-${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK as artifact for OTA
+        if: ${{ github.event.inputs.job_type == 'ota' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: supertv-apk
+          path: output/SuperTV-${{ env.VERSION }}.apk
+
+  ota:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.job_type == 'ota' }}
+
+    steps:
+      - name: Checkout SuperTV repo
+        uses: actions/checkout@v4
+
+      - name: Read version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Download built APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: supertv-apk
+
+      - name: Rename artifact APK
+        run: |
+          # 万一下载名字和规范不一致，重命名以保证一致
+          mv SuperTV-*.apk SuperTV-${VERSION}.apk || true
+
+      - name: Clone log repo
+        run: |
+          git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+
+      - name: Update package.json in log/vision
+        run: |
+          mkdir -p sync-repo/log/vision
+          cp package.json sync-repo/log/vision/package.json
+
+      - name: Update apksize.json
+        run: |
+          mkdir -p sync-repo/log/vision
+          rm -f sync-repo/log/vision/apksize.json
+          APK_SIZE=$(stat -c%s "SuperTV-${VERSION}.apk")
+          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
+          echo "APK size: ${APK_SIZE} bytes"
+
+      - name: Upload APK to log repo Releases
+        uses: softprops/action-gh-release@v1
+        with:
+          repository: ZangEdward/internal-cache-sync-daemon-log
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: |
+            SuperTV-${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+
+      - name: Generate structured alien-style log file
+        run: |
+          TIMESTAMP=$(date +%s)
+          LOGFILE="${TIMESTAMP}.log"
+          HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
+          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
+          FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
+          {
+            echo "timestamp: ${TIMESTAMP}"
+            echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
+            echo "version: \"${VERSION}\""
+            echo ""
+            echo "meta:"
+            echo "  id: \"${HASH_NAME}\""
+            echo "  encoding: \"xeno-utf8-broken\""
+            echo "  integrity: \"$(openssl rand -hex 8)\""
+            echo ""
+            echo "data_block: {"
+            echo "  \"sequence\": \"$(openssl rand -hex 6)\","
+            echo "  \"status\": \"unstable\","
+            echo "  \"channel\": \"Ω-REWRITE-PORT\","
+            echo "  \"index\": \"0.$((RANDOM))\""
+            echo "}"
+            echo ""
+            echo "stream: |"
+            echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
+            echo ""
+            echo "footer:"
+            echo "  note: \"generated-by-nonhuman-process\""
+            echo "  checksum: \"$(openssl rand -hex 8)\""
+          } > sync-repo/${LOGFILE}
+
+      - name: Commit & Push
+        run: |
+          cd sync-repo
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Update v${VERSION} + apksize.json + log ${LOGFILE}" || true
+          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git

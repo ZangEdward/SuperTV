@@ -1,0 +1,187 @@
+该项目为基于OrionTV 结合已有节点配置的私有化客户端，旨在方便作者及其好友使用
+自定义带来了更智能的播放体验：
+
+新版本设想
+-手机端增加缓存功能
+-同局域网手机控制电视端APP
+558
+优化 M3U8 缓存合并为 MP4
+完善缓存管理进度更新
+支持缓存完成后下载到本地存储
+557
+新增缓存视频详情窗口，支持查看下载进度及直接播放
+556
+优化缓存下载模式
+555
+更新缓存多选功能
+554
+更新缓存分组功能
+553
+优化下载线程数
+详情页获取视频失败
+首页动画错误
+552
+优化切换动画
+551
+优化缓存为mp4
+550
+测试缓存功能
+
+544
+修复了一些动画
+
+543
+优化tv按钮动画 修复dlan占位
+542
+修复失败
+541 beta
+优化 开屏动画 dlan投屏功能
+540
+引入dlan 支持
+534
+优化设置界面，ota体验，界面切换动画
+
+533
+优化动画
+
+532
+优化按钮
+
+531
+优化切换动画
+530
+修复按键过大的问题
+529
+更新节点选择ui，新增动画，删除 播放记录删除功能
+528
+修复闪退问题
+527
+新增左右滑动功能，缓存清除功能，此版本无法使用
+526
+新增 播放源缩减+排序
+修复 更新软件提示为负百分比按键ui，此版本无法使用
+525
+修复ota软件安装失败功能
+此版本无法使用
+524
+更新按钮ui
+523
+本地更新功能测试2.0
+522
+根据Gemini推荐进行更新节点选择界面
+521版本
+增加 x86 x86_64 支持
+测试自定义ota更新
+修复 电视端，服务器节点无法选择的问题
+删除 显示节点地址功能
+520版本
+新增 无需输入服务器源
+新增 自动测速并优先选择最快源
+新增 播放失败自动切换到下一个可用源
+TV 版 UI 进一步优化
+# OrionTV 📺
+
+一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。
+
+## ✨ 功能特性
+
+- **框架跨平台支持**: 同时支持构建 Apple TV 和 Android TV。
+- **现代化前端**: 使用 Expo、React Native TVOS 和 TypeScript 构建，性能卓越。
+- **Expo Router**: 基于文件系统的路由，使导航逻辑清晰简单。
+- **TV 优化的 UI**: 专为电视遥控器交互设计的用户界面。
+
+## 🛠️ 技术栈
+
+- **前端**:
+  - [React Native TVOS](https://github.com/react-native-tvos/react-native-tvos)
+  - [Expo](https://expo.dev/) (~51.0)
+  - [Expo Router](https://docs.expo.dev/router/introduction/)
+  - [Expo AV](https://docs.expo.dev/versions/latest/sdk/av/)
+  - TypeScript
+
+## 📂 项目结构
+
+本项目采用类似 monorepo 的结构：
+
+```
+.
+├── app/              # Expo Router 路由和页面
+├── assets/           # 静态资源 (字体, 图片, TV 图标)
+├── components/       # React 组件
+├── constants/        # 应用常量 (颜色, 样式)
+├── hooks/            # 自定义 Hooks
+├── services/         # 服务层 (API, 存储)
+├── package.json      # 前端依赖和脚本
+└── ...
+```
+
+## 🚀 快速开始
+
+### 环境准备
+
+请确保您的开发环境中已安装以下软件：
+
+- [Node.js](https://nodejs.org/) (LTS 版本)
+- [Yarn](https://yarnpkg.com/)
+- [Expo CLI](https://docs.expo.dev/get-started/installation/)
+- [Xcode](https://developer.apple.com/xcode/) (用于 Apple TV 开发)
+- [Android Studio](https://developer.android.com/studio) (用于 Android TV 开发)
+
+### 项目启动
+
+接下来，在项目根目录运行前端应用：
+
+```sh
+
+# 安装依赖
+yarn
+
+# [首次运行或依赖更新后] 生成原生项目文件
+# 这会根据 app.json 中的配置修改原生代码以支持 TV
+yarn prebuild-tv
+
+# 运行在 Apple TV 模拟器或真机上
+yarn ios-tv
+
+# 运行在 Android TV 模拟器或真机上
+yarn android-tv
+```
+
+## 使用
+
+- 1.2.x 以上版本需配合 [MoonTV](https://github.com/senshinya/MoonTV) 使用。
+
+
+## 📜 主要脚本
+
+- `yarn start`: 在手机模式下启动 Metro Bundler。
+- `yarn start-tv`: 在 TV 模式下启动 Metro Bundler。
+- `yarn ios-tv`: 在 Apple TV 上构建并运行应用。
+- `yarn android-tv`: 在 Android TV 上构建并运行应用。
+- `yarn prebuild-tv`: 为 TV 构建生成原生项目文件。
+- `yarn lint`: 检查代码风格
+
+## 📝 License
+
+本项目采用 MIT 许可证。
+
+## ⚠️ 免责声明
+
+OrionTV 仅作为视频搜索工具，不存储、上传或分发任何视频内容。所有视频均来自第三方 API 接口提供的搜索结果。如有侵权内容，请联系相应的内容提供方。
+
+本项目开发者不对使用本项目产生的任何后果负责。使用本项目时，您必须遵守当地的法律法规。
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zimplexing/OrionTV&type=Date)](https://www.star-history.com/#zimplexing/OrionTV&Date)
+
+## 🙏 致谢
+
+本项目受到以下开源项目的启发：
+
+- [MoonTV](https://github.com/senshinya/MoonTV) - 一个基于 Next.js 的视频聚合应用
+- [LibreTV](https://github.com/LibreSpark/LibreTV) - 一个开源的视频流媒体应用
+
+感谢以下项目提供 API Key 的赞助
+
+- [gpt-load](https://github.com/tbphp/gpt-load) - 一个高性能的 OpenAI 格式 API 多密钥轮询代理服务器，支持负载均衡，使用 Go 语言开发
