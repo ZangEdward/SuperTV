@@ -24,25 +24,23 @@ class DLNAService {
   public searchDevices(callback: (devices: DLNADevice[]) => void) {
     logger.debug('Starting DLNA device search...');
 
-    // SSDP 组播地址和端口
     const SSDP_ADDR = '239.255.255.250';
     const SSDP_PORT = 1900;
 
-    // M-SEARCH 请求包
-    const M_SEARCH =
-      'M-SEARCH * HTTP/1.1\r\n' +
-      'HOST: 239.255.255.250:1900\r\n' +
-      'MAN: "ssdp:discover"\r\n' +
-      'MX: 3\r\n' +
-      'ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n' +
-      '\r\n';
+    // 搜索多个目标以提高兼容性
+    const searchTargets = [
+      'urn:schemas-upnp-org:device:MediaRenderer:1',
+      'upnp:rootdevice',
+      'ssdp:all'
+    ];
 
     try {
-      // 创建 UDP Socket 进行搜索
       const client = TcpSocket.createUdpSocket('udp4');
 
       client.on('message', async (msg, rinfo) => {
         const data = msg.toString();
+        logger.debug(`Received SSDP message from ${rinfo.address}`);
+
         if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY * HTTP/1.1')) {
           const locationMatch = data.match(/LOCATION: (.+)\r\n/i);
           if (locationMatch && locationMatch[1]) {
@@ -58,16 +56,28 @@ class DLNAService {
       });
 
       client.bind(0, () => {
-        client.send(M_SEARCH, 0, M_SEARCH.length, SSDP_PORT, SSDP_ADDR, (err) => {
-          if (err) logger.error('Failed to send M-SEARCH:', err);
+        // 对每个目标发送搜索请求
+        searchTargets.forEach(st => {
+          const M_SEARCH =
+            'M-SEARCH * HTTP/1.1\r\n' +
+            `HOST: ${SSDP_ADDR}:${SSDP_PORT}\r\n` +
+            'MAN: "ssdp:discover"\r\n' +
+            'MX: 3\r\n' +
+            `ST: ${st}\r\n` +
+            'USER-AGENT: SuperTV/1.0 UPnP/1.1\r\n' +
+            '\r\n';
+
+          client.send(M_SEARCH, 0, M_SEARCH.length, SSDP_PORT, SSDP_ADDR, (err) => {
+            if (err) logger.error(`Failed to send M-SEARCH for ${st}:`, err);
+          });
         });
       });
 
-      // 5秒后关闭搜索
+      // 延长搜索时间到 8 秒以获取更多响应
       setTimeout(() => {
         client.close();
         logger.debug('DLNA search stopped.');
-      }, 5000);
+      }, 8000);
 
     } catch (error) {
       logger.error('Failed to start DLNA search:', error);
