@@ -112,10 +112,10 @@ jobs:
           echo "📦 正在执行 React Native 核心资产打包（全流程深度跟踪）..."
           mkdir -p android/app/src/main/assets
           
-          npx react-native bundle \
+          yarn react-native bundle \
             --platform android \
             --dev false \
-            --entry-file index.js \
+            --entry-file ./index.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res \
             --verbose
