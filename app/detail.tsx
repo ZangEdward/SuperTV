@@ -12,7 +12,8 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { LinearGradient } from 'expo-linear-gradient';
-import { Settings2, ArrowUpDown, Sun, User, Play, Info, Layers, Zap, Clock, CheckCircle2 } from "lucide-react-native";
+import { ArrowUpDown, Zap, Layers, Info, List, Server } from "lucide-react-native";
+import { Colors } from "@/constants/Colors";
 
 export default function DetailScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
@@ -21,11 +22,10 @@ export default function DetailScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
+  const isMobile = deviceType === 'mobile';
 
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources'>('episodes');
   const [isReverse, setIsReverse] = useState(false);
-  const [sortType, setSortType] = useState<'original' | 'speed' | 'name'>('original');
-  const [showAllSources, setShowAllSources] = useState(false);
 
   const {
     detail,
@@ -72,43 +72,29 @@ export default function DetailScreen() {
 
   const episodes = useMemo(() => {
     if (!detail) return [];
-    const list = [...detail.episodes];
+    const list = detail.episodes.map((url, i) => ({ index: i, url }));
     return isReverse ? list.reverse() : list;
   }, [detail, isReverse]);
-
-  const sortedSources = useMemo(() => {
-    const list = [...searchResults];
-    if (sortType === 'speed') {
-      return list.sort((a, b) => (a.latency || 9999) - (b.latency || 9999));
-    } else if (sortType === 'name') {
-      return list.sort((a, b) => a.source_name.localeCompare(b.source_name));
-    }
-    return list;
-  }, [searchResults, sortType]);
 
   if (loading && !detail) {
     return <VideoLoadingAnimation showProgressBar={false} />;
   }
 
   if (error && !detail) {
-    const errorContent = (
-      <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
-        <ThemedText type="subtitle">{error}</ThemedText>
-      </ThemedView>
-    );
-    if (deviceType === 'tv') return errorContent;
     return (
       <ResponsiveNavigation>
         <ResponsiveHeader title="详情" showBackButton />
-        {errorContent}
+        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
+          <ThemedText type="subtitle" style={{ color: '#888' }}>{error}</ThemedText>
+        </ThemedView>
       </ResponsiveNavigation>
     );
   }
 
   if (!detail) return null;
 
-  // TV Layout
-  if (deviceType === 'tv') {
+  // TV Layout remains as it is or slightly optimized for consistency
+  if (!isMobile) {
     return (
       <ThemedView style={[commonStyles.container, { paddingTop: 40 }]}>
         <ScrollView style={styles.tvScrollContainer}>
@@ -158,126 +144,111 @@ export default function DetailScreen() {
     );
   }
 
-  // Mobile Layout (LunaTV Inspired)
+  // Refined Mobile Layout
   return (
-    <ThemedView style={styles.container}>
-      <View style={styles.customHeader}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.headerTitle}>SuperTV</Text>
-        </TouchableOpacity>
-        <View style={styles.headerIcons}>
-          <Sun size={24} color="white" style={{ marginRight: 20 }} />
-          <User size={24} color="white" />
-        </View>
-      </View>
-
-      <ScrollView style={styles.content}>
-        <View style={styles.previewContainer}>
-          <Image source={{ uri: detail.poster }} style={styles.previewImage} resizeMode="cover" />
-          <TouchableOpacity style={styles.settingsIcon} onPress={handleOpenCache}>
-            <Settings2 size={20} color="white" />
+    <ResponsiveNavigation>
+      <ResponsiveHeader
+        title={detail.title}
+        showBackButton
+        rightElement={
+          <TouchableOpacity onPress={toggleFavorite}>
+            <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={20} color={isFavorited ? Colors.dark.primary : "#888"} />
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.mainCard}>
-          <View style={styles.tabsHeader}>
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'episodes' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('episodes')}
-            >
-              <ThemedText style={[styles.tabText, activeTab === 'episodes' && styles.tabTextActive]}>选集</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'sources' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('sources')}
-            >
-              <ThemedText style={[styles.tabText, activeTab === 'sources' && styles.tabTextActive]}>换源</ThemedText>
+        }
+      />
+      <ThemedView style={styles.container}>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Video Poster Area */}
+          <View style={styles.posterWrapper}>
+            <Image source={{ uri: detail.poster }} style={styles.mainPoster} resizeMode="cover" />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              style={styles.posterGradient}
+            />
+            <TouchableOpacity style={styles.cacheAction} onPress={handleOpenCache}>
+              <Info size={18} color="white" />
+              <Text style={styles.cacheText}>缓存管理</Text>
             </TouchableOpacity>
           </View>
 
-          {activeTab === 'episodes' ? (
-            <View style={styles.tabContent}>
-              <View style={styles.filterRow}>
-                <TouchableOpacity style={styles.rangeSelector}>
-                  <ThemedText style={styles.rangeText}>1-{detail.episodes.length}</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setIsReverse(!isReverse)}>
-                  <ArrowUpDown size={20} color={isReverse ? "#00bb5e" : "#aaa"} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.episodeGrid}>
-                {episodes.map((_, index) => {
-                  const actualIndex = isReverse ? detail.episodes.length - 1 - index : index;
-                  return (
-                    <TouchableOpacity key={index} style={styles.episodeItem} onPress={() => handlePlay(actualIndex)}>
-                      <LinearGradient
-                        colors={['#00bb5e', '#009a4d']}
-                        style={styles.episodeGradient}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                      >
-                        <Text style={styles.episodeText}>{(actualIndex + 1).toString().padStart(2, '0')}</Text>
-                      </LinearGradient>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+          {/* Info & Tabs */}
+          <View style={styles.tabSection}>
+            <View style={styles.tabBar}>
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'episodes' && styles.tabItemActive]}
+                onPress={() => setActiveTab('episodes')}
+              >
+                <List size={18} color={activeTab === 'episodes' ? Colors.dark.primary : '#888'} />
+                <Text style={[styles.tabLabel, activeTab === 'episodes' && styles.tabLabelActive]}>选集</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabItem, activeTab === 'sources' && styles.tabItemActive]}
+                onPress={() => setActiveTab('sources')}
+              >
+                <Server size={18} color={activeTab === 'sources' ? Colors.dark.primary : '#888'} />
+                <Text style={[styles.tabLabel, activeTab === 'sources' && styles.tabLabelActive]}>播放源</Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            <View style={styles.tabContent}>
-              <View style={styles.sourceActions}>
-                <TouchableOpacity style={styles.speedTestBtn}>
-                  <Zap size={16} color="#00bb5e" />
-                  <Text style={styles.speedTestText}>视频源测速</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.speedTestBtn, { backgroundColor: '#1a73e8' }]}>
-                  <CheckCircle2 size={16} color="white" />
-                  <Text style={[styles.speedTestText, { color: 'white' }]}>手动测速</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sortRow}>
-                <Text style={styles.sortLabel}>排序：</Text>
-                <View style={styles.sortOptions}>
-                  {(['original', 'speed', 'name'] as const).map((type) => (
-                    <TouchableOpacity key={type} onPress={() => setSortType(type)} style={[styles.sortBtn, sortType === type && styles.sortBtnActive]}>
-                      <Text style={[styles.sortBtnText, sortType === type && styles.sortBtnTextActive]}>{type === 'original' ? '原始' : type === 'speed' ? '速度' : '名称'}</Text>
+
+            {activeTab === 'episodes' ? (
+              <View style={styles.tabPane}>
+                <View style={styles.paneHeader}>
+                  <Text style={styles.paneTitle}>共 {detail.episodes.length} 集</Text>
+                  <TouchableOpacity onPress={() => setIsReverse(!isReverse)}>
+                    <ArrowUpDown size={18} color={isReverse ? Colors.dark.primary : "#888"} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.episodeGrid}>
+                  {episodes.map((ep) => (
+                    <TouchableOpacity key={ep.index} style={styles.episodeBtn} onPress={() => handlePlay(ep.index)}>
+                      <View style={styles.episodeBox}>
+                        <Text style={styles.episodeText}>{(ep.index + 1).toString().padStart(2, '0')}</Text>
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
-                <View style={styles.fastFirst}><Zap size={14} color="#fbc02d" /><Text style={styles.fastFirstText}>最快优先</Text></View>
               </View>
-              <View style={styles.sourceList}>
-                {sortedSources.map((item, index) => (
-                  <TouchableOpacity key={index} style={[styles.sourceItem, detail.source === item.source && styles.sourceItemActive]} onPress={() => setDetail(item)}>
-                    <Image source={{ uri: item.poster }} style={styles.sourcePoster} />
-                    <View style={styles.sourceInfo}>
-                      <View style={styles.sourceHeader}>
-                        <Text style={styles.sourceTitle} numberOfLines={1}>{item.title}</Text>
-                        {detail.source === item.source && <View style={styles.currentBadge}><Text style={styles.currentBadgeText}>当前源</Text></View>}
-                      </View>
-                      <View style={styles.sourceSubHeader}><Layers size={12} color="#888" /><Text style={styles.sourceSourceName}>{item.source_name}</Text><Text style={styles.sourceCount}>{item.episodes.length} 集</Text></View>
-                      <View style={styles.sourceFooter}>
-                        <Text style={styles.sourceLatency}>{(item.latency || 0).toFixed(2)} KB/s  {(item.latency ? Math.round(item.latency/2) : 0)}ms</Text>
-                        {item.resolution && <View style={styles.resBadge}><Zap size={10} color="#00bb5e" /><Text style={styles.resText}>{item.resolution}</Text></View>}
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+            ) : (
+              <View style={styles.tabPane}>
+                <View style={styles.paneHeader}>
+                  <Text style={styles.paneTitle}>可用源 ({searchResults.length})</Text>
+                  {!allSourcesLoaded && <ActivityIndicator size="small" color={Colors.dark.primary} />}
+                </View>
+                <View style={styles.sourceGrid}>
+                  {searchResults.map((item, idx) => {
+                    const isSelected = detail.source === item.source;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[styles.sourceCard, isSelected && styles.sourceCardActive]}
+                        onPress={() => setDetail(item)}
+                      >
+                        <View style={styles.sourceInfo}>
+                          <Text style={[styles.sourceName, isSelected && styles.sourceNameActive]} numberOfLines={1}>{item.source_name}</Text>
+                          <Text style={styles.sourceMeta}>{item.episodes.length} 集 · {item.resolution || '自动'}</Text>
+                        </View>
+                        {isSelected && <Zap size={14} color={Colors.dark.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.footerInfo}>
-          <View style={styles.detailHeader}>
-            <ThemedText style={styles.detailTitle}>{detail.title}</ThemedText>
-            <TouchableOpacity onPress={toggleFavorite}>
-              <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={20} color={isFavorited ? "#feff5f" : "#888"} />
-            </TouchableOpacity>
+            )}
           </View>
-          <ThemedText style={styles.detailDesc}>{detail.desc}</ThemedText>
-        </View>
-      </ScrollView>
-    </ThemedView>
+
+          {/* Description */}
+          <View style={styles.descSection}>
+            <Text style={styles.descTitle}>剧情简介</Text>
+            <Text style={styles.descText}>{detail.desc || '暂无简介'}</Text>
+            <View style={styles.metaInfo}>
+              <Text style={styles.metaItem}>{detail.year}</Text>
+              <Text style={styles.metaDivider}>·</Text>
+              <Text style={styles.metaItem}>{detail.type_name}</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </ThemedView>
+    </ResponsiveNavigation>
   );
 }
 
@@ -299,59 +270,114 @@ const styles = StyleSheet.create({
   tvEpisodeGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   tvEpisodeBtn: { margin: 10, minWidth: 100 },
 
-  // Mobile Styles
+  // Unified Mobile Styles
   container: { flex: 1, backgroundColor: '#000' },
-  customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 45, paddingBottom: 10 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#00bb5e' },
-  headerIcons: { flexDirection: 'row' },
   content: { flex: 1 },
-  previewContainer: { margin: 16, height: 220, borderRadius: 12, overflow: 'hidden', backgroundColor: '#111', borderWidth: 1, borderColor: '#333' },
-  previewImage: { width: '100%', height: '100%', opacity: 0.8 },
-  settingsIcon: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
-  mainCard: { margin: 16, marginTop: 0, backgroundColor: '#111', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#222' },
-  tabsHeader: { flexDirection: 'row', height: 50, backgroundColor: '#1a1a1a' },
-  tabBtn: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  tabBtnActive: { backgroundColor: '#111' },
-  tabText: { fontSize: 16, fontWeight: '600', color: '#888' },
-  tabTextActive: { color: '#00bb5e' },
-  tabContent: { padding: 16 },
-  filterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  rangeSelector: { backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 4, borderLeftWidth: 3, borderLeftColor: '#00bb5e' },
-  rangeText: { color: '#00bb5e', fontSize: 14, fontWeight: '600' },
-  episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
-  episodeItem: { width: '20%', aspectRatio: 1, padding: 5 },
-  episodeGradient: { flex: 1, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  episodeText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  sourceActions: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  speedTestBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a1a', paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#333', gap: 8 },
-  speedTestText: { color: '#00bb5e', fontSize: 14, fontWeight: '500' },
-  sortRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  sortLabel: { color: '#666', fontSize: 12 },
-  sortOptions: { flexDirection: 'row', backgroundColor: '#1a1a1a', borderRadius: 6, padding: 2, flex: 1 },
-  sortBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 4 },
-  sortBtnActive: { backgroundColor: '#333' },
-  sortBtnText: { color: '#888', fontSize: 12 },
-  sortBtnTextActive: { color: 'white' },
-  fastFirst: { flexDirection: 'row', alignItems: 'center', marginLeft: 10, gap: 4 },
-  fastFirstText: { color: '#fbc02d', fontSize: 12 },
-  sourceList: { gap: 12 },
-  sourceItem: { flexDirection: 'row', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#222' },
-  sourceItemActive: { borderColor: '#00bb5e', backgroundColor: 'rgba(0, 187, 94, 0.05)' },
-  sourcePoster: { width: 60, height: 80, borderRadius: 6, backgroundColor: '#333' },
-  sourceInfo: { flex: 1, marginLeft: 12, justifyContent: 'space-between' },
-  sourceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sourceTitle: { color: 'white', fontSize: 15, fontWeight: '600', flex: 1 },
-  currentBadge: { backgroundColor: '#00bb5e', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  currentBadgeText: { color: 'white', fontSize: 10, fontWeight: 'bold' },
-  sourceSubHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sourceSourceName: { color: '#aaa', fontSize: 12 },
-  sourceCount: { color: '#666', fontSize: 11, marginLeft: 'auto' },
-  sourceFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sourceLatency: { color: '#00bb5e', fontSize: 12, fontWeight: '500' },
-  resBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, gap: 4 },
-  resText: { color: '#00bb5e', fontSize: 11, fontWeight: 'bold' },
-  footerInfo: { padding: 16, paddingTop: 0, paddingBottom: 40 },
-  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  detailTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  detailDesc: { color: '#888', fontSize: 14, lineHeight: 20 },
+  posterWrapper: {
+    width: '100%',
+    height: 240,
+    position: 'relative',
+    backgroundColor: '#111',
+  },
+  mainPoster: {
+    width: '100%',
+    height: '100%',
+    opacity: 0.6,
+  },
+  posterGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 100,
+  },
+  cacheAction: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  cacheText: { color: 'white', fontSize: 12, fontWeight: '600' },
+
+  tabSection: {
+    backgroundColor: '#000',
+    marginTop: -10,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: 'hidden',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    height: 50,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+  },
+  tabItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  tabItemActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.dark.primary,
+  },
+  tabLabel: { fontSize: 15, color: '#888', fontWeight: '600' },
+  tabLabelActive: { color: Colors.dark.primary },
+
+  tabPane: { padding: 16 },
+  paneHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  paneTitle: { color: '#888', fontSize: 13 },
+
+  episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
+  episodeBtn: { width: '20%', aspectRatio: 1, padding: 4 },
+  episodeBox: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#222',
+  },
+  episodeText: { color: '#eee', fontSize: 15, fontWeight: 'bold' },
+
+  sourceGrid: { gap: 10 },
+  sourceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#111',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1a1a1a',
+  },
+  sourceCardActive: {
+    borderColor: Colors.dark.primary,
+    backgroundColor: 'rgba(0, 187, 94, 0.05)',
+  },
+  sourceInfo: { flex: 1 },
+  sourceName: { color: '#ccc', fontSize: 14, fontWeight: '600' },
+  sourceNameActive: { color: 'white' },
+  sourceMeta: { color: '#666', fontSize: 11, marginTop: 2 },
+
+  descSection: { padding: 16, borderTopWidth: 8, borderTopColor: '#0a0a0a' },
+  descTitle: { color: 'white', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  descText: { color: '#888', fontSize: 14, lineHeight: 22 },
+  metaInfo: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },
+  metaItem: { color: '#555', fontSize: 12 },
+  metaDivider: { color: '#333' },
 });

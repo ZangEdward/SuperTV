@@ -8,16 +8,20 @@ import { PlayRecordManager } from "@/services/storage";
 import { CacheService } from "@/services/cacheService";
 import useCacheStore from "@/stores/cacheStore";
 import Toast from "react-native-toast-message";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 export function CacheSection() {
   const router = useRouter();
+  const { deviceType } = useResponsiveLayout();
+  const isMobile = deviceType === 'mobile';
+
   const { clearCache } = useCacheStore();
   const [clearing, setClearing] = useState(false);
   const [cacheSize, setCacheSize] = useState<string>("0 MB");
 
   useEffect(() => {
-    calculateCacheSize();
-  }, []);
+    if (isMobile) calculateCacheSize();
+  }, [isMobile]);
 
   const calculateCacheSize = async () => {
     try {
@@ -88,21 +92,23 @@ export function CacheSection() {
       <View style={styles.container}>
         <ThemedText style={styles.title}>存储管理</ThemedText>
 
-        <View style={styles.row}>
-          <View style={styles.info}>
-            <ThemedText style={styles.label}>已下载缓存</ThemedText>
-            <ThemedText style={styles.value}>{cacheSize}</ThemedText>
+        {isMobile && (
+          <View style={styles.row}>
+            <View style={styles.info}>
+              <ThemedText style={styles.label}>已下载缓存</ThemedText>
+              <ThemedText style={styles.value}>{cacheSize}</ThemedText>
+            </View>
+            <StyledButton
+              onPress={handleClearCache}
+              disabled={clearing}
+              style={styles.actionButton}
+            >
+              {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
+            </StyledButton>
           </View>
-          <StyledButton
-            onPress={handleClearCache}
-            disabled={clearing}
-            style={styles.actionButton}
-          >
-            {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
-          </StyledButton>
-        </View>
+        )}
 
-        <View style={[styles.row, { marginTop: 16 }]}>
+        <View style={[styles.row, { marginTop: isMobile ? 16 : 0 }]}>
           <View style={styles.info}>
             <ThemedText style={styles.label}>播放历史记录</ThemedText>
             <ThemedText style={styles.subtitle}>清除所有视频的观看进度</ThemedText>
@@ -117,17 +123,19 @@ export function CacheSection() {
           </StyledButton>
         </View>
 
-        <View style={[styles.row, { marginTop: 16 }]}> 
-          <View style={styles.info}>
-            <ThemedText style={styles.label}>缓存管理</ThemedText>
-            <ThemedText style={styles.subtitle}>进入缓存管理页面查看已下载视频</ThemedText>
+        {isMobile && (
+          <View style={[styles.row, { marginTop: 16 }]}>
+            <View style={styles.info}>
+              <ThemedText style={styles.label}>缓存管理</ThemedText>
+              <ThemedText style={styles.subtitle}>进入缓存管理页面查看已下载视频</ThemedText>
+            </View>
+            <StyledButton
+              text="查看"
+              onPress={() => router.push("/cache-management")}
+              style={styles.actionButton}
+            />
           </View>
-          <StyledButton
-            text="查看"
-            onPress={() => router.push("/cache-management")}
-            style={styles.actionButton}
-          />
-        </View>
+        )}
       </View>
     </SettingsSection>
   );

@@ -24,6 +24,9 @@ interface SettingsState {
     enabledAll: boolean;
     sources: { [key: string]: boolean };
   };
+  sourceLatencies: Record<string, number>;
+  allSources: ApiSite[];
+  isLoadingSources: boolean;
   isModalVisible: boolean;
   serverConfig: ServerConfig | null;
   isLoadingServerConfig: boolean;
@@ -39,6 +42,9 @@ interface SettingsState {
   hideModal: () => void;
 
   autoSelectFastestApi: () => Promise<void>;
+  fetchAllSources: () => Promise<void>;
+  testSourceSpeeds: () => Promise<void>;
+  toggleSource: (key: string, enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -53,6 +59,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     enabledAll: true,
     sources: {},
   },
+  sourceLatencies: {},
+  allSources: [],
+  isLoadingSources: false,
 
   // 🚀 APP 启动时加载设置 + 自动测速
   loadSettings: async () => {
@@ -71,6 +80,84 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     } else {
       await get().autoSelectFastestApi();
     }
+  },
+
+  fetchAllSources: async () => {
+    set({ isLoadingSources: true });
+    try {
+      const sources = await api.getResources();
+      set({ allSources: sources });
+      // Initialize sources config if not exists
+      const { videoSource } = get();
+      const newSources = { ...videoSource.sources };
+      let changed = false;
+      sources.forEach(s => {
+        if (newSources[s.key] === undefined) {
+          newSources[s.key] = true;
+          changed = true;
+        }
+      });
+      if (changed) {
+        set({ videoSource: { ...videoSource, sources: newSources } });
+      }
+    } catch (error) {
+      logger.error("Failed to fetch sources:", error);
+    } finally {
+      set({ isLoadingSources: false });
+    }
+  },
+
+  testSourceSpeeds: async () => {
+    const { allSources, videoSource } = get();
+    const latencies: Record<string, number> = {};
+    const newSources = { ...videoSource.sources };
+
+    // We test speed using the API endpoint for searching one (with a dummy query)
+    // or just checking if the API base is reachable.
+    // Since sites are just keys, we depend on the node to proxy.
+    // A better way is to test the actual search/one endpoint with a minimal query.
+
+    const testSpeed = async (sourceKey: string): Promise<number> => {
+      const start = Date.now();
+      try {
+        // Use a dummy search to test site availability through the node
+        const res = await api.searchVideo("1", sourceKey);
+        return Date.now() - start;
+      } catch {
+        return Infinity;
+      }
+    };
+
+    // Parallel testing with a concurrency limit if needed, but let's try Promise.all first
+    const results = await Promise.all(
+      allSources.map(async (s) => ({
+        key: s.key,
+        time: await testSpeed(s.key),
+      }))
+    );
+
+    results.forEach(r => {
+      latencies[r.key] = r.time;
+      if (r.time > 3000) {
+        newSources[r.key] = false;
+      } else {
+        newSources[r.key] = true;
+      }
+    });
+
+    set({
+      sourceLatencies: latencies,
+      videoSource: { ...videoSource, sources: newSources }
+    });
+
+    // Save updated source config
+    await get().saveSettings();
+  },
+
+  toggleSource: (key, enabled) => {
+    const { videoSource } = get();
+    const newSources = { ...videoSource.sources, [key]: enabled };
+    set({ videoSource: { ...videoSource, sources: newSources } });
   },
 
   // 🚀 自动测速并选择最快节点（使用 favicon.ico）

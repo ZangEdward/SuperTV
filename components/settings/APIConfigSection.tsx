@@ -35,15 +35,24 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         onBlur={onBlur}
       >
         <View style={styles.container} onFocus={onFocus} onBlur={onBlur}>
-          <ThemedText style={styles.title}>服务器节点</ThemedText>
+          <View style={styles.headerRow}>
+            <ThemedText style={styles.title}>服务器节点</ThemedText>
+            <StyledButton
+              text="优选"
+              onPress={() => useSettingsStore.getState().autoSelectFastestApi()}
+              style={styles.preferButton}
+              textStyle={styles.preferButtonText}
+              variant="ghost"
+            />
+          </View>
 
           {!hideDescription && (
             <ThemedText style={styles.subtitle}>
-              测速并自动选择最佳节点
+              手动切换或点击优选自动测速
             </ThemedText>
           )}
 
-          {/* 节点列表展示 - 内部已经使用了 StyledButton，可直接遥控选择 */}
+          {/* 节点列表展示 */}
           <ApiNodeSelectorUI onFocus={onFocus} />
         </View>
       </SettingsSection>
@@ -57,10 +66,29 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 12,
+  },
   title: {
     fontSize: Platform.isTV ? 22 : 18,
     fontWeight: "bold",
-    marginBottom: 8,
+  },
+  preferButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    minHeight: 32,
+    backgroundColor: 'rgba(0, 187, 94, 0.1)',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 187, 94, 0.3)',
+  },
+  preferButtonText: {
+    fontSize: 13,
+    color: '#00bb5e',
+    fontWeight: 'bold',
   },
   subtitle: {
     fontSize: Platform.isTV ? 16 : 14,

@@ -4,27 +4,23 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { API_NODES } from "@/services/apiNodes";
 import { StyledButton } from "./StyledButton";
 import { ThemedText } from "./ThemedText";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Colors } from "@/constants/Colors";
 
 export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
   const apiBaseUrl = useSettingsStore((s) => s.apiBaseUrl);
   const nodeLatencies = useSettingsStore((s) => s.nodeLatencies || {});
   const setApiBaseUrl = useSettingsStore((s) => s.setApiBaseUrl);
-  const autoSelectFastestApi = useSettingsStore((s) => s.autoSelectFastestApi);
-
-  const { deviceType } = useResponsiveLayout();
 
   const getLatencyText = (url: string) => {
     const ms = nodeLatencies[url];
-    if (ms === undefined) return "测速中...";
-    if (ms === Infinity) return "超时";
-    return `${ms}ms`;
+    if (ms === undefined) return "（测速中）";
+    if (ms === Infinity) return "（超时）";
+    return `（${ms}ms）`;
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.nodeList}>
+      <View style={styles.nodeGrid}>
         {API_NODES.map((node) => {
           const isSelected = apiBaseUrl === node.url;
 
@@ -34,25 +30,18 @@ export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
               onPress={() => setApiBaseUrl(node.url)}
               onFocus={onFocus}
               isSelected={isSelected}
-              text={`${node.label}（${getLatencyText(node.url)}）`}
               style={[
                 styles.nodeButton,
                 isSelected && styles.selectedNodeButton
               ]}
-              textStyle={styles.nodeButtonText}
-            />
+            >
+              <View style={styles.buttonContent}>
+                <ThemedText style={styles.nodeLabel}>{node.label}</ThemedText>
+                <ThemedText style={styles.latencyText}>{getLatencyText(node.url)}</ThemedText>
+              </View>
+            </StyledButton>
           );
         })}
-      </View>
-
-      <View style={styles.speedTestContainer}>
-        <StyledButton
-          onPress={autoSelectFastestApi}
-          onFocus={onFocus}
-          style={styles.speedTestButton}
-        >
-          <ThemedText style={styles.speedTestButtonText}>重新测速并选择最快节点</ThemedText>
-        </StyledButton>
       </View>
     </View>
   );
@@ -60,46 +49,38 @@ export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 0,
+    marginTop: 4,
   },
-  headerText: {
-    display: 'none', // 隐藏重复标题
-  },
-  nodeList: {
-    flexDirection: 'column', // 改为单列，对标检查更新按钮
-    width: '100%',
-    alignItems: 'center',
+  nodeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   nodeButton: {
-    width: '90%',
-    marginBottom: 12,
-    minHeight: 48,
+    width: '48%',
+    marginBottom: 0,
+    minHeight: 56,
+    paddingVertical: 8,
   },
   selectedNodeButton: {
     backgroundColor: Colors.dark.primary,
+    borderColor: Colors.dark.primary,
   },
-  nodeButtonText: {
+  buttonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nodeLabel: {
     color: "#ffffff",
-    fontSize: Platform.isTV ? 16 : 14,
+    fontSize: 15,
     fontWeight: "600",
     textAlign: 'center',
   },
-  speedTestContainer: {
-    marginTop: 10,
-    alignItems: "center",
-    width: '100%',
-  },
-  speedTestButton: {
-    width: "90%",
-    backgroundColor: "rgba(0, 187, 94, 0.15)",
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: "rgba(0, 187, 94, 0.3)",
-  },
-  speedTestButtonText: {
-    color: "#00bb5e", // 显眼的绿色
-    fontSize: Platform.isTV ? 16 : 14,
-    fontWeight: "bold",
+  latencyText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 11,
+    marginTop: 2,
     textAlign: 'center',
   },
 });

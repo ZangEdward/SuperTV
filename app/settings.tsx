@@ -146,6 +146,21 @@ export default function SettingsScreen() {
       component: <CacheSection />,
       key: "cache",
     },
+    {
+      component: (
+        <SettingsSection
+          onPress={() => router.push("/source-management")}
+        >
+          <View style={{ padding: 16 }}>
+            <ThemedText style={{ fontSize: Platform.isTV ? 22 : 18, fontWeight: 'bold' }}>播放源管理</ThemedText>
+            <ThemedText style={{ fontSize: Platform.isTV ? 16 : 14, color: '#888', marginTop: 4 }}>
+              查看并配置可用数据源
+            </ThemedText>
+          </View>
+        </SettingsSection>
+      ),
+      key: "source_management",
+    },
     // 视频源配置已移除
     Platform.OS === "android" && {
       component: <UpdateSection />,
