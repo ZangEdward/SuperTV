@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       job_type:
-        description: '请选择任务类型：仅构建APK(build-only) 或 构建+OTA(ota)'
+        description: "请选择任务类型：仅构建APK(build-only) 或 构建+OTA(ota)"
         required: true
-        default: 'ota'
+        default: "ota"
         type: choice
         options:
           - build-only
@@ -54,26 +54,17 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      # 🔧 关键补丁：修正 ffmpeg-kit 依赖版本
       - name: Patch ffmpeg-kit dependency
         run: |
           echo "Patching ffmpeg-kit-react-native dependency version..."
 
-          # 如果 node_modules 里的 android/build.gradle 写死了 6.0-1/6.0-2，可以顺手修一下（容错）
-          if [ -f node_modules/ffmpeg-kit-react-native/android/build.gradle ]; then
-            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
-            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
-          fi
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
 
-          # 修 app 里的依赖（expo prebuild 生成的）
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
-            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
-          fi
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
 
-          # 在顶层 build.gradle 加一个兜底的 resolutionStrategy，强制用 6.0
-          if [ -f android/build.gradle ]; then
-            cat >> android/build.gradle << 'EOF'
+          cat >> android/build.gradle << 'EOF'
 
 subprojects { project ->
     project.configurations.all {
@@ -83,7 +74,6 @@ subprojects { project ->
     }
 }
 EOF
-          fi
 
       - name: Decode Keystore
         run: |
@@ -168,7 +158,6 @@ EOF
           rm -f sync-repo/log/vision/apksize.json
           APK_SIZE=$(stat -c%s "SuperTV-${VERSION}.apk")
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
-          echo "APK size: ${APK_SIZE} bytes"
 
       - name: Upload APK to log repo Releases
         uses: softprops/action-gh-release@v1
@@ -188,6 +177,7 @@ EOF
           HASH_NAME="SHA256-LIKE-$(openssl rand -hex 16 | tr 'a-f' 'A-F')"
           RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9ΞЖѪѬѲҖҘҨҴҼҾӁӜӦӴӸᚠᚢᚦᚨᚱᚲᚷᚹᚺᛃᛇᛉᛏᛗᛟ' | head -c 1000)
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
+
           {
             echo "timestamp: ${TIMESTAMP}"
             echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
