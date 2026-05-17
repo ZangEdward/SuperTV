@@ -24,14 +24,16 @@ interface HttpResponse {
 
 type RequestHandler = (request: HttpRequest) => HttpResponse | Promise<HttpResponse>;
 
-class TCPHttpServer {
+export class TCPHttpServer {
   private server: TcpSocket.Server | null = null;
   private isRunning = false;
   private requestHandler: RequestHandler | null = null;
   private localIp: string | null = null;
+  private port: number;
 
-  constructor() {
+  constructor(port: number = PORT) {
     this.server = null;
+    this.port = port;
   }
 
   private parseHttpRequest(data: string): HttpRequest | null {
@@ -103,8 +105,8 @@ class TCPHttpServer {
     this.localIp = ipAddress;
 
     if (this.isRunning) {
-      logger.debug('[TCPHttpServer] Server is already running.');
-      return `http://${ipAddress}:${PORT}`;
+      logger.debug(`[TCPHttpServer] Server is already running on ${this.port}.`);
+      return `http://${ipAddress}:${this.port}`;
     }
 
     return new Promise((resolve, reject) => {
@@ -141,10 +143,10 @@ class TCPHttpServer {
           });
         });
 
-        this.server.listen({ port: PORT, host: '0.0.0.0' }, () => {
-          logger.debug(`[TCPHttpServer] Server listening on ${ipAddress}:${PORT}`);
+        this.server.listen({ port: this.port, host: '0.0.0.0' }, () => {
+          logger.debug(`[TCPHttpServer] Server listening on ${ipAddress}:${this.port}`);
           this.isRunning = true;
-          resolve(`http://${ipAddress}:${PORT}`);
+          resolve(`http://${ipAddress}:${this.port}`);
         });
 
         this.server.on('error', (error: Error) => {
@@ -253,7 +255,7 @@ class TCPHttpServer {
     if (!this.localIp) return null;
     const fileName = fileUri.split('/').pop();
     if (!fileName) return null;
-    return `http://${this.localIp}:${PORT}/video/${encodeURIComponent(fileName)}`;
+    return `http://${this.localIp}:${this.port}/video/${encodeURIComponent(fileName)}`;
   }
 
   public stop() {
@@ -261,7 +263,7 @@ class TCPHttpServer {
       this.server.close();
       this.server = null;
       this.isRunning = false;
-      logger.debug('[TCPHttpServer] Server stopped');
+      logger.debug(`[TCPHttpServer] Server on ${this.port} stopped`);
     }
   }
 
@@ -270,4 +272,5 @@ class TCPHttpServer {
   }
 }
 
-export default new TCPHttpServer();
+export const tcpHttpServer = new TCPHttpServer();
+export default TCPHttpServer;

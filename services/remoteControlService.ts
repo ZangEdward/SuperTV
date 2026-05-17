@@ -55,7 +55,7 @@ class RemoteControlService {
   private onHandshake: () => void = () => {};
 
   constructor() {
-    this.httpServer = new TCPHttpServer();
+    this.httpServer = new TCPHttpServer(12347); // 使用不同端口避免冲突
     this.setupRequestHandler();
   }
 

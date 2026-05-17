@@ -1,4 +1,4 @@
-const UPDATE_CONFIG = {
+export const UPDATE_CONFIG = {
   // 自动检查更新
   AUTO_CHECK: true,
 
@@ -34,6 +34,3 @@ const UPDATE_CONFIG = {
     DOWNLOAD_COMPLETE_TEXT: "下载完成，点击安装",
   },
 };
-
-export { UPDATE_CONFIG };
-export default UPDATE_CONFIG;

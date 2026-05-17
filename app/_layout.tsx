@@ -73,9 +73,10 @@ export default function RootLayout() {
 
   // 检查更新
   useEffect(() => {
-    if (loaded && UPDATE_CONFIG?.AUTO_CHECK && Platform.OS === 'android') {
+    const config = UPDATE_CONFIG;
+    if (loaded && config && config.AUTO_CHECK && Platform.OS === 'android') {
       // 检查是否需要自动检查更新
-      const shouldCheck = Date.now() - lastCheckTime > (UPDATE_CONFIG?.CHECK_INTERVAL || 0);
+      const shouldCheck = Date.now() - lastCheckTime > (config.CHECK_INTERVAL || 0);
       if (shouldCheck) {
         checkForUpdate(true); // 静默检查
       }

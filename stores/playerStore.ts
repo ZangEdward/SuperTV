@@ -100,11 +100,11 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       // 使用本地 HTTP Server 代理播放，类似 LunaTV 逻辑
       let playUrl = fileUri;
       try {
-        const TCPHttpServer = require('@/services/tcpHttpServer').default;
-        if (!TCPHttpServer.getIsRunning()) {
-          await TCPHttpServer.start();
+        const { tcpHttpServer } = require('@/services/tcpHttpServer');
+        if (!tcpHttpServer.getIsRunning()) {
+          await tcpHttpServer.start();
         }
-        const localUrl = TCPHttpServer.getLocalUrl(fileUri);
+        const localUrl = tcpHttpServer.getLocalUrl(fileUri);
         if (localUrl) {
           logger.info(`[INFO] Proxying local file through HTTP: ${localUrl}`);
           playUrl = localUrl;
