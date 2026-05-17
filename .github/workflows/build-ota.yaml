@@ -19,8 +19,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
+
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,37 +57,22 @@ jobs:
       - name: Patch ffmpeg-kit dependency
         run: |
           echo "Patching ffmpeg-kit-react-native dependency version..."
-          
-          # 1. 强行将所有地方的依赖版本统一改为 6.0-2
-          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0-2/g' {} + || true
-          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0-2/g' {} + || true
-          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0-2/g' android/app/build.gradle || true
-          sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0-2/g' android/app/build.gradle || true
-          
-          # 2. 绕过 settings.gradle，直接在全局根 build.gradle 最顶层强行插入最高优先级的中央仓库和 Jitpack 仓库
-          # 这样即使 settings.gradle 开启了集中管理，根级别的 allprojects 依然能强制下发仓库源
-          mv android/build.gradle android/build.gradle.bak
-          cat > android/build.gradle << 'EOF'
-          allprojects {
-              repositories {
-                  mavenCentral()
-                  maven { url "https://www.jitpack.io" }
-                  maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
-              }
-          }
-          EOF
-          cat android/build.gradle.bak >> android/build.gradle
-          
-          # 3. 强行在全局解析策略中注入强制版本
+
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle || true
+
+          sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+          sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle || true
+
           cat >> android/build.gradle << 'EOF'
-          subprojects { project ->
-              project.configurations.all {
-                  resolutionStrategy {
-                      force "com.arthenica:ffmpeg-kit-https:6.0-2"
-                  }
-              }
-          }
-          EOF
+subprojects { project ->
+    project.configurations.all {
+        resolutionStrategy {
+            force "com.arthenica:ffmpeg-kit-https:6.0"
+        }
+    }
+}
+EOF
 
       - name: Decode Keystore
         run: |
@@ -135,6 +122,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'ota' }}
+
     steps:
       - name: Checkout SuperTV repo
         uses: actions/checkout@v4
@@ -188,7 +176,7 @@ jobs:
           HASH_NAME="ID-$(openssl rand -hex 16)"
           RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
           FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
-          
+
           {
             echo "timestamp: ${TIMESTAMP}"
             echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
