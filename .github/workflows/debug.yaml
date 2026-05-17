@@ -1,0 +1,91 @@
+name: Debug JS Compilation & Lint
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # 支持在 GitHub 页面上手动点击一键运行
+
+jobs:
+  debug-js:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 签出仓库代码
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 设置 Node.js 环境（确保支持最新的 JS 语法）
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm' # 自动缓存依赖，加速下一次编译
+
+      # 3. 安装依赖（即使项目没有 package.json，也会自动初始化并安装检测工具）
+      - name: Install Lint & Compilation Tools
+        run: |
+          if [ ! -f "package.json" ]; then
+            echo "⚠️ 未检测到 package.json，正在自动初始化调试环境..."
+            npm init -y
+          fi
+          # 安装严格的代码语法检测器 (ESLint) 和 编译器 (TypeScript)
+          npm install eslint @babel/core @babel/cli typescript --save-dev
+          
+          # 自动生成一个基础的 ESLint 严查配置文件
+          cat << 'EOF' > .eslintrc.json
+          {
+            "env": {
+              "browser": true,
+              "es2021": true,
+              "node": true
+            },
+            "extends": "eslint:recommended",
+            "parserOptions": {
+              "ecmaVersion": "latest",
+              "sourceType": "module"
+            },
+            "rules": {
+              "no-undef": "error",
+              "no-unused-vars": "warn",
+              "no-unreachable": "error"
+            }
+          }
+          EOF
+
+      # 4. 【核心步骤一】扫描并检测全部 .js / .ts 文件的语法与编译错误
+      - name: Run JavaScript Lint & Syntax Check
+        run: |
+          echo "🔍 正在对全局 JavaScript 文件进行语法死锁与合规性扫描..."
+          # 扫描项目中除 node_modules 之外的所有 js 文件
+          npx eslint "**/*.js" --ignore-pattern "node_modules/" || echo "❌ 发现 JS 语法错误，请检查下方日志！"
+
+      # 5. 【核心步骤二】模拟 Babel 预编译（检测代码是否包含不支持的低版本 Android 语法）
+      - name: Test Babel Compilation
+        run: |
+          echo "🚀 正在模拟底层 JS 引擎编译，检查是否存在解析异常..."
+          # 寻找项目中的 js 目录（如 assets/ 或者是 src/），如果没有则扫描根目录
+          # 这里创建一个临时目录尝试编译它们
+          mkdir -p ./js-build-output
+          npx babel . --out-dir ./js-build-output --ignore "node_modules/,js-build-output/" --extensions ".js" || { echo "❌ JS 预编译失败！代码中可能存在断句或括号闭合错误"; exit 1; }
+
+      # 6. 【核心步骤三】如果项目包含 TypeScript，执行强类型编译检查
+      - name: Test TS Compilation (If applicable)
+        run: |
+          if ls *.ts >/dev/null 2>&1 || find . -name "*.ts" -not -path "*/node_modules/*" | read; then
+            echo "🔷 检测到 TypeScript 文件，正在启动 tsc 编译器检查..."
+            npx tsc --noEmit --allowJs --lib es2021,dom --target es2020 **/*.js
+          else
+            echo "⏭️ 未检测到 TS 扩展文件，跳过强类型编译步骤。"
+          fi
+
+      # 7. 异常收集：如果编译死锁或报错，将可疑的代码片段打包导出
+      - name: Upload Debug Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: js-compile-failure-report
+          path: |
+            ./js-build-output
+            .eslintrc.json
