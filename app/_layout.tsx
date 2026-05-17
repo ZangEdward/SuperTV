@@ -1,4 +1,4 @@
-import { UPDATE_CONFIG } from "@/constants/UpdateConfig";
+import { UPDATE_CONFIG } from "../constants/UpdateConfig";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
