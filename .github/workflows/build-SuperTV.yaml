@@ -42,6 +42,13 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
+      - name: Patch ffmpeg-kit dependency
+        run: |
+          echo "Patching node_modules to target stable 6.0.1..."
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0.1/g' {} + || true
+
       # 写入 JKS
       - name: Decode Keystore
         run: |

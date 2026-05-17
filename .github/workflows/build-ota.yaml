@@ -52,19 +52,12 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      - name: Patch FFmpeg dependency
+      - name: Patch ffmpeg-kit dependency
         run: |
-          echo "Patching ffmpeg-kit-react-native dependency version..."
-          # 1. Patch node_modules
-          find node_modules/ffmpeg-kit-react-native -name "build.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-[0-9]/ffmpeg-kit-https:6.0/g' {} + || true
-          
-          # 2. Patch generated android project
-          find android -name "build.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-[0-9]/ffmpeg-kit-https:6.0/g' {} + || true
-
-          # 3. Add global force resolution to root build.gradle
-          if [ -f android/build.gradle ]; then
-            echo -e "\nallprojects {\n    configurations.all {\n        resolutionStrategy {\n            force \"com.arthenica:ffmpeg-kit-https:6.0\"\n        }\n    }\n}" >> android/build.gradle
-          fi
+          echo "Patching node_modules to target stable 6.0.1..."
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0.1/g' {} + || true
 
       - name: Decode Keystore
         run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
