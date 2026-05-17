@@ -95,15 +95,25 @@ class DLNAService {
       const friendlyNameMatch = xml.match(/<friendlyName>(.*?)<\/friendlyName>/);
       const friendlyName = friendlyNameMatch ? friendlyNameMatch[1] : `未知设备 (${ip})`;
 
-      // 查找 AVTransport 控制链接
-      // 简单的正则解析，实际可能需要更复杂的 XML 处理
-      const serviceMatch = xml.match(/<serviceType>urn:schemas-upnp-org:service:AVTransport:1<\/serviceType>[\s\S]*?<controlURL>(.*?)<\/controlURL>/);
-      let controlUrl = serviceMatch ? serviceMatch[1] : '';
+      // 查找 AVTransport 控制链接 - 增强匹配逻辑，兼容更多厂商（参考 VlcDlnaPlayer/Cling 逻辑）
+      const avTransportMatch = xml.match(/<serviceType>urn:schemas-upnp-org:service:AVTransport:[12]<\/serviceType>[\s\S]*?<controlURL>(.*?)<\/controlURL>/i);
+      let controlUrl = avTransportMatch ? avTransportMatch[1] : '';
+
+      // 如果没有 AVTransport，尝试搜索简单的播放控制服务
+      if (!controlUrl) {
+        const anyServiceMatch = xml.match(/<controlURL>(.*?)<\/controlURL>/i);
+        if (anyServiceMatch) controlUrl = anyServiceMatch[1];
+      }
 
       if (controlUrl && !controlUrl.startsWith('http')) {
         const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
         const origin = url.split('/').slice(0, 3).join('/');
-        controlUrl = controlUrl.startsWith('/') ? origin + controlUrl : baseUrl + controlUrl;
+
+        if (controlUrl.startsWith('/')) {
+          controlUrl = origin + controlUrl;
+        } else {
+          controlUrl = baseUrl + controlUrl;
+        }
       }
 
       const id = friendlyName + ip;
@@ -128,16 +138,28 @@ class DLNAService {
   public async castVideo(device: DLNADevice, videoUrl: string, title: string) {
     logger.info(`Casting to ${device.name}: ${videoUrl}`);
 
-    const soapBody = `<?xml version="1.0" encoding="utf-8"?>
-      <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body>
-          <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
-            <InstanceID>0</InstanceID>
-            <CurrentURI>${videoUrl.replace(/&/g, '&amp;')}</CurrentURI>
-            <CurrentURIMetaData><![CDATA[<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/"><item id="0" parentID="-1" restricted="1"><dc:title>${title}</dc:title><upnp:class>object.item.videoItem</upnp:class><res protocolInfo="http-get:*:video/*:DLNA.ORG_PN=MP4;DLNA.ORG_OP=01;DLNA.ORG_CI=0">${videoUrl.replace(/&/g, '&amp;')}</res></item></DIDL-Lite>]]></CurrentURIMetaData>
-          </u:SetAVTransportURI>
-        </s:Body>
-      </s:Envelope>`;
+    // 格式化 metadata (DIDL-Lite)，确保更多播放器能识别 (参考 VlcDlnaPlayer)
+    const escapedUrl = videoUrl.replace(/&/g, '&amp;');
+    const escapedTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const metadata = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:dlna="urn:schemas-dlna-org:metadata-1-0/">` +
+      `<item id="0" parentID="-1" restricted="1">` +
+        `<dc:title>${escapedTitle}</dc:title>` +
+        `<upnp:class>object.item.videoItem</upnp:class>` +
+        `<res protocolInfo="http-get:*:video/*:DLNA.ORG_PN=MP4;DLNA.ORG_OP=01;DLNA.ORG_CI=0">${escapedUrl}</res>` +
+      `</item>` +
+    `</DIDL-Lite>`;
+
+    const soapBody = `<?xml version="1.0" encoding="utf-8"?>` +
+      `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">` +
+        `<s:Body>` +
+          `<u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">` +
+            `<InstanceID>0</InstanceID>` +
+            `<CurrentURI>${escapedUrl}</CurrentURI>` +
+            `<CurrentURIMetaData>${metadata.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}</CurrentURIMetaData>` +
+          `</u:SetAVTransportURI>` +
+        `</s:Body>` +
+      `</s:Envelope>`;
 
     try {
       // 1. 设置播放 URI

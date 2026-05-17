@@ -6,7 +6,10 @@
 -同局域网手机控制电视端APP
 5.5.10.523
 重构视频详情页 UI（参考 LunaTV 移动端风格）
-集成 orangeplayer (https://github.com/706412584/orangeplayer) 相关 DLNA 逻辑优化设备发现能力
+集成 orangeplayer & VlcDlnaPlayer (https://github.com/sifacaii/VlcDlnaPlayer) 相关 DLNA 逻辑优化
+- 增强 SSDP 多目标搜索能力
+- 优化 AVTransport 服务识别，支持版本 1 和 2
+- 改进 DIDL-Lite Metadata 封装，提高投屏成功率
 增加选集排序、换源测速及排序功能
 5.5.9.523
 更新缓存详情页ui，支持删除缓存
