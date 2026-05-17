@@ -2,8 +2,8 @@ name: Test Android Release Build
 
 on:
   push:
-    branches: [ main, master, develop ] # 当你推送到这些分支时触发
-  workflow_dispatch: # 允许你在 GitHub 页面上手动点击按钮触发测试
+    branches: [ main, master, develop ]
+  workflow_dispatch:
 
 jobs:
   android-build-test:
@@ -16,38 +16,32 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # 或者改成你本地正在使用的 Node 版本（如 20）
-          cache: 'npm'       # 如果用 yarn，改为 'yarn'
+          node-version: '18'
+          cache: 'npm'
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17' # React Native 通常推荐 JDK 17
+          java-version: '17'
 
       - name: Install Dependencies
-        run: |
-          npm install # 如果用 yarn，改为 yarn install
+        run: npm install
 
-      - name: Step 1: Pre-validation (Dry Run Metro Bundle)
-        # 在正式编译 Android 前，先用 JS 命令独立测试打包。
-        # 如果是 JS 代码、图片资源、语法错误，这一步会直接暴露原因！
+      - name: Step 1 Pre-validation (Dry Run Metro Bundle)
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
 
-      - name: Step 2: Run Gradle Release Build
-        # 正式开始 Android 编译，增加 --info 参数
-        # 这样即使失败，也会打印出详细的底层 Node 错误日志
+      - name: Step 2 Run Gradle Release Build
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --info
 
-      - name: Optional: Upload Build Artifacts (If Success)
-        # 如果编译成功，把生成的 APK 存起来
+      - name: Upload Build Artifacts (If Success)
         if: success()
-        uses: actions/artifacts@v4
+        uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
