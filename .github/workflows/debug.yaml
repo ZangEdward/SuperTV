@@ -1,168 +1,53 @@
-name: SuperTV Local Build & Full JS Debug #测试js编译勿删！！
+name: Debug JS Bundle Errors
 
 on:
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: "选择构建类型：仅检测JS(lint-only) 或 完整编译APK(full-build)"
-        required: true
-        default: "full-build"
-        type: choice
-        options:
-          - full-build
-          - lint-only
-
-permissions:
-  contents: read # 纯本地读取编译，不需要写入权限
 
 jobs:
-  local-debug-build:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      # 1. 签出当前仓库的全部代码
-      - name: Checkout local repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 部署 Node.js 运行环境
-      - name: Setup Node.js Environment
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 3. 部署 Java 与 Android 编译标准环境（仅在需要完整编译时加载，节省时间）
-      - name: Setup Java Environment
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: Setup Android SDK
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
         uses: android-actions/setup-android@v3
 
-      # 4. 依赖安装：开启详细日志，打印所有的依赖依赖树解析情况
-      - name: Install Project Dependencies (Verbose)
-        run: yarn install --network-timeout 100000 --verbose
+      - name: Install dependencies
+        run: yarn install --network-timeout 100000
 
-      # 5. 注入测试依赖：强行加上 --legacy-peer-deps 解决 react-native-tvos 的版本兼容死锁
-      - name: Inject Debug Toolchain & Resolve Peer Conflicts
-        run: |
-          echo "🛠️ 正在配置本地 JS 强制全量审计环境..."
-          npm install eslint @babel/core @babel/cli @babel/preset-env typescript --save-dev --legacy-peer-deps
-          
-          cat << 'EOF' > .eslintrc.json
-          {
-            "env": {
-              "browser": true,
-              "es2021": true,
-              "node": true
-            },
-            "extends": "eslint:recommended",
-            "parserOptions": {
-              "ecmaVersion": "latest",
-              "sourceType": "module"
-            },
-            "rules": {
-              "no-undef": "error",
-              "no-unused-vars": "warn",
-              "no-unreachable": "error"
-            }
-          }
-          EOF
-
-      # 6. 【全量输出】扫描并逐个打印每个本地 JS 文件的语法合规性
-      - name: Full JavaScript Lint Check (No bypass)
-        run: |
-          echo "🔍 正在对全局本地前端代码进行强力静态扫描..."
-          npx eslint "**/*.js" --ignore-pattern "node_modules/" --ignore-pattern "android/"
-
-      # 7. 【全量输出】强制把项目所有 JS 文件通过 Babel 核心编译器完整转译一次
-      - name: Complete JavaScript Pre-Compilation Debug
-        run: |
-          echo "🚀 启动全局本地 JavaScript 文件全量显式转译测试..."
-          mkdir -p ./js-build-output
-          NODE_ENV=production npx babel . \
-            --out-dir ./js-build-output \
-            --ignore "node_modules/,android/,js-build-output/" \
-            --extensions ".js,.jsx,.ts,.tsx" \
-            --presets=@babel/preset-env \
-            --verbose
-
-      # 8. 获取当前 package.json 中的版本号，用于给本地产物命名
-      - name: Extract Project Version
-        id: get_version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      # ==================== 以下步骤仅在选择 'full-build' 时才会执行 ====================
-
-      # 9. 生成本地 Android 壳工程结构
-      - name: Expo Prebuild (Local)
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
+      # ⭐ 生成 android 目录
+      - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      # 10. 【Metro 编译器全量输出】跟踪所有前端 JS 业务代码打包为资产文件的连线日志
-      - name: Run Full Metro Bundle Compilation & Tracking
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
-        env:
-          DEBUG: "metro:*" # 激活最高级别调试输出
+      # ⭐⭐ 注入 Node Debug Flags（关键）
+      - name: Inject Node Debug Flags
         run: |
-          echo "📦 正在执行 React Native 核心资产打包（全流程深度跟踪）..."
-          mkdir -p android/app/src/main/assets
-          
-          ./node_modules/.bin/react-native bundle \
-            --platform android \
-            --dev false \
-            --entry-file index.js \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res \
-            --verbose
+          echo "ORG_GRADLE_PROJECT_nodeOptions=--trace-uncaught --trace-warnings --max_old_space_size=4096" >> android/gradle.properties
 
-      # 11. 释放并配置本地签名密钥（读取你仓库配置好的 secrets）
-      - name: Decode Local Keystore
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
-        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
-
-      - name: Configure Signing Properties
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
-        run: |
-          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
-
-      # 12. 原生打包编译：开启 Gradle 详细任务追踪日志
-      - name: Assemble Release APK (Detailed Gradle Output)
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
+      # ⭐⭐⭐ 打印 JS bundle 错误（核心步骤）
+      - name: Build Release APK with Full JS Logs
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --info
+          ./gradlew assembleRelease --no-daemon --stacktrace --info
 
-      # 13. 收集编译生成的 APK 产物
-      - name: Collect Output Artifacts
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
-        run: |
-          mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-Local-${{ env.VERSION }}.apk
-
-      # 14. 【成果导出】将编译好的 APK 上传至 Actions 页面供本地直接下载
-      - name: Upload Local Build APK
-        if: ${{ github.event.inputs.build_type == 'full-build' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: SuperTV-Local-APK
-          path: output/SuperTV-Local-${{ env.VERSION }}.apk
-          retention-days: 7 # 自动在 GitHub 保存 7 天
-
-      # 15. 【异常备份】若前面的流程有任何报错失败，将静态编译分析报告独立打包供下载
-      - name: Upload Comprehensive Compile Reports on Failure
+      # 上传日志
+      - name: Upload Build Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: js-local-compile-failure-report
-          path: |
-            ./js-build-output
-            .eslintrc.json
+          name: js-bundle-error-logs
+          path: android/app/build
