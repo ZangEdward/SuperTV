@@ -64,7 +64,8 @@ jobs:
       - name: Build APK
         run: |
           cd android
-          ./gradlew assembleRelease
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
 
       # 复制 APK
       - name: Copy APK
