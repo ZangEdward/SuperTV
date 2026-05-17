@@ -2,7 +2,7 @@
   "expo": {
     "name": "SuperTV",
     "slug": "OrionTV",
-    "version": "5.5.11.523",
+    "version": "5.5.12.523",
     "scheme": "oriontv",
     "orientation": "default",
     "icon": "./assets/images/icon.png",

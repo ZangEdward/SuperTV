@@ -108,8 +108,8 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
     }
 
     if (state === State.END || state === State.CANCELLED) {
-      const threshold = screenWidth * 0.2; // 极其灵敏的触发阈值
-      const fastSwipeThreshold = 400;
+      const threshold = screenWidth * 0.15; // 更灵敏
+      const fastSwipeThreshold = 300;
 
       let targetTranslate = 0;
       let targetIndex = currentIndex;
@@ -127,24 +127,26 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       }
 
       isTransitioning.current = true;
-      Animated.spring(dragX, {
+
+      // 使用 timing 代替 spring 以获得更确定的完成时间，减少“割裂感”
+      Animated.timing(dragX, {
         toValue: targetTranslate,
-        velocity: velocityX / 1000,
+        duration: targetTranslate === 0 ? 200 : 150,
         useNativeDriver: true,
-        bounciness: 0,
-        restSpeedThreshold: 20, // 提高停止速度，减少吸附等待
-        restDisplacementThreshold: 20,
       }).start(({ finished }) => {
         if (finished && targetTranslate !== 0) {
           const direction = targetTranslate > 0 ? 'back' : 'forward';
-          // 导航到目标路由；避免在本地做额外的入场动画，直接重置位置
+
+          // 在路由切换前先将位置重置，但为了平滑，我们不在这一帧切换
+          // 而是通过 router.replace 的 noAnim 配合
           handleTabPress(filteredTabs[targetIndex].route, direction, true);
 
-          // 直接重置 dragX 到 0，避免与路由切换产生双重动画
-          dragX.setValue(0);
-          isTransitioning.current = false;
+          // 延迟极短时间重置 dragX，确保新页面已渲染
+          setTimeout(() => {
+            dragX.setValue(0);
+            isTransitioning.current = false;
+          }, 0);
         } else {
-          // 如果没有触发切页，则回弹原位
           dragX.setValue(0);
           isTransitioning.current = false;
         }

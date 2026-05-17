@@ -18,15 +18,13 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { DeviceUtils } from "@/utils/DeviceUtils";
+import useSearchStore from "@/stores/searchStore";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('SearchScreen');
 
 export default function SearchScreen() {
-  const [keyword, setKeyword] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { keyword, results, loading, error, setKeyword, search } = useSearchStore();
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
@@ -43,42 +41,18 @@ export default function SearchScreen() {
       logger.debug("Received remote input:", lastMessage);
       const realMessage = lastMessage.split("_")[0];
       setKeyword(realMessage);
-      handleSearch(realMessage);
-      clearMessage(); // Clear the message after processing
+      search(realMessage);
+      clearMessage();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastMessage, targetPage]);
+  }, [lastMessage, targetPage, setKeyword, search, clearMessage]);
 
-  // useEffect(() => {
-  //   // Focus the text input when the screen loads
-  //   const timer = setTimeout(() => {
-  //     textInputRef.current?.focus();
-  //   }, 200);
-  //   return () => clearTimeout(timer);
-  // }, []);
-
-  const handleSearch = async (searchText?: string) => {
-    const term = typeof searchText === "string" ? searchText : keyword;
-    if (!term.trim()) {
+  const handleSearch = () => {
+    if (!keyword.trim()) {
       Keyboard.dismiss();
       return;
     }
     Keyboard.dismiss();
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.searchVideos(term);
-      if (response.results.length > 0) {
-        setResults(response.results);
-      } else {
-        setError("没有找到相关内容");
-      }
-    } catch (err) {
-      setError("搜索失败，请稍后重试。");
-      logger.info("Search failed:", err);
-    } finally {
-      setLoading(false);
-    }
+    search();
   };
 
   const onSearchPress = () => handleSearch();
@@ -106,7 +80,6 @@ export default function SearchScreen() {
     />
   );
 
-  // 动态样式
   const dynamicStyles = createResponsiveStyles(deviceType, spacing);
 
   const renderSearchContent = () => (
@@ -170,7 +143,6 @@ export default function SearchScreen() {
     </ThemedView>
   );
 
-  // 根据设备类型决定是否包装在响应式导航中
   if (deviceType === 'tv') {
     return content;
   }
@@ -184,13 +156,13 @@ export default function SearchScreen() {
 }
 
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === 'mobile';
+  const isMobile = deviceType === "mobile";
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
 
   return StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: deviceType === 'tv' ? 50 : 0,
+      paddingTop: deviceType === "tv" ? 50 : 0,
     },
     searchContainer: {
       flexDirection: "row",
@@ -221,7 +193,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: isMobile ? 8 : 8,
-      marginRight: deviceType !== 'mobile' ? spacing / 2 : 0,
+      marginRight: deviceType !== "mobile" ? spacing / 2 : 0,
     },
     qrButton: {
       width: isMobile ? minTouchTarget : 50,

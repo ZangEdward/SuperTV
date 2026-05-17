@@ -98,7 +98,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   modalContent: {
-    width: 350,
+    width: "30%",
+    minWidth: 300,
     height: "100%",
     backgroundColor: "rgba(0, 0, 0, 0.9)",
     padding: 20,

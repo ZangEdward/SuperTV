@@ -121,16 +121,16 @@ export default function RootLayout() {
                   gestureEnabled: false,
                 };
               }}>
-                <Stack.Screen name="index" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="index" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="detail" />
                 <Stack.Screen name="cache" />
                 <Stack.Screen name="cache-management" />
                 <Stack.Screen name="cache-detail" />
                 {Platform.OS !== "web" && <Stack.Screen name="play" />}
-                <Stack.Screen name="search" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="search" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="live" />
-                <Stack.Screen name="settings" options={{ gestureEnabled: true }} />
-                <Stack.Screen name="favorites" options={{ gestureEnabled: true }} />
+                <Stack.Screen name="settings" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="favorites" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
             </MobileTabContainer>

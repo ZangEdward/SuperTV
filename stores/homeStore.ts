@@ -113,7 +113,8 @@ const useHomeStore = create<HomeState>((set, get) => ({
 
     // 最近播放不缓存，始终实时获取
     if (selectedCategory.type === 'record') {
-      set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
+      const hasData = get().contentData.length > 0;
+      set({ loading: !hasData, error: null });
       await get().loadMoreData();
       return;
     }
@@ -128,10 +129,13 @@ const useHomeStore = create<HomeState>((set, get) => ({
         hasMore: cachedData.hasMore,
         error: null
       });
+      // 仍然在后台静默刷新
+      get().loadMoreData();
       return;
     }
 
-    set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
+    const hasData = get().contentData.length > 0;
+    set({ loading: !hasData, pageStart: 0, hasMore: true, error: null });
     await get().loadMoreData();
   },
 
