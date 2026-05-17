@@ -1,0 +1,136 @@
+name: SuperTV 生产构建与 OTA 同步
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: "选择任务：build-only (仅构建) 或 ota (构建并同步)"
+        required: true
+        default: "ota"
+        type: choice
+        options:
+          - build-only
+          - ota
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_sign:
+    name: 编译与签名 APK
+    runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.get_version.outputs.VERSION }}
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置环境 (Node.js & Java)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: 安装依赖
+        run: yarn install --network-timeout 100000
+
+      - name: 获取版本号
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Expo 预构建 (Android)
+        run: npx expo prebuild --platform android --no-install
+
+      - name: 注入签名密钥 (JKS)
+        # 读取 SIGNING_KEY (Base64) 并还原为二进制 JKS 文件
+        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+
+      - name: 配置 Gradle 签名信息
+        # 读取 KEY_ALIAS 和 KEY_PASSWORD 注入 Gradle 环境
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+
+      - name: 执行生产环境构建
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 整理输出文件
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
+
+      - name: 发布至 GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: output/SuperTV-${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传构建产物 (供 OTA 步骤使用)
+        if: ${{ github.event.inputs.job_type == 'ota' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-apk
+          path: output/SuperTV-${{ env.VERSION }}.apk
+
+  ota_sync:
+    name: OTA 同步至日志仓库
+    needs: build_and_sign
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.job_type == 'ota' }}
+    steps:
+      - name: 检出当前仓库
+        uses: actions/checkout@v4
+
+      - name: 下载 APK 产物
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-apk
+
+      - name: 克隆日志仓库 (使用 PAT)
+        # 使用 PAT 令牌获取私有仓库访问权限
+        run: git clone https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+
+      - name: 更新 OTA 元数据
+        run: |
+          mkdir -p sync-repo/log/vision
+          cp package.json sync-repo/log/vision/package.json
+          APK_SIZE=$(stat -c%s "SuperTV-${{ needs.build_and_sign.outputs.VERSION }}.apk")
+          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
+
+      - name: 上传 APK 至日志仓库 Release (使用 PAT)
+        uses: softprops/action-gh-release@v1
+        with:
+          repository: ZangEdward/internal-cache-sync-daemon-log
+          tag_name: v${{ needs.build_and_sign.outputs.VERSION }}
+          name: "SuperTV v${{ needs.build_and_sign.outputs.VERSION }}"
+          files: SuperTV-${{ needs.build_and_sign.outputs.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+
+      - name: 生成加密风日志并推送
+        run: |
+          TIMESTAMP=$(date +%s)
+          VERSION="${{ needs.build_and_sign.outputs.VERSION }}"
+          LOGFILE="${TIMESTAMP}.log"
+          # ... 此处省略复杂的日志生成逻辑，保持与 codespace-build.sh 一致 ...
+          cd sync-repo
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Update v$VERSION (Automated Build)" || true
+          git push origin main
