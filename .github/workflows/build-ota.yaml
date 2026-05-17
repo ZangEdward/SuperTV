@@ -57,10 +57,14 @@ jobs:
           echo "Setting up local fallback directory for ffmpeg-kit..."
           mkdir -p android/app/libs
           
-          # Download the exact precompiled aar from official archives
-          curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://github.com/ZangEdward/SuperTV/releases/download/v1.0.0/ffmpeg-kit-https-6.0-1.aar || \
-          curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://cocoapods.org/api/v1/pods/ffmpeg-kit-ios-https-xcframework/artifacts/6.0-1 || \
-          curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://maven.aliyun.com/nexus/content/groups/public/com/arthenica/ffmpeg-kit-https/6.0-1/ffmpeg-kit-https-6.0-1.aar || true
+          # Copy the precompiled aar from our repository
+          if [ -f "android-libs/ffmpeg-kit-https-6.0-1.aar" ]; then
+            cp android-libs/ffmpeg-kit-https-6.0-1.aar android/app/libs/
+          else
+            echo "AAR not found in android-libs, falling back to download..."
+            curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://github.com/ZangEdward/SuperTV/releases/download/v1.0.0/ffmpeg-kit-https-6.0-1.aar || \
+            curl -L -o android/app/libs/ffmpeg-kit-https-6.0-1.aar https://maven.aliyun.com/nexus/content/groups/public/com/arthenica/ffmpeg-kit-https/6.0-1/ffmpeg-kit-https-6.0-1.aar || true
+          fi
 
           # Inject flatDir configuration into root build.gradle to index the libs folder safely
           sed -i '/allprojects {/a \    repositories {\n        flatDir {\n            dirs "app/libs"\n        }\n    }' android/build.gradle || true
