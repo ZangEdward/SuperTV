@@ -289,8 +289,12 @@ export class CacheService {
         const response = await RNFetchBlob.config({
           path: segmentTempPath,
           // 增加超时设置
-          timeout: 30000,
-        }).fetch("GET", segmentUrl);
+          timeout: 60000,
+          // 允许在没有网络连接时排队
+          fileCache: true,
+        }).fetch("GET", segmentUrl, {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        });
 
         if (response.info().status !== 200) {
           throw new Error(`片段 ${segmentIndex} 下载失败: ${response.info().status}`);

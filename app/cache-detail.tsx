@@ -1,5 +1,5 @@
-import React, { useMemo } from "react";
-import { View, StyleSheet, Image, ScrollView, FlatList } from "react-native";
+import React, { useMemo, useEffect } from "react";
+import { View, StyleSheet, Image, FlatList, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import useCacheStore from "@/stores/cacheStore";
 import { ThemedView } from "@/components/ThemedView";
@@ -10,18 +10,29 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { FontAwesome } from "@expo/vector-icons";
-
 import { CacheService } from "@/services/cacheService";
 import Toast from "react-native-toast-message";
 
 export default function CacheDetailScreen() {
   const router = useRouter();
   const { title } = useLocalSearchParams<{ title: string }>();
-  const { items, queue, downloadProgress, currentDownloadId, downloadQueuedEpisode, removeCacheItem, cancelQueuedEpisode } = useCacheStore();
+  const {
+    items,
+    queue,
+    downloadProgress,
+    downloadQueuedEpisode,
+    removeCacheItem,
+    cancelQueuedEpisode,
+    loadCache
+  } = useCacheStore();
 
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
-  const { deviceType, spacing } = responsiveConfig;
+  const { spacing } = responsiveConfig;
+
+  useEffect(() => {
+    loadCache();
+  }, []);
 
   const movieInfo = useMemo(() => {
     const queuedGroup = queue.find((g) => g.title === title);
@@ -34,9 +45,9 @@ export default function CacheDetailScreen() {
   }, [items, queue, title]);
 
   const episodes = useMemo(() => {
-    const list: { index: number; status: string; progress?: number; fileUri?: string; groupId?: string; url?: string }[] = [];
+    const list: { index: number; status: string; progress?: number; fileUri?: string; groupId?: string; id?: string }[] = [];
 
-    // Check queue
+    // 1. 处理下载队列中的项目
     queue.filter(g => g.title === title).forEach(group => {
       group.episodes.forEach(ep => {
         const itemId = `${group.source}_${group.id}_${ep.index}`;
@@ -45,14 +56,13 @@ export default function CacheDetailScreen() {
           status: ep.status,
           progress: downloadProgress?.[itemId] ?? ep.progress ?? 0,
           groupId: group.groupId,
-          url: ep.url
+          id: itemId
         });
       });
     });
 
-    // Check cached items
+    // 2. 处理已完成的项目（或者更新队列中已完成的状态）
     items.filter(it => it.title === title).forEach(it => {
-      // If already in list (from queue), update it to completed if needed
       const existing = list.find(e => e.index === it.episodeIndex);
       if (existing) {
         existing.status = 'completed';
@@ -63,7 +73,8 @@ export default function CacheDetailScreen() {
           index: it.episodeIndex,
           status: 'completed',
           progress: 1,
-          fileUri: it.fileUri
+          fileUri: it.fileUri,
+          id: it.id
         });
       }
     });
@@ -72,20 +83,28 @@ export default function CacheDetailScreen() {
   }, [items, queue, title, downloadProgress]);
 
   const handlePlay = (fileUri: string, epTitle: string) => {
-    router.push(`/play?title=${encodeURIComponent(title + " " + epTitle)}&fileUri=${encodeURIComponent(fileUri)}`);
+    // 检查是文件路径还是网络路径
+    const playTitle = `${movieInfo.title} ${epTitle}`;
+    router.push({
+      pathname: "/play",
+      params: {
+        title: playTitle,
+        fileUri: fileUri,
+        // 传递必要参数以防播放页需要
+        q: movieInfo.title
+      }
+    });
   };
 
-  const handleExport = async (fileUri: string, epTitle: string) => {
-    try {
-      Toast.show({ type: "info", text1: "开始导出", text2: "正在保存到相册..." });
-      const result = await CacheService.saveToPublicStorage(fileUri);
-      if (result) {
-        Toast.show({ type: "success", text1: "导出成功", text2: `已保存 ${title} ${epTitle}` });
-      } else {
-        Toast.show({ type: "error", text1: "导出失败", text2: "无法保存到本地" });
-      }
-    } catch (err) {
-      Toast.show({ type: "error", text1: "导出错误", text2: String(err) });
+  const handleDelete = async (itemId?: string) => {
+    if (itemId) {
+      await removeCacheItem(itemId);
+    }
+  };
+
+  const handleCancel = async (groupId?: string, index?: number) => {
+    if (groupId !== undefined && index !== undefined) {
+      await cancelQueuedEpisode(groupId, index);
     }
   };
 
@@ -98,7 +117,7 @@ export default function CacheDetailScreen() {
   const renderEpisodeItem = ({ item }: { item: typeof episodes[0] }) => {
     const epTitle = `第 ${item.index + 1} 集`;
     const progressPercent = Math.round((item.progress || 0) * 100);
-    const isDownloading = item.status === 'downloading' || (item.progress !== undefined && item.progress > 0 && item.progress < 1);
+    const isDownloading = item.status === 'downloading';
 
     return (
       <View style={styles.episodeRow}>
@@ -115,7 +134,7 @@ export default function CacheDetailScreen() {
             />
             <StyledButton
               variant="ghost"
-              onPress={() => handleDelete(item.index)}
+              onPress={() => handleDelete(item.id)}
               style={styles.miniButton}
               text="删除"
             />
@@ -137,12 +156,17 @@ export default function CacheDetailScreen() {
             />
           </View>
         ) : (
-          <StyledButton
-            variant="default"
-            onPress={() => handleDownload(item.groupId, item.index)}
-            style={styles.miniButton}
-            text={item.status === 'queued' ? "等待中" : item.status === 'failed' ? "重试" : "下载"}
-          />
+          <View style={styles.statusRow}>
+            {item.progress !== undefined && item.progress > 0 && (
+              <ThemedText style={styles.statusLabel}>暂停中 {progressPercent}%</ThemedText>
+            )}
+            <StyledButton
+              variant="default"
+              onPress={() => handleDownload(item.groupId, item.index)}
+              style={styles.miniButton}
+              text={item.status === 'queued' ? "等待中" : item.status === 'failed' ? "重试" : "下载"}
+            />
+          </View>
         )}
       </View>
     );
@@ -165,7 +189,7 @@ export default function CacheDetailScreen() {
         <FlatList
           data={episodes}
           renderItem={renderEpisodeItem}
-          keyExtractor={(item) => item.index.toString()}
+          keyExtractor={(item, index) => `${item.index}_${index}`}
           contentContainerStyle={[styles.listContent, { paddingBottom: spacing * 2 }]}
         />
       </ThemedView>
@@ -189,19 +213,20 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 8,
     marginRight: 20,
+    backgroundColor: '#1a1a1a',
   },
   headerInfo: {
     flex: 1,
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
     color: "white",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: "#aaa",
+    color: "#888",
   },
   listContent: {
     padding: 16,
@@ -210,9 +235,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#222",
+    borderBottomColor: "#1a1a1a",
   },
   episodeText: {
     fontSize: 16,
@@ -225,45 +250,12 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     fontSize: 14,
-    color: "#aaa",
+    color: "#00bb5e",
     marginRight: 12,
   },
   miniButton: {
-    minWidth: 80,
+    minWidth: 70,
     height: 32,
-    paddingHorizontal: 12,
-  },
-  buttonContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonText: {
-    color: "white",
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: 120,
-  },
-  progressBarBackground: {
-    flex: 1,
-    height: 6,
-    backgroundColor: "#333",
-    borderRadius: 3,
-    overflow: "hidden",
-    marginRight: 10,
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#00bb5e",
-  },
-  progressText: {
-    fontSize: 12,
-    color: "#00bb5e",
-    width: 35,
-    textAlign: "right",
+    paddingHorizontal: 8,
   },
 });

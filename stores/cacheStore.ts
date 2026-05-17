@@ -75,7 +75,10 @@ const useCacheStore = create<CacheState>((set, get) => ({
   processQueue: () => {
     let state = get();
     while (state.activeCount < state.concurrency) {
-      const next = state.queue.flatMap((group) => group.episodes.map((episode) => ({ groupId: group.groupId, episode })) ).find((item) => item.episode.status === 'queued');
+      const next = state.queue
+        .flatMap((group) => group.episodes.map((episode) => ({ groupId: group.groupId, episode })))
+        .find((item) => item.episode.status === 'queued' || item.episode.status === 'pending');
+
       if (!next) break;
       get().downloadQueuedEpisode(next.groupId, next.episode.index);
       state = get();

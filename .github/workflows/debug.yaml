@@ -1,4 +1,4 @@
-name: SuperTV Local Build & Full JS Debug #测试js编译勿删
+name: SuperTV Local Build & Full JS Debug #测试js编译勿删！！
 
 on:
   workflow_dispatch:
