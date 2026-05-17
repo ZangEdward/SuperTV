@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback, memo, useMemo, useState } from "react";
-import { StyleSheet, TouchableOpacity, BackHandler, AppState, AppStateStatus, View, ScrollView, Text, Dimensions } from "react-native";
+import { StyleSheet, TouchableOpacity, BackHandler, AppState, AppStateStatus, View, ScrollView, Text, Dimensions, Image, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
 import { useKeepAwake } from "expo-keep-awake";
@@ -45,12 +45,14 @@ export default function PlayScreen() {
     source: sourceStr,
     id: videoId,
     title: videoTitle,
+    fileUri,
   } = useLocalSearchParams<{
     episodeIndex: string;
     position?: string;
     source?: string;
     id?: string;
     title?: string;
+    fileUri?: string;
   }>();
 
   const initialEpIndex = parseInt(episodeIndexStr || "0", 10);
@@ -99,11 +101,21 @@ export default function PlayScreen() {
   useEffect(() => {
     setVideoRef(videoRef);
     setShowCastModal(false);
-    if (source && id && title) {
+
+    if (fileUri) {
+      loadVideo({
+        source: source || 'local',
+        id: id || 'local',
+        episodeIndex: 0,
+        position,
+        title: title || '离线播放',
+        fileUri
+      });
+    } else if (source && id && title) {
       loadVideo({ source, id, episodeIndex: initialEpIndex, position, title });
     }
     return () => reset();
-  }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title]);
+  }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri]);
 
   const onScreenPress = useCallback(() => {
     if (deviceType === "tv") {
@@ -132,7 +144,7 @@ export default function PlayScreen() {
 
   const episodes = useMemo(() => {
     if (!detail) return [];
-    const list = detail.episodes.map((url, i) => ({ index: i, url }));
+    const list = (detail.episodes || []).map((url: string, i: number) => ({ index: i, url }));
     return isReverse ? list.reverse() : list;
   }, [detail, isReverse]);
 
@@ -167,7 +179,12 @@ export default function PlayScreen() {
     });
   };
 
-  if (!detail) return <VideoLoadingAnimation showProgressBar />;
+  const isLocalFile = !!fileUri;
+
+  // 本地缓存文件播放：无需 detail 数据
+  if (!isLocalFile && !detail) {
+    return <VideoLoadingAnimation showProgressBar />;
+  }
 
   const renderMobileLayout = () => (
     <View style={styles.mobileContainer}>
@@ -224,7 +241,7 @@ export default function PlayScreen() {
           {activeTab === 'episodes' ? (
             <View style={styles.tabContent}>
               <View style={styles.filterRow}>
-                <View style={styles.rangeSelector}><Text style={styles.rangeText}>1-{detail.episodes.length}</Text></View>
+                <View style={styles.rangeSelector}><Text style={styles.rangeText}>1-{detail?.episodes?.length || 0}</Text></View>
                 <TouchableOpacity onPress={() => setIsReverse(!isReverse)}>
                   <ArrowUpDown size={20} color={isReverse ? "#00bb5e" : "#aaa"} />
                 </TouchableOpacity>
@@ -272,8 +289,8 @@ export default function PlayScreen() {
           )}
         </View>
         <View style={styles.footerInfo}>
-          <ThemedText style={styles.detailTitle}>{detail.title}</ThemedText>
-          <ThemedText style={styles.detailDesc} numberOfLines={3}>{detail.desc}</ThemedText>
+          <ThemedText style={styles.detailTitle}>{detail?.title || title}</ThemedText>
+          <ThemedText style={styles.detailDesc} numberOfLines={3}>{detail?.desc || ''}</ThemedText>
         </View>
       </ScrollView>
     </View>
