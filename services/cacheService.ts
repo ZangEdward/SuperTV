@@ -3,8 +3,6 @@ import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import RNFetchBlob from "react-native-blob-util";
 import Logger from "@/utils/Logger";
-// Removed static import to prevent compilation errors when dependency is missing
-// import { FFmpegKit, ReturnCode } from 'ffmpeg-kit-react-native';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
@@ -205,7 +203,7 @@ export class CacheService {
     progressCb?: (progress: number) => void
   ): Promise<string> {
     const start = Date.now();
-    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url}`);
+    logger.info(`[CacheService] downloadAndMergeM3U8 START - ${url}`);
     const fetchText = async (uri: string): Promise<string> => {
       const response = await fetch(uri, { signal });
       if (!response.ok) {
@@ -222,7 +220,7 @@ export class CacheService {
 
     const { playlistText, parsed } = await loadPlaylist(url);
     if (parsed.encrypted) {
-      throw new Error("加密的 m3u8 暂不支持缓存转换");
+      throw new Error("加密的 m3u8 暂不支持缓存");
     }
 
     let mediaPlaylistUrl = url;
@@ -235,7 +233,7 @@ export class CacheService {
       mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
       const loaded = await loadPlaylist(mediaPlaylistUrl);
       if (loaded.parsed.encrypted) {
-        throw new Error("加密的 m3u8 暂不支持缓存转换");
+        throw new Error("加密的 m3u8 暂不支持缓存");
       }
       mediaParsed = loaded.parsed;
     }
@@ -244,22 +242,22 @@ export class CacheService {
       throw new Error("m3u8 中未找到可下载的片段");
     }
 
-    // 清理目标文件并准备写入中间文件
-    const tempPath = `${destinationPath}.ts`;
-    if (await RNFetchBlob.fs.exists(tempPath)) {
-      await RNFetchBlob.fs.unlink(tempPath);
+    // 直接准备写入最终目标文件
+    if (await RNFetchBlob.fs.exists(destinationPath)) {
+      await RNFetchBlob.fs.unlink(destinationPath);
     }
-    const writeStream = await RNFetchBlob.fs.writeStream(tempPath, "base64", true);
+    const writeStream = await RNFetchBlob.fs.writeStream(destinationPath, "base64", true);
 
     let index = 0;
     const total = mediaParsed.segments.length;
-    const CONCURRENCY = 5; // 并发下载片段数，类似 LunaTV 的并发逻辑
+    const CONCURRENCY = 5; // 并发下载片段数
 
     const downloadSegment = async (segment: string, segmentIndex: number) => {
       if (signal?.aborted) return;
 
       const segmentUrl = CacheService.resolveUrl(segment, mediaPlaylistUrl);
-      const segmentTempPath = `${tempPath}_${segmentIndex}`;
+      // 为每个片段创建唯一的临时路径
+      const segmentTempPath = `${destinationPath}_part_${segmentIndex}`;
 
       try {
         const response = await RNFetchBlob.config({
@@ -277,75 +275,36 @@ export class CacheService {
       }
     };
 
-    // 分批次并发下载
+    // 分批次并发下载并顺序合并
     for (let i = 0; i < total; i += CONCURRENCY) {
-      if (signal?.aborted) throw new Error("下载已取消");
+      if (signal?.aborted) {
+        await writeStream.close();
+        throw new Error("下载已取消");
+      }
 
       const batch = mediaParsed.segments.slice(i, i + CONCURRENCY);
       const results = await Promise.all(
         batch.map((seg, batchIndex) => downloadSegment(seg, i + batchIndex))
       );
 
-      // 按顺序写入主文件
+      // 按顺序将下载好的片段读入并追加到主文件，然后删除片段
       for (const res of results) {
         if (!res) continue;
         const base64 = await RNFetchBlob.fs.readFile(res.path, "base64");
         await writeStream.write(base64);
-        // 删除临时片段文件
         await RNFetchBlob.fs.unlink(res.path);
 
         index += 1;
         try {
-          progressCb?.((index / total) * 0.9);
+          progressCb?.(index / total);
         } catch {}
       }
     }
 
     await writeStream.close();
     const elapsed = Date.now() - start;
-    logger.info(`[CacheService] downloadM3U8AsMp4 segments download COMPLETE - saved to ${tempPath} in ${elapsed}ms`);
+    logger.info(`[CacheService] downloadAndMergeM3U8 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
 
-    // 尝试使用 ffmpeg 将 ts 合并/转换为 mp4
-    try {
-      logger.info('[CacheService] Attempting ffmpeg conversion to mp4');
-      // 动态加载 ffmpeg-kit 以避免在依赖缺失时导致编译错误
-      const FFmpegModule = require('ffmpeg-kit-react-native');
-      if (FFmpegModule && FFmpegModule.FFmpegKit) {
-        const { FFmpegKit, ReturnCode } = FFmpegModule;
-        // 使用 -c copy 快速合并 TS 到 MP4 容器
-        const session = await FFmpegKit.execute(`-y -i "${tempPath}" -c copy "${destinationPath}"`);
-        const returnCode = await session.getReturnCode();
-
-        if (ReturnCode.isSuccess(returnCode)) {
-          logger.info(`[CacheService] ffmpeg conversion success: ${destinationPath}`);
-          try {
-            await FileSystem.deleteAsync(tempPath, { idempotent: true });
-          } catch (e) {
-            logger.warn("Failed to delete intermediate TS file", e);
-          }
-          progressCb?.(1);
-          return destinationPath;
-        } else {
-          const logs = await session.getLogs();
-          logger.warn(`[CacheService] ffmpeg conversion failed with code ${returnCode}`, logs);
-          // 如果转换失败，尝试直接重命名（降级方案）
-          await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
-        }
-      } else {
-        throw new Error('FFmpegKit module not found');
-      }
-    } catch (e) {
-      logger.warn('[CacheService] ffmpeg conversion failed or not installed, using fallback', e);
-      // 降级方案：直接重命名 ts 为目标文件名（可能是 .mp4 扩展名，但内容是 ts）
-      // 虽然容器不完全对，但大多数播放器能识别
-      try {
-        await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
-      } catch (moveErr) {
-        logger.error("Fallback rename failed", moveErr);
-      }
-    }
-
-    progressCb?.(1);
     return destinationPath;
   }
 
