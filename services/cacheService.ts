@@ -3,7 +3,8 @@ import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import RNFetchBlob from "react-native-blob-util";
 import Logger from "@/utils/Logger";
-import { FFmpegKit, ReturnCode } from 'ffmpeg-kit-react-native';
+// Removed static import to prevent compilation errors when dependency is missing
+// import { FFmpegKit, ReturnCode } from 'ffmpeg-kit-react-native';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
@@ -280,29 +281,41 @@ export class CacheService {
     // 尝试使用 ffmpeg 将 ts 合并/转换为 mp4
     try {
       logger.info('[CacheService] Attempting ffmpeg conversion to mp4');
-      // 使用 -c copy 快速合并 TS 到 MP4 容器
-      const session = await FFmpegKit.execute(`-y -i "${tempPath}" -c copy "${destinationPath}"`);
-      const returnCode = await session.getReturnCode();
+      // 动态加载 ffmpeg-kit 以避免在依赖缺失时导致编译错误
+      const FFmpegModule = require('ffmpeg-kit-react-native');
+      if (FFmpegModule && FFmpegModule.FFmpegKit) {
+        const { FFmpegKit, ReturnCode } = FFmpegModule;
+        // 使用 -c copy 快速合并 TS 到 MP4 容器
+        const session = await FFmpegKit.execute(`-y -i "${tempPath}" -c copy "${destinationPath}"`);
+        const returnCode = await session.getReturnCode();
 
-      if (ReturnCode.isSuccess(returnCode)) {
-        logger.info(`[CacheService] ffmpeg conversion success: ${destinationPath}`);
-        try {
-          await FileSystem.deleteAsync(tempPath, { idempotent: true });
-        } catch (e) {
-          logger.warn("Failed to delete intermediate TS file", e);
+        if (ReturnCode.isSuccess(returnCode)) {
+          logger.info(`[CacheService] ffmpeg conversion success: ${destinationPath}`);
+          try {
+            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+          } catch (e) {
+            logger.warn("Failed to delete intermediate TS file", e);
+          }
+          progressCb?.(1);
+          return destinationPath;
+        } else {
+          const logs = await session.getLogs();
+          logger.warn(`[CacheService] ffmpeg conversion failed with code ${returnCode}`, logs);
+          // 如果转换失败，尝试直接重命名（降级方案）
+          await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
         }
-        progressCb?.(1);
-        return destinationPath;
       } else {
-        const logs = await session.getLogs();
-        logger.warn(`[CacheService] ffmpeg conversion failed with code ${returnCode}`, logs);
-        // 如果转换失败，尝试直接重命名（降级方案）
-        await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
+        throw new Error('FFmpegKit module not found');
       }
     } catch (e) {
-      logger.warn('[CacheService] ffmpeg conversion exception', e);
-      // 降级方案
-      await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
+      logger.warn('[CacheService] ffmpeg conversion failed or not installed, using fallback', e);
+      // 降级方案：直接重命名 ts 为目标文件名（可能是 .mp4 扩展名，但内容是 ts）
+      // 虽然容器不完全对，但大多数播放器能识别
+      try {
+        await FileSystem.moveAsync({ from: tempPath, to: destinationPath });
+      } catch (moveErr) {
+        logger.error("Fallback rename failed", moveErr);
+      }
     }
 
     progressCb?.(1);
