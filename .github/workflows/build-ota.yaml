@@ -54,10 +54,11 @@ jobs:
 
       - name: Patch ffmpeg-kit dependency
         run: |
-          echo "Patching node_modules to target stable 6.0.1..."
-          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0.1/g' {} + || true
-          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0.1/g' {} + || true
-          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0/ffmpeg-kit-https:6.0.1/g' {} + || true
+          echo "Switching ffmpeg-kit packaging type to min and targeting stable 6.0.1..."
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-https/ffmpeg-kit-min/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/6.0-1/6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/6.0-2/6.0.1/g' {} + || true
+          find node_modules/ffmpeg-kit-react-native/android/ -name "*.gradle" -exec sed -i 's/ffmpeg-kit-min:6.0/ffmpeg-kit-min:6.0.1/g' {} + || true
 
       - name: Decode Keystore
         run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
