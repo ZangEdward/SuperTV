@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
     outputs:
-      version: ${{ steps.version.outputs.VERSION }}
+      VERSION: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,8 +42,8 @@ jobs:
       - name: Install dependencies
         run: yarn install --network-timeout 100000
 
-      - name: Read version from package.json
-        id: version
+      - name: Get version
+        id: get_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -52,48 +52,35 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      - name: Patch ffmpeg-kit dependency
+      - name: Patch FFmpeg dependency
         run: |
           echo "Patching ffmpeg-kit-react-native dependency version..."
+          # 1. Patch node_modules
+          find node_modules/ffmpeg-kit-react-native -name "build.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-[0-9]/ffmpeg-kit-https:6.0/g' {} + || true
           
-          # Patch node_modules
-          if [ -f node_modules/ffmpeg-kit-react-native/android/build.gradle ]; then
-            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle
-            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' node_modules/ffmpeg-kit-react-native/android/build.gradle
-          fi
+          # 2. Patch generated android project
+          find android -name "build.gradle" -exec sed -i 's/ffmpeg-kit-https:6.0-[0-9]/ffmpeg-kit-https:6.0/g' {} + || true
 
-          # Patch generated android project
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/ffmpeg-kit-https:6.0-1/ffmpeg-kit-https:6.0/g' android/app/build.gradle
-            sed -i 's/ffmpeg-kit-https:6.0-2/ffmpeg-kit-https:6.0/g' android/app/build.gradle
-          fi
-
-          # Force resolution strategy in root build.gradle
+          # 3. Add global force resolution to root build.gradle
           if [ -f android/build.gradle ]; then
-            printf "\nsubprojects { project ->\n    project.configurations.all {\n        resolutionStrategy {\n            force \"com.arthenica:ffmpeg-kit-https:6.0\"\n        }\n    }\n}\n" >> android/build.gradle
+            echo -e "\nallprojects {\n    configurations.all {\n        resolutionStrategy {\n            force \"com.arthenica:ffmpeg-kit-https:6.0\"\n        }\n    }\n}" >> android/build.gradle
           fi
 
       - name: Decode Keystore
-        run: |
-          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
 
       - name: Configure Signing
         run: |
           echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD" >> android/gradle.properties
-        env:
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
 
       - name: Build APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --warning-mode all
+          ./gradlew assembleRelease --no-daemon
 
       - name: Copy APK
         run: |
@@ -105,12 +92,11 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
-          files: |
-            output/SuperTV-${{ env.VERSION }}.apk
+          files: output/SuperTV-${{ env.VERSION }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload APK as artifact for OTA
+      - name: Upload APK artifact
         if: ${{ github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
@@ -122,52 +108,41 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'ota' }}
     steps:
-      - name: Checkout SuperTV repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Read version from package.json
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Download built APK artifact
+      - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
           name: supertv-apk
 
-      - name: Rename artifact APK
+      - name: Set environment
         run: |
-          mv SuperTV-*.apk SuperTV-${{ env.VERSION }}.apk || true
+          VERSION="${{ needs.build.outputs.VERSION }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
 
-      - name: Clone log repo
-        run: |
-          git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+      - name: Clone log repository
+        run: git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
 
-      - name: Update package.json in log/vision
+      - name: Update metadata files
         run: |
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
-
-      - name: Update apksize.json
-        run: |
-          mkdir -p sync-repo/log/vision
-          rm -f sync-repo/log/vision/apksize.json
           APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
 
-      - name: Upload APK to log repo Releases
+      - name: Upload APK to log repo release
         uses: softprops/action-gh-release@v1
         with:
           repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
-          files: |
-            SuperTV-${{ env.VERSION }}.apk
+          files: SuperTV-${{ env.VERSION }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
 
-      - name: Generate structured alien-style log file
+      - name: Generate alien log
         run: |
           TIMESTAMP=$(date +%s)
           LOGFILE="${TIMESTAMP}.log"
@@ -198,11 +173,11 @@ jobs:
             echo "  checksum: \"$(openssl rand -hex 8)\""
           } > sync-repo/${LOGFILE}
 
-      - name: Commit & Push
+      - name: Commit and push changes
         run: |
           cd sync-repo
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update v${{ env.VERSION }} + apksize.json + log ${LOGFILE}" || true
+          git commit -m "Update v${{ env.VERSION }}" || true
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
