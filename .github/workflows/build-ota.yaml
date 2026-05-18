@@ -1,22 +1,4 @@
-name: Build & OTA 发布 SuperTV
-
-on:
-  workflow_dispatch:
-    inputs:
-      job_type:
-        description: "请选择任务类型：仅构建APK(build-only) 或 构建+OTA(ota)"
-        required: true
-        default: "ota"
-        type: choice
-        options:
-          - build-only
-          - ota
-
-permissions:
-  contents: write
-
-jobs:
-  build:
+build:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
     outputs:
@@ -40,8 +22,11 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: yarn install --network-timeout 100000
-             npm install crypto-js
+        run: |
+          yarn config set network-timeout 300000
+          yarn install
+          yarn add crypto-js
+          yarn add -D @types/crypto-js
 
       - name: Get version
         id: get_version
@@ -54,7 +39,9 @@ jobs:
         run: npx expo prebuild --platform android --no-install
 
       - name: Decode Keystore
-        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
 
       - name: Configure Signing
         run: |
@@ -75,7 +62,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       - name: Upload to GitHub Releases
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
@@ -89,82 +76,3 @@ jobs:
         with:
           name: supertv-apk
           path: output/SuperTV-${{ env.VERSION }}.apk
-
-  ota:
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.job_type == 'ota' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download APK artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: supertv-apk
-
-      - name: Set environment
-        run: |
-          VERSION="${{ needs.build.outputs.VERSION }}"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
-
-      - name: Clone log repository
-        run: git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
-
-      - name: Update metadata files
-        run: |
-          mkdir -p sync-repo/log/vision
-          cp package.json sync-repo/log/vision/package.json
-          APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
-          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
-
-      - name: Upload APK to log repo release
-        uses: softprops/action-gh-release@v1
-        with:
-          repository: ZangEdward/internal-cache-sync-daemon-log
-          tag_name: v${{ env.VERSION }}
-          name: "SuperTV v${{ env.VERSION }}"
-          files: SuperTV-${{ env.VERSION }}.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-
-      - name: Generate alien log
-        run: |
-          TIMESTAMP=$(date +%s)
-          LOGFILE="${TIMESTAMP}.log"
-          HASH_NAME="ID-$(openssl rand -hex 16)"
-          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
-          FORMATTED_RANDOM=$(echo "$RAW_RANDOM" | fold -w 100)
-          {
-            echo "timestamp: ${TIMESTAMP}"
-            echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
-            echo "version: \"${{ env.VERSION }}\""
-            echo ""
-            echo "meta:"
-            echo "  id: \"${HASH_NAME}\""
-            echo "  encoding: \"ascii-safe\""
-            echo "  integrity: \"$(openssl rand -hex 8)\""
-            echo ""
-            echo "data_block:"
-            echo "  sequence: \"$(openssl rand -hex 6)\""
-            echo "  status: \"ok\""
-            echo "  channel: \"release\""
-            echo "  index: \"0.$((RANDOM))\""
-            echo ""
-            echo "stream: |"
-            echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
-            echo ""
-            echo "footer:"
-            echo "  note: \"generated-by-ci\""
-            echo "  checksum: \"$(openssl rand -hex 8)\""
-          } > sync-repo/${LOGFILE}
-
-      - name: Commit and push changes
-        run: |
-          cd sync-repo
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add .
-          git commit -m "Update v${{ env.VERSION }}" || true
-          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
