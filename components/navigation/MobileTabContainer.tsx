@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
@@ -48,9 +47,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   const isTabRoute = currentIndex !== -1;
   const enableSwipe = isTabRoute;
   const screenWidth = Dimensions.get('window').width;
-  const tabBarPadding = spacing;
-  const tabBarWidth = screenWidth - tabBarPadding * 2;
-  const tabWidth = tabBarWidth / filteredTabs.length;
+  const tabWidth = (screenWidth - spacing * 2) / filteredTabs.length;
 
   const dragX = useRef(new Animated.Value(0)).current;
   const indicatorBasePos = useRef(new Animated.Value(0)).current;
@@ -152,7 +149,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
   return (
     <View style={dynamicStyles.container}>
-      <View style={dynamicStyles.contentWrapper}>
+      <View style={dynamicStyles.content}>
         {enableSwipe ? (
           <PanGestureHandler
             onGestureEvent={onGestureEvent}
@@ -176,43 +173,41 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       </View>
       
       {isTabRoute && (
-        <View style={dynamicStyles.tabBarContainer}>
-          <BlurView tint="dark" intensity={60} style={dynamicStyles.tabBar}>
-            <View style={dynamicStyles.tabBarInner}>
-              <Animated.View
-                style={[
-                  dynamicStyles.indicator,
-                  { transform: [{ translateX: totalIndicatorPos }] }
-                ]}
-              />
+        <View style={dynamicStyles.tabBar}>
+          <View style={dynamicStyles.tabBarInner}>
+            <Animated.View
+              style={[
+                dynamicStyles.indicator,
+                { transform: [{ translateX: totalIndicatorPos }] }
+              ]}
+            />
 
-              {filteredTabs.map((tab, index) => {
-                const isActive = index === currentIndex;
-                const IconComponent = tab.icon;
+            {filteredTabs.map((tab, index) => {
+              const isActive = index === currentIndex;
+              const IconComponent = tab.icon;
 
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={dynamicStyles.tab}
-                    onPress={() => handleTabPress(tab.route, index < currentIndex ? 'back' : 'forward')}
-                    activeOpacity={1}
-                  >
-                    <IconComponent
-                      size={20}
-                      color={isActive ? Colors.dark.primary : '#888'}
-                      strokeWidth={isActive ? 2.5 : 2}
-                    />
-                    <Text style={[
-                      dynamicStyles.tabLabel,
-                      isActive && dynamicStyles.activeTabLabel
-                    ]}>
-                      {tab.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </BlurView>
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={dynamicStyles.tab}
+                  onPress={() => handleTabPress(tab.route, index < currentIndex ? 'back' : 'forward')}
+                  activeOpacity={1}
+                >
+                  <IconComponent
+                    size={20}
+                    color={isActive ? Colors.dark.primary : '#888'}
+                    strokeWidth={isActive ? 2.5 : 2}
+                  />
+                  <Text style={[
+                    dynamicStyles.tabLabel,
+                    isActive && dynamicStyles.activeTabLabel
+                  ]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       )}
     </View>
@@ -227,32 +222,20 @@ const createStyles = (spacing: number, tabWidth: number) => {
       flex: 1,
       backgroundColor: Colors.dark.background,
     },
-    contentWrapper: {
-      flex: 1,
-    },
     content: {
       flex: 1,
     },
-    tabBarContainer: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      paddingHorizontal: spacing,
-      paddingBottom: Platform.OS === 'ios' ? spacing * 1.5 : spacing,
-      backgroundColor: 'transparent',
-    },
     tabBar: {
-      borderRadius: 24,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.1)',
-      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+      backgroundColor: '#111',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: '#222',
+      paddingBottom: Platform.OS === 'ios' ? spacing * 1.5 : spacing / 2,
+      paddingHorizontal: spacing,
     },
     tabBarInner: {
       flexDirection: 'row',
       position: 'relative',
-      height: 60,
+      height: 50,
       alignItems: 'center',
     },
     tab: {
@@ -264,11 +247,10 @@ const createStyles = (spacing: number, tabWidth: number) => {
     },
     indicator: {
       position: 'absolute',
-      height: 44,
-      width: tabWidth - 8,
-      marginHorizontal: 4,
-      backgroundColor: 'rgba(0, 187, 94, 0.15)',
-      borderRadius: 18,
+      height: 2,
+      top: 0,
+      width: tabWidth,
+      backgroundColor: Colors.dark.primary,
     },
     tabLabel: {
       fontSize: 10,

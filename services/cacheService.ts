@@ -291,12 +291,13 @@ export class CacheService {
       try {
         const response = await RNFetchBlob.config({
           path: segmentTempPath,
-          // 增加超时设置
           timeout: 60000,
-          // 允许在没有网络连接时排队
           fileCache: true,
         }).fetch("GET", segmentUrl, {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': '*/*',
+          'Connection': 'keep-alive',
+          'Referer': url, // 增加 Referer 提高成功率
         });
 
         if (response.info().status !== 200) {
@@ -304,11 +305,15 @@ export class CacheService {
         }
 
         if (encryptionKey) {
+          // 简单的 AES-128-CBC 解密逻辑占位
+          // 实际使用时需要集成 crypto-js 等库或者通过原生桥接实现高性能解密
+          // 这里为了兼容性，如果是加密 M3U8，建议通过播放器直接处理流或者确保已在下载时完成解密
           let data = await RNFetchBlob.fs.readFile(segmentTempPath, "base64");
-          // TODO: AES-128-CBC 解密
+          // TODO: 完善这里的 AES-128-CBC 解密逻辑
           return { index: segmentIndex, data, isRaw: false, path: segmentTempPath };
         }
 
+        // 确保请求头包含必要信息，特别是针对某些需要验证的源
         return { index: segmentIndex, isRaw: true, path: segmentTempPath };
       } catch (err) {
         logger.warn(`片段 ${segmentIndex} 下载异常`, err);

@@ -30,6 +30,7 @@ export default function SourceManagementScreen() {
 
   const handlePrefer = async () => {
     setIsTesting(true);
+    // 增加 UI 逻辑来处理测速过程，此处简易调用
     await testSourceSpeeds();
     setIsTesting(false);
   };

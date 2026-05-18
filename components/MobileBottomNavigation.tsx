@@ -89,7 +89,6 @@ export const MobileBottomNavigation: React.FC<MobileBottomNavigationProps> = ({
   const dynamicStyles = StyleSheet.create({
     container: {
       backgroundColor,
-      borderTopColor: colorScheme === 'dark' ? '#38383A' : '#C6C6C8',
     },
   });
 
@@ -132,7 +131,7 @@ const styles = StyleSheet.create({
     paddingBottom: 35, // Safe area padding
     paddingTop: 8,
     paddingHorizontal: 8,
-    borderTopWidth: 0.5,
+    borderTopWidth: 0,
     justifyContent: 'space-around',
     alignItems: 'flex-start',
   },
