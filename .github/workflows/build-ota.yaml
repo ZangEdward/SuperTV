@@ -41,6 +41,7 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --network-timeout 100000
+             npm install crypto-js
 
       - name: Get version
         id: get_version
