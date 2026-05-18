@@ -218,7 +218,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
               );
             })}
           </View>
-        </View>
+        </BlurView>
       )}
     </View>
   );
