@@ -27,3 +27,5 @@ web/**
 .roomodes
 yarn-errors.log
 coverage/
+package-lock.json
+not found
