@@ -3,25 +3,24 @@ import { View, StyleSheet, Alert, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
-import { StyledButton } from "@/components/StyledButton";
-import { useThemeColor } from "@/hooks/useThemeColor";
-import { useSettingsStore } from "@/stores/settingsStore";
-// import useAuthStore from "@/stores/authStore";
-import { useRemoteControlStore } from "@/stores/remoteControlStore";
-import { APIConfigSection } from "@/components/settings/APIConfigSection";
-import { LiveStreamSection } from "@/components/settings/LiveStreamSection";
-import { RemoteInputSection } from "@/components/settings/RemoteInputSection";
-import { UpdateSection } from "@/components/settings/UpdateSection";
-import { CacheSection } from "@/components/settings/CacheSection";
-import { SettingsSection } from "@/components/settings/SettingsSection";
+import { ThemedText } from "../components/ThemedText";
+import { ThemedView } from "../components/ThemedView";
+import { StyledButton } from "../components/StyledButton";
+import { useThemeColor } from "../hooks/useThemeColor";
+import { useSettingsStore } from "../stores/settingsStore";
+import { useRemoteControlStore } from "../stores/remoteControlStore";
+import { APIConfigSection } from "../components/settings/APIConfigSection";
+import { LiveStreamSection } from "../components/settings/LiveStreamSection";
+import { RemoteInputSection } from "../components/settings/RemoteInputSection";
+import { UpdateSection } from "../components/settings/UpdateSection";
+import { CacheSection } from "../components/settings/CacheSection";
+import { SettingsSection } from "../components/settings/SettingsSection";
 import Toast from "react-native-toast-message";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
-import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
-import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
-import { DeviceUtils } from "@/utils/DeviceUtils";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
+import { getCommonResponsiveStyles } from "../utils/ResponsiveStyles";
+import ResponsiveNavigation from "../components/navigation/ResponsiveNavigation";
+import ResponsiveHeader from "../components/navigation/ResponsiveHeader";
+import { DeviceUtils } from "../utils/DeviceUtils";
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 type SectionItem = {
@@ -29,7 +28,6 @@ type SectionItem = {
   key: string;
 };
 
-/** 过滤掉 false/undefined，帮 TypeScript 推断出真正的数组元素类型 */
 function isSectionItem(
   item: false | undefined | SectionItem
 ): item is SectionItem {
@@ -43,14 +41,12 @@ export default function SettingsScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const insets = useSafeAreaInsets();
 
-  // 响应式布局配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
 
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentFocusIndex, setCurrentFocusIndex] = useState(0);
   const [currentSection, setCurrentSection] = useState<string | null>(null);
 
   const saveButtonRef = useRef<any>(null);
@@ -65,19 +61,15 @@ export default function SettingsScreen() {
     if (lastMessage && !targetPage) {
       const realMessage = lastMessage.split("_")[0];
       handleRemoteInput(realMessage);
-      clearMessage(); // Clear the message after processing
+      clearMessage();
       markAsChanged();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastMessage, targetPage]);
+  }, [lastMessage, targetPage, clearMessage, markAsChanged]);
 
   const handleRemoteInput = (message: string) => {
-    // Handle remote input based on currently focused section
     if (currentSection === "api" && apiSectionRef.current) {
-      // API Config Section
       setApiBaseUrl(message);
     } else if (currentSection === "livestream" && liveStreamSectionRef.current) {
-      // Live Stream Section
       setM3uUrl(message);
     }
   };
@@ -102,14 +94,12 @@ export default function SettingsScreen() {
     setHasChanges(true);
   };
 
-
   const rawSections = [
     deviceType !== "mobile" && {
       component: (
         <RemoteInputSection
           onChanged={markAsChanged}
           onFocus={() => {
-            setCurrentFocusIndex(0);
             setCurrentSection("remote");
           }}
         />
@@ -123,7 +113,6 @@ export default function SettingsScreen() {
           onChanged={markAsChanged}
           hideDescription={deviceType === "mobile"}
           onFocus={() => {
-            setCurrentFocusIndex(1);
             setCurrentSection("api");
           }}
         />
@@ -136,7 +125,6 @@ export default function SettingsScreen() {
           ref={liveStreamSectionRef}
           onChanged={markAsChanged}
           onFocus={() => {
-            setCurrentFocusIndex(2);
             setCurrentSection("livestream");
           }}
         />
@@ -150,6 +138,7 @@ export default function SettingsScreen() {
     {
       component: (
         <SettingsSection
+          focusable={true}
           onPress={() => router.push("/source-management")}
         >
           <View style={{ padding: 16 }}>
@@ -162,37 +151,26 @@ export default function SettingsScreen() {
       ),
       key: "source_management",
     },
-    // 视频源配置已移除
     Platform.OS === "android" && {
       component: <UpdateSection />,
       key: "update",
     },
-  ] as const; // 把每个对象都当作字面量保留
-  /** 这里得到的 sections 已经是 SectionItem[]（没有 false） */
+  ] as const;
+
   const sections: SectionItem[] = rawSections.filter(isSectionItem);
 
-
-  // TV遥控器事件处理 - 仅在TV设备上启用
-  // 注意：删除了手动管理 focusIndex 的逻辑，由系统原生焦点引擎处理，避免干扰按钮选择
  const handleTVEvent = React.useCallback(
   (event: any) => {
     if (deviceType !== "tv") return;
-
-    // 如果某些 Section 需要全局 select 事件监听可以留着，但通常内部 Pressable 会自行处理
-    if (event.eventType === "select") {
-      // 这里的逻辑可以保留作为兜底，但主要依赖组件自身的 onPress
-    }
   },
   [deviceType]
 );
 
   useTVEventHandler(deviceType === "tv" ? handleTVEvent : () => { });
 
-  // 动态样式
   const dynamicStyles = createResponsiveStyles(deviceType, spacing, insets);
 
   const renderSettingsContent = () => (
-    // <KeyboardAvoidingView style={{ flex: 1, backgroundColor }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
     <KeyboardAwareScrollView
       enableOnAndroid={true}
       extraScrollHeight={20}
@@ -200,10 +178,8 @@ export default function SettingsScreen() {
       keyboardShouldPersistTaps="always"
       scrollEnabled={true}
       style={{ flex: 1, backgroundColor }}
-      // TV 优化：确保列表项不会因为超出屏幕而被剪裁掉导致无法聚焦
       removeClippedSubviews={false}
     >
-
       <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
         {deviceType === "tv" && (
           <View style={dynamicStyles.header}>
@@ -211,17 +187,17 @@ export default function SettingsScreen() {
           </View>
         )}
 
-<View style={dynamicStyles.scrollView}>
-  {sections.map(item =>
-    React.cloneElement(item.component, {
-      key: item.key,
-      style: [
-        (item.component.props as any).style,
-        dynamicStyles.itemWrapper,
-      ],
-    })
-  )}
-</View>
+        <View style={dynamicStyles.scrollView}>
+          {sections.map(item =>
+            React.cloneElement(item.component, {
+              key: item.key,
+              style: [
+                (item.component.props as any).style,
+                dynamicStyles.itemWrapper,
+              ],
+            })
+          )}
+        </View>
 
         <View style={dynamicStyles.footer}>
           <StyledButton
@@ -235,10 +211,8 @@ export default function SettingsScreen() {
         </View>
       </ThemedView>
     </KeyboardAwareScrollView>
-    // </KeyboardAvoidingView>
   );
 
-  // 根据设备类型决定是否包装在响应式导航中
   if (deviceType === "tv") {
     return renderSettingsContent();
   }
@@ -278,9 +252,6 @@ const createResponsiveStyles = (deviceType: string, spacing: number, insets: any
     scrollView: {
       flex: 1,
     },
-    listContent: {
-      paddingBottom: spacing,
-    },
     footer: {
       paddingTop: spacing,
       alignItems: isMobile ? "center" : "flex-end",
@@ -294,7 +265,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number, insets: any
       opacity: 0.5,
     },
     itemWrapper: {
-      marginBottom: spacing,   // 这里的 spacing 来自 useResponsiveLayout()
+      marginBottom: spacing,
     },
   });
 };
