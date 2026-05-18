@@ -83,6 +83,9 @@
     "typescript": "~5.3.3"
   },
   "expo": {
+    "android": {
+      "package": "com.supertv.app"
+    },
     "install": {
       "exclude": [
         "react-native"
