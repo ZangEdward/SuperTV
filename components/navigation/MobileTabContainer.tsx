@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
 import { Colors } from '@/constants/Colors';
@@ -182,7 +183,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       )}
       
       {isTabRoute && (
-        <View style={dynamicStyles.tabBar}>
+        <BlurView tint="dark" intensity={80} style={dynamicStyles.tabBar}>
           <View style={dynamicStyles.tabBarInner}>
             <Animated.View
               style={[
@@ -235,9 +236,9 @@ const createStyles = (spacing: number, tabWidth: number) => {
       flex: 1,
     },
     tabBar: {
-      backgroundColor: '#1c1c1e',
-      borderTopWidth: 1,
-      borderTopColor: '#333',
+      overflow: 'hidden' as any,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(255, 255, 255, 0.15)',
       paddingTop: spacing / 2,
       paddingBottom: Platform.OS === 'ios' ? spacing * 2 : spacing,
       paddingHorizontal: spacing,

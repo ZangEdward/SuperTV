@@ -2,6 +2,7 @@ import React, { useImperativeHandle, forwardRef } from "react";
 import { View, StyleSheet, Platform } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { SettingsSection } from "@/components/settings/SettingsSection";
+import { StyledButton } from "@/components/StyledButton";
 import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
 import { useSettingsStore } from "@/stores/settingsStore";
 
