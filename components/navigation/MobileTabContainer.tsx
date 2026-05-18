@@ -3,9 +3,9 @@ import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimension
 import { BlurView } from 'expo-blur';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
-import { Colors } from '@/constants/Colors';
-import { useResponsiveLayout } from '@/hooks/useResponsiveLayout';
-import { DeviceUtils } from '@/utils/DeviceUtils';
+import { Colors } from '../../constants/Colors';
+import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
+import { DeviceUtils } from '../../utils/DeviceUtils';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 
 interface TabItem {
@@ -102,14 +102,13 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
     const { state, translationX, velocityX } = event.nativeEvent;
 
-    // 手指触摸瞬间，如果正在动画，则立即停止（打断）
     if (state === State.BEGAN) {
       dragX.stopAnimation();
       isTransitioning.current = false;
     }
 
     if (state === State.END || state === State.CANCELLED) {
-      const threshold = screenWidth * 0.15; // 更灵敏
+      const threshold = screenWidth * 0.15;
       const fastSwipeThreshold = 300;
 
       let targetTranslate = 0;
@@ -129,7 +128,6 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
 
       isTransitioning.current = true;
 
-      // 使用 timing 代替 spring 以获得更确定的完成时间，减少“割裂感”
       Animated.timing(dragX, {
         toValue: targetTranslate,
         duration: targetTranslate === 0 ? 200 : 150,
@@ -137,12 +135,7 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
       }).start(({ finished }) => {
         if (finished && targetTranslate !== 0) {
           const direction = targetTranslate > 0 ? 'back' : 'forward';
-
-          // 在路由切换前先将位置重置，但为了平滑，我们不在这一帧切换
-          // 而是通过 router.replace 的 noAnim 配合
           handleTabPress(filteredTabs[targetIndex].route, direction, true);
-
-          // 延迟极短时间重置 dragX，确保新页面已渲染
           setTimeout(() => {
             dragX.setValue(0);
             isTransitioning.current = false;
@@ -165,8 +158,8 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
         <PanGestureHandler
           onGestureEvent={onGestureEvent}
           onHandlerStateChange={onHandlerStateChange}
-          activeOffsetX={[-5, 5]} // 极高灵敏度
-          failOffsetY={[-50, 50]}  // 允许更大的垂直误差，不轻易中断滑动
+          activeOffsetX={[-5, 5]}
+          failOffsetY={[-50, 50]}
           shouldCancelWhenOutside={false}
         >
           <Animated.View style={[
