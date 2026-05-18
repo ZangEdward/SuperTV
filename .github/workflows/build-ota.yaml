@@ -1,16 +1,16 @@
-name: Build & OTA 发布 SuperTV
+name: Build and Deploy OTA
 
 on:
   workflow_dispatch:
     inputs:
       job_type:
-        description: "请选择任务类型：仅构建APK(build-only) 或 构建+OTA(ota)"
+        description: '选择构建类型 (build-only 或 ota)'
         required: true
-        default: "ota"
+        default: 'ota'
         type: choice
         options:
-          - build-only
           - ota
+          - build-only
 
 permissions:
   contents: write
@@ -40,7 +40,11 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: yarn install --network-timeout 100000
+        run: |
+          yarn config set network-timeout 300000
+          yarn install
+          yarn add crypto-js
+          yarn add -D @types/crypto-js
 
       - name: Get version
         id: get_version
@@ -53,7 +57,9 @@ jobs:
         run: npx expo prebuild --platform android --no-install
 
       - name: Decode Keystore
-        run: echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
 
       - name: Configure Signing
         run: |
@@ -74,7 +80,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       - name: Upload to GitHub Releases
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
@@ -109,18 +115,24 @@ jobs:
           mv SuperTV-*.apk SuperTV-$VERSION.apk || true
 
       - name: Clone log repository
-        run: git clone https://github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+        run: |
+          # 使用具有写权限的 PAT 克隆 log 目标仓库
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
 
       - name: Update metadata files
         run: |
-          mkdir -p sync-repo/log/vision
-          cp package.json sync-repo/log/vision/package.json
+          # 1. 严格推送到要求的 log/log 目录结构下
+          mkdir -p sync-repo/log/log
+          cp package.json sync-repo/log/log/package.json
+          
+          # 2. 计算大小并生成 apksize.json
           APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
-          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
+          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/log/apksize.json
 
       - name: Upload APK to log repo release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          # 3. 将编译出的 APK 发布至目标 log 仓库的 Releases 
           repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
@@ -130,6 +142,7 @@ jobs:
 
       - name: Generate alien log
         run: |
+          VERSION_ENV="${{ env.VERSION }}"
           TIMESTAMP=$(date +%s)
           LOGFILE="${TIMESTAMP}.log"
           HASH_NAME="ID-$(openssl rand -hex 16)"
@@ -138,7 +151,7 @@ jobs:
           {
             echo "timestamp: ${TIMESTAMP}"
             echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
-            echo "version: \"${{ env.VERSION }}\""
+            echo "version: \"${VERSION_ENV}\""
             echo ""
             echo "meta:"
             echo "  id: \"${HASH_NAME}\""
@@ -165,5 +178,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update v${{ env.VERSION }}" || true
-          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
+          git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/log" || true
+          
+          # 安全推送至远程 main 分支，如果不存在则尝试 master
+          git push origin main || git push origin master
