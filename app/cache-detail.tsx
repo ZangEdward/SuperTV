@@ -124,93 +124,145 @@ export default function CacheDetailScreen() {
 
   const renderEpisodeItem = ({ item }: { item: typeof episodes[0] }) => {
     const epTitle = `第 ${item.index + 1} 集`;
-    const progressPercent = Math.round((item.progress || 0) * 100);
+    const progressPercent = Math.min(100, Math.round((item.progress || 0) * 100));
     const isDownloading = item.status === 'downloading';
     const isCompleted = item.status === 'completed';
     const isPaused = item.status === 'paused';
+    const isQueued = item.status === 'queued';
+    const isPending = item.status === 'pending';
+    const isFailed = item.status === 'failed' || item.status === 'cancelled';
+
+    // 状态文本与颜色映射
+    let statusLabel: string;
+    let statusColor: string;
+    let barColor: string;
+
+    if (isCompleted) {
+      statusLabel = `已完成 100%`;
+      statusColor = '#4CAF50';
+      barColor = '#4CAF50';
+    } else if (isDownloading) {
+      statusLabel = `下载中 ${progressPercent}%`;
+      statusColor = '#FF9800';
+      barColor = '#FF9800';
+    } else if (isPaused) {
+      statusLabel = `已暂停 ${progressPercent}%`;
+      statusColor = '#2196F3';
+      barColor = '#2196F3';
+    } else if (isQueued) {
+      statusLabel = '排队中';
+      statusColor = '#9E9E9E';
+      barColor = '#9E9E9E';
+    } else if (isPending) {
+      statusLabel = '等待下载';
+      statusColor = '#757575';
+      barColor = '#757575';
+    } else if (isFailed) {
+      statusLabel = '已取消';
+      statusColor = '#F44336';
+      barColor = '#555';
+    } else {
+      statusLabel = '等待中';
+      statusColor = '#757575';
+      barColor = '#757575';
+    }
 
     return (
       <View style={styles.episodeCard}>
-        <View style={styles.episodeMain}>
-          <View style={styles.episodeInfo}>
-            <ThemedText style={styles.episodeText}>{epTitle}</ThemedText>
-            <ThemedText style={[styles.statusText, isCompleted && { color: Colors.dark.primary }]}>
-              {isCompleted ? '已完成' : isDownloading ? `下载中 ${progressPercent}%` : isPaused ? `已暂停 ${progressPercent}%` : '等待中'}
-            </ThemedText>
-          </View>
-
-          <View style={styles.actionRow}>
-            {isCompleted ? (
-              <>
-                <StyledButton
-                  variant="primary"
-                  onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
-                  style={styles.actionBtn}
-                  text="播放"
-                />
-                <StyledButton
-                  variant="ghost"
-                  onPress={() => handleDelete(item.id)}
-                  style={styles.actionBtn}
-                  text="删除"
-                />
-              </>
-            ) : isDownloading ? (
-              <>
-                <StyledButton
-                  variant="default"
-                  onPress={() => handlePause(item.groupId, item.index)}
-                  style={styles.actionBtn}
-                  text="暂停"
-                />
-                <StyledButton
-                  variant="ghost"
-                  onPress={() => handleDelete(item.id)}
-                  style={styles.actionBtn}
-                  text="删除"
-                />
-              </>
-            ) : isPaused ? (
-              <>
-                <StyledButton
-                  variant="primary"
-                  onPress={() => handleResume(item.groupId, item.index)}
-                  style={styles.actionBtn}
-                  text="继续"
-                />
-                <StyledButton
-                  variant="ghost"
-                  onPress={() => handleCancel(item.groupId, item.index)}
-                  style={styles.actionBtn}
-                  text="取消"
-                />
-              </>
-            ) : (
-              <>
-                <StyledButton
-                  variant="primary"
-                  onPress={() => handleDownload(item.groupId, item.index)}
-                  style={styles.actionBtn}
-                  text="下载"
-                />
-                <StyledButton
-                  variant="ghost"
-                  onPress={() => handleDelete(item.id)}
-                  style={styles.actionBtn}
-                  text="删除"
-                />
-              </>
-            )}
+        {/* 上方：剧集编号 + 状态标签 */}
+        <View style={styles.episodeHeader}>
+          <ThemedText style={styles.episodeText}>{epTitle}</ThemedText>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20', borderColor: statusColor + '40' }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <ThemedText style={[styles.statusLabel, { color: statusColor }]}>{statusLabel}</ThemedText>
           </View>
         </View>
 
-        {!isCompleted && (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-            </View>
+        {/* 进度条（所有状态都显示）*/}
+        <View style={styles.progressContainer}>
+          <View style={[styles.progressBar, { backgroundColor: '#222' }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${progressPercent}%`,
+                  backgroundColor: barColor,
+                },
+              ]}
+            />
           </View>
-        )}
+        </View>
+
+        {/* 底部：操作按钮区域 */}
+        <View style={styles.actionRow}>
+          {isCompleted ? (
+            <>
+              <StyledButton
+                variant="primary"
+                onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
+                text="▶ 播放"
+              />
+              <StyledButton
+                variant="ghost"
+                onPress={() => handleDelete(item.id)}
+                text="🗑 删除"
+              />
+            </>
+          ) : isDownloading ? (
+            <>
+              <StyledButton
+                variant="default"
+                onPress={() => handlePause(item.groupId, item.index)}
+                text="⏸ 暂停"
+              />
+              <StyledButton
+                variant="ghost"
+                onPress={() => handleCancel(item.groupId, item.index)}
+                text="✕ 取消"
+              />
+            </>
+          ) : isPaused ? (
+            <>
+              <StyledButton
+                variant="primary"
+                onPress={() => handleResume(item.groupId, item.index)}
+                text="▶ 继续"
+              />
+              <StyledButton
+                variant="ghost"
+                onPress={() => handleCancel(item.groupId, item.index)}
+                text="✕ 取消"
+              />
+            </>
+          ) : isQueued || isPending ? (
+            <>
+              <StyledButton
+                variant="primary"
+                onPress={() => handleDownload(item.groupId, item.index)}
+                text="⬇ 开始下载"
+              />
+              <StyledButton
+                variant="ghost"
+                onPress={() => handleCancel(item.groupId, item.index)}
+                text="✕ 移除"
+              />
+            </>
+          ) : (
+            /* failed / cancelled 显示重试 */
+            <>
+              <StyledButton
+                variant="default"
+                onPress={() => handleDownload(item.groupId, item.index)}
+                text="↻ 重试"
+              />
+              <StyledButton
+                variant="ghost"
+                onPress={() => handleDelete(item.id)}
+                text="🗑 删除"
+              />
+            </>
+          )}
+        </View>
       </View>
     );
   };
@@ -279,49 +331,55 @@ const styles = StyleSheet.create({
   episodeCard: {
     backgroundColor: '#111',
     borderRadius: 12,
-    padding: 12,
+    padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#1a1a1a',
+    borderColor: '#222',
   },
-  episodeMain: {
+  episodeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-  },
-  episodeInfo: {
-    flex: 1,
+    marginBottom: 8,
   },
   episodeText: {
     fontSize: 15,
     fontWeight: "600",
     color: "#eee",
   },
-  statusText: {
-    fontSize: 12,
-    color: "#888",
-    marginTop: 2,
-  },
-  actionRow: {
+  statusBadge: {
     flexDirection: "row",
-    gap: 8,
-  },
-  actionBtn: {
-    minWidth: 60,
-    height: 32,
+    alignItems: "center",
     paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 5,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: "500",
   },
   progressContainer: {
-    marginTop: 12,
+    marginBottom: 10,
   },
   progressBar: {
-    height: 4,
-    backgroundColor: '#222',
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: Colors.dark.primary,
+    borderRadius: 3,
+  },
+  actionRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    paddingTop: 4,
   },
 });
