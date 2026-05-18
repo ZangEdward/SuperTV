@@ -86,23 +86,6 @@ export default function CacheScreen() {
     setSelectedEpisodes([]);
   };
 
-  const handleDownloadEpisode = async (episodeIndex: number) => {
-    if (!selectedSource) return;
-    const episodeUrl = selectedSource.episodes[episodeIndex];
-    await downloadEpisode({
-      source: selectedSource.source,
-      source_name: selectedSource.source_name,
-      title: selectedSource.title,
-      poster: selectedSource.poster,
-      id: selectedSource.id.toString(),
-      episodeIndex,
-      episodeTitle: `第 ${episodeIndex + 1} 集`,
-      episodeUrl,
-      totalEpisodes: selectedSource.episodes.length,
-      resolution: selectedSource.resolution,
-    });
-  };
-
   if (loading && !detail) {
     return <ActivityIndicator style={styles.loading} size="large" color="#fff" />;
   }
@@ -110,7 +93,7 @@ export default function CacheScreen() {
   if (error) {
     return (
       <ResponsiveNavigation>
-        <ResponsiveHeader title="缓存" showBackButton />
+        <ResponsiveHeader title="下载" showBackButton />
         <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
           <ThemedText type="subtitle" style={styles.errorText}>{error}</ThemedText>
         </ThemedView>
@@ -121,7 +104,7 @@ export default function CacheScreen() {
   if (!detail) {
     return (
       <ResponsiveNavigation>
-        <ResponsiveHeader title="缓存" showBackButton />
+        <ResponsiveHeader title="下载" showBackButton />
         <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
           <ThemedText type="subtitle">未加载到详情信息</ThemedText>
         </ThemedView>
@@ -131,7 +114,7 @@ export default function CacheScreen() {
 
   return (
     <ResponsiveNavigation>
-      <ResponsiveHeader title="缓存" showBackButton />
+      <ResponsiveHeader title="下载" showBackButton />
       <ThemedView style={[commonStyles.container, dynamicStyles.container]}> 
         <ScrollView style={dynamicStyles.scrollContainer}>
           <View style={dynamicStyles.detailHeader}>
@@ -166,7 +149,7 @@ export default function CacheScreen() {
                 style={dynamicStyles.filterButton}
               />
               <StyledButton
-                text={`加入下载列表${selectedEpisodes.length > 0 ? ` (${selectedEpisodes.length})` : ''}`}
+                text={`下载${selectedEpisodes.length > 0 ? ` (${selectedEpisodes.length})` : ''}`}
                 variant="primary"
                 onPress={handleBatchCache}
                 style={dynamicStyles.returnButton}
@@ -176,9 +159,14 @@ export default function CacheScreen() {
 
           <View style={dynamicStyles.section}>
             <View style={dynamicStyles.sectionHeader}>
-              <ThemedText style={dynamicStyles.sectionTitle}>缓存源</ThemedText>
-              {!showAllSources && searchResults.length > 5 && (
-                <StyledButton text={`显示全部 (${searchResults.length - 5})`} onPress={() => setShowAllSources(true)} variant="ghost" style={dynamicStyles.showAllButton} />
+              <ThemedText style={dynamicStyles.sectionTitle}>资源来源</ThemedText>
+              {searchResults.length > 5 && (
+                <StyledButton
+                  text={showAllSources ? "收起" : `显示全部 (${searchResults.length - 5})`}
+                  onPress={() => setShowAllSources(!showAllSources)}
+                  variant="ghost"
+                  style={dynamicStyles.showAllButton}
+                />
               )}
             </View>
             <View style={dynamicStyles.sourceList}>
@@ -214,11 +202,7 @@ export default function CacheScreen() {
                     onPress={() => toggleEpisodeSelection(index)}
                     variant={isSelected ? "primary" : "default"}
                     style={dynamicStyles.episodeButton}
-                    text={
-                      currentDownloadId === buttonId
-                        ? `下载中 第 ${index + 1} 集...`
-                        : `第 ${index + 1} 集`
-                    }
+                    text={`第 ${index + 1} 集`}
                     textStyle={isSelected ? dynamicStyles.selectedEpisodeText : undefined}
                   />
                 );

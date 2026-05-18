@@ -1,12 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
+import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
-const DOWNLOAD_DIR = `${FileSystem.documentDirectory}cached_videos/`;
+const DOWNLOAD_DIR = Platform.OS === 'android'
+  ? `${FileSystem.externalFilesDirectory}videos/`
+  : `${FileSystem.documentDirectory}cached_videos/`;
 
 interface M3U8Variant {
   uri: string;

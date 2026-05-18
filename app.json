@@ -1,9 +1,9 @@
 {
   "expo": {
     "name": "SuperTV",
-    "slug": "OrionTV",
-    "version": "5.5.12.523",
-    "scheme": "oriontv",
+    "slug": "SuperTV",
+    "version": "5.5.15.523",
+    "scheme": "supertv",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
@@ -50,7 +50,7 @@
     ],
 
     "android": {
-      "package": "com.oriontv",
+      "package": "com.supertv",
       "usesCleartextTraffic": true,
       "hardwareAcceleration": true,
       "networkSecurityConfig": "@xml/network_security_config",
@@ -76,7 +76,7 @@
       "intentFilters": [
         {
           "action": "android.intent.action.VIEW",
-          "data": [{ "scheme": "oriontv" }],
+          "data": [{ "scheme": "supertv" }],
           "category": [
             "android.intent.category.BROWSABLE",
             "android.intent.category.DEFAULT"
@@ -88,7 +88,7 @@
     },
 
     "ios": {
-      "bundleIdentifier": "com.oriontv",
+      "bundleIdentifier": "com.supertv",
       "supportsTablet": true,
       "requireFullScreen": false,
       "supportedInterfaceOrientations": [

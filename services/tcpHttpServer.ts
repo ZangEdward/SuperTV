@@ -1,6 +1,7 @@
 import TcpSocket from 'react-native-tcp-socket';
 import NetInfo from '@react-native-community/netinfo';
 import * as FileSystem from 'expo-file-system';
+import { Platform } from 'react-native';
 import RNFetchBlob from 'react-native-blob-util';
 import Logger from '@/utils/Logger';
 
@@ -183,8 +184,10 @@ export class TCPHttpServer {
   private async serveFile(request: HttpRequest, socket: TcpSocket.Socket) {
     try {
       const fileName = decodeURIComponent(request.url.replace('/video/', ''));
-      // 从 CacheService.getDownloadDirectory() 构建路径
-      const fileUri = `${FileSystem.documentDirectory}cached_videos/${fileName}`;
+      const downloadDir = Platform.OS === 'android'
+        ? `${FileSystem.externalFilesDirectory}videos/`
+        : `${FileSystem.documentDirectory}cached_videos/`;
+      const fileUri = `${downloadDir}${fileName}`;
       const fileExists = await RNFetchBlob.fs.exists(fileUri);
 
       if (!fileExists) {

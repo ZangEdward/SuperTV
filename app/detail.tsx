@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator, TouchableOpacity, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -12,7 +12,7 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpDown, Zap, Layers, Info, List, Server } from "lucide-react-native";
+import { ArrowUpDown, Zap, Info, List, Server, Cpu } from "lucide-react-native";
 import { Colors } from "@/constants/Colors";
 
 export default function DetailScreen() {
@@ -26,6 +26,7 @@ export default function DetailScreen() {
 
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources'>('episodes');
   const [isReverse, setIsReverse] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   const {
     detail,
@@ -38,6 +39,7 @@ export default function DetailScreen() {
     abort,
     isFavorited,
     toggleFavorite,
+    optimizeSources,
   } = useDetailStore();
 
   useEffect(() => {
@@ -70,6 +72,18 @@ export default function DetailScreen() {
     );
   };
 
+  const handleOptimize = async () => {
+    setIsOptimizing(true);
+    try {
+      await optimizeSources();
+      Alert.alert("优化完成", "已根据当前网络环境为您优选最佳线路。");
+    } catch (e) {
+      Alert.alert("优化失败", "测速过程中出现错误，请重试。");
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   const episodes = useMemo(() => {
     if (!detail) return [];
     const list = detail.episodes.map((url, i) => ({ index: i, url }));
@@ -93,7 +107,6 @@ export default function DetailScreen() {
 
   if (!detail) return null;
 
-  // TV Layout remains as it is or slightly optimized for consistency
   if (!isMobile) {
     return (
       <ThemedView style={[commonStyles.container, { paddingTop: 40 }]}>
@@ -114,7 +127,18 @@ export default function DetailScreen() {
             </View>
           </View>
           <View style={styles.tvBottomContainer}>
-            <ThemedText style={styles.tvSectionTitle}>播放源 ({searchResults.length})</ThemedText>
+            <View style={styles.sectionHeaderRow}>
+              <ThemedText style={styles.tvSectionTitle}>播放源 ({searchResults.length})</ThemedText>
+              <StyledButton
+                onPress={handleOptimize}
+                disabled={isOptimizing}
+                variant="ghost"
+                style={styles.optimizeBtn}
+              >
+                <Cpu size={16} color={Colors.dark.primary} />
+                <Text style={styles.optimizeText}>{isOptimizing ? "优化中..." : "线路优化"}</Text>
+              </StyledButton>
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tvSourceList}>
               {searchResults.map((item, index) => (
                 <StyledButton
@@ -144,7 +168,6 @@ export default function DetailScreen() {
     );
   }
 
-  // Refined Mobile Layout
   return (
     <ResponsiveNavigation>
       <ResponsiveHeader
@@ -158,7 +181,6 @@ export default function DetailScreen() {
       />
       <ThemedView style={styles.container}>
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Video Poster Area */}
           <View style={styles.posterWrapper}>
             <Image source={{ uri: detail.poster }} style={styles.mainPoster} resizeMode="cover" />
             <LinearGradient
@@ -167,11 +189,10 @@ export default function DetailScreen() {
             />
             <TouchableOpacity style={styles.cacheAction} onPress={handleOpenCache}>
               <Info size={18} color="white" />
-              <Text style={styles.cacheText}>缓存管理</Text>
+              <Text style={styles.cacheText}>下载管理</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Info & Tabs */}
           <View style={styles.tabSection}>
             <View style={styles.tabBar}>
               <TouchableOpacity
@@ -212,7 +233,17 @@ export default function DetailScreen() {
               <View style={styles.tabPane}>
                 <View style={styles.paneHeader}>
                   <Text style={styles.paneTitle}>可用源 ({searchResults.length})</Text>
-                  {!allSourcesLoaded && <ActivityIndicator size="small" color={Colors.dark.primary} />}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {!allSourcesLoaded && <ActivityIndicator size="small" color={Colors.dark.primary} />}
+                    <TouchableOpacity
+                      onPress={handleOptimize}
+                      disabled={isOptimizing}
+                      style={styles.mobileOptimizeBtn}
+                    >
+                      <Cpu size={14} color={Colors.dark.primary} />
+                      <Text style={styles.mobileOptimizeText}>{isOptimizing ? "优化中" : "一键优化"}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.sourceGrid}>
                   {searchResults.map((item, idx) => {
@@ -225,7 +256,10 @@ export default function DetailScreen() {
                       >
                         <View style={styles.sourceInfo}>
                           <Text style={[styles.sourceName, isSelected && styles.sourceNameActive]} numberOfLines={1}>{item.source_name}</Text>
-                          <Text style={styles.sourceMeta}>{item.episodes.length} 集 · {item.resolution || '自动'}</Text>
+                          <Text style={styles.sourceMeta}>
+                            {item.episodes.length} 集 · {item.resolution || '自动'}
+                            {item.latency !== undefined && item.latency !== Infinity ? ` · ${Math.round(item.latency)}ms` : ''}
+                          </Text>
                         </View>
                         {isSelected && <Zap size={14} color={Colors.dark.primary} />}
                       </TouchableOpacity>
@@ -236,7 +270,6 @@ export default function DetailScreen() {
             )}
           </View>
 
-          {/* Description */}
           <View style={styles.descSection}>
             <Text style={styles.descTitle}>剧情简介</Text>
             <Text style={styles.descText}>{detail.desc || '暂无简介'}</Text>
@@ -253,7 +286,6 @@ export default function DetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  // TV Styles
   tvScrollContainer: { flex: 1, padding: 20 },
   tvTopContainer: { flexDirection: 'row', marginBottom: 30 },
   tvPoster: { width: 200, height: 300, borderRadius: 10 },
@@ -263,117 +295,45 @@ const styles = StyleSheet.create({
   tvMeta: { fontSize: 18, color: '#aaa', marginTop: 10 },
   tvDesc: { fontSize: 16, color: '#ccc', lineHeight: 24 },
   tvBottomContainer: { marginTop: 20 },
-  tvSectionTitle: { fontSize: 24, fontWeight: 'bold', color: 'white', marginBottom: 15 },
+  tvSectionTitle: { fontSize: 24, fontWeight: 'bold', color: 'white' },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 },
+  optimizeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0, 187, 94, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  optimizeText: { color: Colors.dark.primary, fontSize: 14, fontWeight: 'bold' },
   tvSourceList: { marginBottom: 20 },
   tvSourceBtn: { marginRight: 15, minWidth: 120 },
   tvSourceBtnText: { fontSize: 18, color: 'white' },
   tvEpisodeGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   tvEpisodeBtn: { margin: 10, minWidth: 100 },
 
-  // Unified Mobile Styles
   container: { flex: 1, backgroundColor: '#000' },
   content: { flex: 1 },
-  posterWrapper: {
-    width: '100%',
-    height: 240,
-    position: 'relative',
-    backgroundColor: '#111',
-  },
-  mainPoster: {
-    width: '100%',
-    height: '100%',
-    opacity: 0.6,
-  },
-  posterGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 100,
-  },
-  cacheAction: {
-    position: 'absolute',
-    bottom: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
+  posterWrapper: { width: '100%', height: 240, position: 'relative', backgroundColor: '#111' },
+  mainPoster: { width: '100%', height: '100%', opacity: 0.6 },
+  posterGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 100 },
+  cacheAction: { position: 'absolute', bottom: 16, right: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6 },
   cacheText: { color: 'white', fontSize: 12, fontWeight: '600' },
-
-  tabSection: {
-    backgroundColor: '#000',
-    marginTop: -10,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    height: 50,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-  },
-  tabItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  tabItemActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.dark.primary,
-  },
+  tabSection: { backgroundColor: '#000', marginTop: -10, borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' },
+  tabBar: { flexDirection: 'row', height: 50, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  tabItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  tabItemActive: { borderBottomWidth: 2, borderBottomColor: Colors.dark.primary },
   tabLabel: { fontSize: 15, color: '#888', fontWeight: '600' },
   tabLabelActive: { color: Colors.dark.primary },
-
   tabPane: { padding: 16 },
-  paneHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16
-  },
+  paneHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   paneTitle: { color: '#888', fontSize: 13 },
-
+  mobileOptimizeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 187, 94, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  mobileOptimizeText: { color: Colors.dark.primary, fontSize: 11, fontWeight: 'bold' },
   episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
   episodeBtn: { width: '20%', aspectRatio: 1, padding: 4 },
-  episodeBox: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#222',
-  },
+  episodeBox: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#222' },
   episodeText: { color: '#eee', fontSize: 15, fontWeight: 'bold' },
-
   sourceGrid: { gap: 10 },
-  sourceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#111',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1a1a1a',
-  },
-  sourceCardActive: {
-    borderColor: Colors.dark.primary,
-    backgroundColor: 'rgba(0, 187, 94, 0.05)',
-  },
+  sourceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1a1a1a' },
+  sourceCardActive: { borderColor: Colors.dark.primary, backgroundColor: 'rgba(0, 187, 94, 0.05)' },
   sourceInfo: { flex: 1 },
   sourceName: { color: '#ccc', fontSize: 14, fontWeight: '600' },
   sourceNameActive: { color: 'white' },
   sourceMeta: { color: '#666', fontSize: 11, marginTop: 2 },
-
   descSection: { padding: 16, borderTopWidth: 8, borderTopColor: '#0a0a0a' },
   descTitle: { color: 'white', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   descText: { color: '#888', fontSize: 14, lineHeight: 22 },
