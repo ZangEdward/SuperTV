@@ -97,20 +97,29 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     if (fileUri) {
       logger.info(`[INFO] Playing local cached file ${fileUri}`);
 
-      // 使用本地 HTTP Server 代理播放，类似 LunaTV 逻辑
-      let playUrl = fileUri;
+      // 直接使用 file:// URI 播放本地缓存文件
+      // expo-av Video 组件原生支持 file:// URI，无需通过 TCP HTTP 代理
+      // tcpHttpServer.serveFile() 中使用 base64 分块读取并各自独立编码写入 socket，
+      // 拼接后数据不等于整个文件的 base64，会损坏视频二进制数据
+      // 因此跳过 TCP 代理，直接用本地文件路径
+
+      // 快速验证文件是否存在
       try {
-        const { tcpHttpServer } = require('@/services/tcpHttpServer');
-        if (!tcpHttpServer.getIsRunning()) {
-          await tcpHttpServer.start();
-        }
-        const localUrl = tcpHttpServer.getLocalUrl(fileUri);
-        if (localUrl) {
-          logger.info(`[INFO] Proxying local file through HTTP: ${localUrl}`);
-          playUrl = localUrl;
+        const RNFetchBlob = require('react-native-blob-util');
+        const exists = await RNFetchBlob.fs.exists(fileUri);
+        if (!exists) {
+          logger.error(`[ERROR] Cached file not found: ${fileUri}`);
+          set({
+            isLoading: false,
+            currentEpisodeIndex: 0,
+            initialPosition: 0,
+            playbackRate: 1.0,
+            episodes: [{ url: '', title: title || '离线视频（文件不存在）' }],
+          });
+          return;
         }
       } catch (e) {
-        logger.warn('[WARN] Failed to start local server for proxying, falling back to file://', e);
+        logger.warn('[WARN] Could not verify cache file existence, proceeding anyway:', e);
       }
 
       set({
@@ -118,7 +127,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         currentEpisodeIndex: 0,
         initialPosition: position || 0,
         playbackRate: 1.0,
-        episodes: [{ url: playUrl, title: title || "离线视频" }],
+        episodes: [{ url: fileUri, title: title || '离线视频' }],
       });
       return;
     }

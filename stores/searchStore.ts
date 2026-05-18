@@ -107,7 +107,30 @@ const useSearchStore = create<SearchState>((set, get) => ({
       if (signal.aborted) return;
 
       if (totalFound === 0) {
-        set({ error: "没有找到相关内容", loading: false });
+        // 降级策略：所有单源搜索都返回空时，尝试批量搜索端点
+        // 参考 detailStore.ts 中的 fallback 机制
+        logger.warn(`[WARN] All individual source searches returned 0 results for "${term}", trying bulk search endpoint`);
+        try {
+          const { results: fallbackResults } = await api.searchVideos(term);
+          if (!signal.aborted && fallbackResults && fallbackResults.length > 0) {
+            const filtered = fallbackResults.filter(item => {
+              if (!item.title || !term) return false;
+              return item.title.toLowerCase().includes(term.toLowerCase());
+            });
+            if (filtered.length > 0) {
+              logger.info(`[SUCCESS] Fallback bulk search found ${filtered.length} results`);
+              set({ results: filtered, loading: false });
+            } else {
+              logger.error(`[ERROR] Fallback bulk search found results but none matched "${term}"`);
+              set({ error: `未找到 "${term}" 相关内容`, loading: false });
+            }
+          } else {
+            set({ error: `未找到 "${term}" 相关内容`, loading: false });
+          }
+        } catch (fallbackError) {
+          logger.error(`[ERROR] Fallback bulk search also failed:`, fallbackError);
+          set({ error: `未找到 "${term}" 相关内容`, loading: false });
+        }
       } else {
         set({ loading: false });
       }
