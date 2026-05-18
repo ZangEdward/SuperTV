@@ -90,6 +90,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
   loadCache: async () => {
     set({ loading: true, error: null });
     try {
+      // 确保下载目录存在（修复 /data/data/com.supertv/files/videos/ 文件夹缺失）
+      await CacheService.ensureDownloadDirectory();
       const items = await CacheService.getAll();
       set({ items, loading: false });
     } catch (error) {
