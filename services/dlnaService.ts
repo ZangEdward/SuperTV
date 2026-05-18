@@ -64,10 +64,10 @@ class DLNAService {
         searchTargets.forEach(st => {
           const M_SEARCH =
             'M-SEARCH * HTTP/1.1\r\n' +
-            `HOST: ${SSDP_ADDR}:${SSDP_PORT}\r\n' +
+            `HOST: ${SSDP_ADDR}:${SSDP_PORT}\r\n` +
             'MAN: "ssdp:discover"\r\n' +
             'MX: 3\r\n' +
-            `ST: ${st}\r\n' +
+            `ST: ${st}\r\n` +
             'USER-AGENT: Android/10.0 UPnP/1.1 HPlayer/1.0\r\n' +
             '\r\n';
 
