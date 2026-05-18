@@ -1,4 +1,19 @@
-build:
+name: Build and Deploy OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: '选择构建类型 (build-only 或 ota)'
+        required: true
+        default: 'ota'
+        type: choice
+        options:
+          - ota
+          - build-only
+
+jobs:
+  build:
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.job_type == 'build-only' || github.event.inputs.job_type == 'ota' }}
     outputs:
