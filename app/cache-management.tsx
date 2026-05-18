@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Image, ScrollView, TouchableOpacity } from "react-native";
+import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import useCacheStore from "@/stores/cacheStore";
 import { ThemedView } from "@/components/ThemedView";
@@ -12,8 +12,9 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 
 export default function CacheManagementScreen() {
   const router = useRouter();
-  const { items, loadCache, concurrency, setConcurrency } = useCacheStore();
-  const { queue, downloadProgress, currentDownloadId } = useCacheStore();
+  const cacheStore = useCacheStore();
+  const { items, loadCache, concurrency, setConcurrency, removeCacheItem, cancelQueuedEpisode } = cacheStore;
+  const { queue, downloadProgress, currentDownloadId } = cacheStore;
   const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
@@ -45,6 +46,39 @@ export default function CacheManagementScreen() {
       pathname: "/cache-detail",
       params: { title }
     });
+  };
+
+  /** 长按删除整部剧集的所有缓存文件 */
+  const handleLongPressDeleteSeries = (title: string) => {
+    Alert.alert(
+      '删除整部剧集',
+      `确定要删除「${title}」的所有缓存文件吗？此操作不可恢复。`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除全部',
+          style: 'destructive',
+          onPress: async () => {
+            // 删除 AsyncStorage 中该标题的所有缓存记录
+            const allItems = [...items];
+            const seriesItems = allItems.filter(it => it.title === title);
+            for (const item of seriesItems) {
+              await removeCacheItem(item.id);
+            }
+            // 删除队列中的任务
+            const allQueue = [...queue];
+            const seriesQueue = allQueue.filter(g => g.title === title);
+            for (const group of seriesQueue) {
+              // 取消队列中所有下载
+              for (const ep of group.episodes) {
+                await cancelQueuedEpisode(group.groupId, ep.index);
+              }
+            }
+            await loadCache();
+          },
+        },
+      ]
+    );
   };
 
   const queuedCount = React.useMemo(
@@ -105,7 +139,11 @@ export default function CacheManagementScreen() {
               <View style={styles.grid}>
                 {combinedCollections.map((c) => (
                   <View key={c.title} style={styles.posterCard}>
-                    <TouchableOpacity onPress={() => openCollectionDetail(c.title)}>
+                    <TouchableOpacity
+                      onPress={() => openCollectionDetail(c.title)}
+                      onLongPress={() => handleLongPressDeleteSeries(c.title)}
+                      delayLongPress={600}
+                    >
                       <Image source={{ uri: c.poster }} style={styles.posterLarge} />
                       <ThemedText style={styles.posterTitle} numberOfLines={2}>{c.title}</ThemedText>
                     </TouchableOpacity>

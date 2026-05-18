@@ -4,6 +4,7 @@ import * as MediaLibrary from "expo-media-library";
 import { Platform } from "react-native";
 import Logger from "@/utils/Logger";
 import CryptoJS from 'crypto-js';
+import RNFetchBlob from 'react-native-blob-util';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
@@ -427,12 +428,9 @@ export class CacheService {
   }
 
   /**
-   * 下载 M3U8 并合并为 MP4（完全基于 fetch + expo-file-system，支持暂停/继续/取消）
-   * @param url M3U8 播放列表 URL
-   * @param destinationPath 目标文件路径（.mp4）
-   * @param itemId 任务唯一标识，用于暂停/继续
-   * @param signal 外部取消信号
-   * @param progressCb 进度回调 0~1
+   * 下载 M3U8 并合并为 MP4
+   * 修复：使用 react-native-blob-util.appendFile 直接追加二进制数据，
+   * 避免 base64 拼接损坏导致播放器提示"已取消"
    */
   static async downloadM3U8AsMp4(
     url: string,
@@ -444,12 +442,10 @@ export class CacheService {
     const start = Date.now();
     logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url}`);
 
-    // 注册活动任务
     const taskId = itemId || `m3u8_${Date.now()}`;
     const activeTask = CacheService.registerM3U8Task(taskId);
     const mergeSignal = activeTask.controller.signal;
 
-    // 链接外部信号
     if (signal) {
       const onAbort = () => {
         if (!activeTask.isPaused) {
@@ -463,46 +459,35 @@ export class CacheService {
     try {
       const fetchText = async (uri: string): Promise<string> => {
         const response = await fetch(uri, { signal: mergeSignal });
-        if (!response.ok) {
-          throw new Error(`无法获取 M3U8 文件：${response.status}`);
-        }
+        if (!response.ok) throw new Error(`无法获取 M3U8 文件：${response.status}`);
         return await response.text();
-      };
-
-      const loadPlaylist = async (uri: string) => {
-        const playlistText = await fetchText(uri);
-        const parsed = CacheService.parseM3U8Playlist(playlistText);
-        return { playlistText, parsed };
       };
 
       await CacheService.waitIfPaused(taskId);
       if (mergeSignal.aborted) throw new Error("下载已取消");
 
-      const { parsed } = await loadPlaylist(url);
+      // 解析主 playlist
+      const playlistText = await fetchText(url);
+      const parsed = CacheService.parseM3U8Playlist(playlistText);
 
       let mediaPlaylistUrl = url;
       let mediaParsed = parsed;
       if (parsed.isMaster) {
         const bestVariant = CacheService.selectBestVariant(parsed.variants);
-        if (!bestVariant.uri) {
-          throw new Error("无法解析 m3u8 播放列表中的子流");
-        }
+        if (!bestVariant.uri) throw new Error("无法解析 m3u8 子流");
         mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
-        const loaded = await loadPlaylist(mediaPlaylistUrl);
-        mediaParsed = loaded.parsed;
+        const mediaText = await fetchText(mediaPlaylistUrl);
+        mediaParsed = CacheService.parseM3U8Playlist(mediaText);
       }
 
-      if (mediaParsed.segments.length === 0) {
-        throw new Error("m3u8 中未找到可下载的片段");
-      }
+      if (mediaParsed.segments.length === 0) throw new Error("m3u8 中未找到可下载的片段");
 
-      // 获取 AES 密钥
+      // AES 密钥
       let encryptionKey: Uint8Array | null = null;
       let encryptionIV: Uint8Array | null = null;
-
-      if (mediaParsed.encryption && mediaParsed.encryption.method === 'AES-128') {
+      if (mediaParsed.encryption?.method === 'AES-128') {
         const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
@@ -510,10 +495,9 @@ export class CacheService {
           const resp = await fetch(keyUrl, { signal: mergeSignal });
           const buf = await resp.arrayBuffer();
           encryptionKey = new Uint8Array(buf);
-
           if (mediaParsed.encryption.iv) {
             const hex = mediaParsed.encryption.iv.replace('0x', '');
-            encryptionIV = new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+            encryptionIV = new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
           }
         } catch (e) {
           logger.warn("获取加密密钥失败", e);
@@ -521,38 +505,25 @@ export class CacheService {
         }
       }
 
-      // 准备目标文件路径
       if (!destinationPath.endsWith('.mp4')) {
         destinationPath = destinationPath.replace(/\.[^/.]+$/, '') + '.mp4';
       }
 
-      // 确保目标目录存在
+      // 确保目录存在并清理旧文件
       const destDir = destinationPath.substring(0, destinationPath.lastIndexOf('/'));
-      const dirInfo = await FileSystem.getInfoAsync(destDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
-      }
+      await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
+      try { await FileSystem.deleteAsync(destinationPath, { idempotent: true }); } catch (e) { }
 
-      // 删除已存在的文件
-      try { await FileSystem.deleteAsync(destinationPath, { idempotent: true }); } catch (e) { /* ignore */ }
-
-      // 所有片段 URL
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const totalBytes = 0; // 用于速度估算
-
-      // 临时目录
-      const tempDir = `${destinationPath}_parts/`;
-      await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
-
       const CONCURRENCY = 5;
       let completedCount = 0;
 
-      // 存储tempDir以便cancel时清理
-      activeTask.tempDir = tempDir;
+      // 创建空的目标文件
+      await RNFetchBlob.fs.writeFile(destinationPath, '', 'utf8');
 
-      // 下载单个片段（带暂停检查）
-      const downloadSegment = async (segmentUrl: string, segIndex: number): Promise<ArrayBuffer> => {
+      // 下载单个片段，返回 base64 字符串
+      const downloadSegment = async (segmentUrl: string, segIndex: number): Promise<string> => {
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
 
@@ -560,101 +531,53 @@ export class CacheService {
           signal: mergeSignal,
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': '*/*',
-            'Connection': 'keep-alive',
-            'Referer': mediaPlaylistUrl,
+            'Accept': '*/*', 'Connection': 'keep-alive', 'Referer': mediaPlaylistUrl,
           },
         });
-        if (!response.ok) {
-          throw new Error(`片段 ${segIndex} 下载失败: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`片段 ${segIndex} 下载失败: ${response.status}`);
 
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
 
         let data = await response.arrayBuffer();
+        if (encryptionKey && encryptionIV) data = decryptTSFragment(data, encryptionKey, encryptionIV);
 
-        // AES 解密
-        if (encryptionKey && encryptionIV) {
-          data = decryptTSFragment(data, encryptionKey, encryptionIV);
-        }
-
-        return data;
+        // 直接返回 base64 编码，用于 RNFetchBlob.fs.appendFile
+        return arrayBufferToBase64(data);
       };
 
-      // 分批次并发下载，每个片段保存到独立临时文件
+      // 分批并发下载，每段通过 appendFile 直接写入最终文件
       for (let i = 0; i < total; i += CONCURRENCY) {
         await CacheService.waitIfPaused(taskId);
-        if (mergeSignal.aborted) {
-          await CacheService.cleanupTempDir(tempDir);
-          throw new Error("下载已取消");
-        }
+        if (mergeSignal.aborted) throw new Error("下载已取消");
 
         const batch = segmentUrls.slice(i, i + CONCURRENCY);
-
         try {
-          const results = await Promise.all(
+          const base64Results = await Promise.all(
             batch.map((segUrl, idx) => downloadSegment(segUrl, i + idx))
           );
 
-          // 将本批次每个片段保存到独立临时文件
-          for (let j = 0; j < results.length; j++) {
-            const data = results[j];
-            const partPath = `${tempDir}part_${i + j}`;
-            const base64Data = arrayBufferToBase64(data);
-            // 写入临时文件
-            await FileSystem.writeAsStringAsync(partPath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+          for (const b64Chunk of base64Results) {
+            // 直接追加 base64 编码的二进制数据
+            await RNFetchBlob.fs.appendFile(destinationPath, b64Chunk, 'base64');
             completedCount++;
             progressCb?.(completedCount / total);
           }
         } catch (err) {
-          if (mergeSignal.aborted) {
-            await CacheService.cleanupTempDir(tempDir);
-            throw new Error("下载已取消");
-          }
+          if (mergeSignal.aborted) throw new Error("下载已取消");
           logger.warn(`Batch download failed at index ${i}`, err);
           throw err;
         }
       }
 
-      // 所有片段下载完成后，按顺序合并到最终文件
-      // 一次性读取所有 part 并拼接，避免多次 I/O
-      const allBase64Parts: string[] = [];
-      let totalStrLen = 0;
-      for (let segIdx = 0; segIdx < total; segIdx++) {
-        await CacheService.waitIfPaused(taskId);
-        if (mergeSignal.aborted) {
-          await CacheService.cleanupTempDir(tempDir);
-          throw new Error("下载已取消");
-        }
-
-        const partPath = `${tempDir}part_${segIdx}`;
-        const partInfo = await FileSystem.getInfoAsync(partPath);
-        if (!partInfo.exists) continue;
-
-        // 读取该片段 base64 数据
-        const partBase64 = await FileSystem.readAsStringAsync(partPath, { encoding: FileSystem.EncodingType.Base64 });
-        allBase64Parts.push(partBase64);
-        totalStrLen += partBase64.length;
-
-        // 删除临时片段文件（释放空间）
-        await FileSystem.deleteAsync(partPath, { idempotent: true });
+      // 验证文件完整性
+      const fileStat = await RNFetchBlob.fs.stat(destinationPath);
+      if (!fileStat || fileStat.size === 0) {
+        throw new Error("合并后的文件为空，下载失败");
       }
 
-      // 一次性合并写入最终文件
-      const mergedBase64 = allBase64Parts.join('');
-      await FileSystem.writeAsStringAsync(destinationPath, mergedBase64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // 释放内存
-      allBase64Parts.length = 0;
-
-      // 清理临时目录
-      await CacheService.cleanupTempDir(tempDir);
-
       const elapsed = Date.now() - start;
-      logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
+      logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - ${(fileStat.size / (1024*1024)).toFixed(2)}MB saved to ${destinationPath} in ${elapsed}ms`);
 
       return destinationPath;
     } finally {

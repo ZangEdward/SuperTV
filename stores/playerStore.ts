@@ -98,17 +98,15 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       logger.info(`[INFO] Playing local cached file ${fileUri}`);
 
       // 直接使用 file:// URI 播放本地缓存文件
-      // expo-av Video 组件原生支持 file:// URI，无需通过 TCP HTTP 代理
-      // tcpHttpServer.serveFile() 中使用 base64 分块读取并各自独立编码写入 socket，
-      // 拼接后数据不等于整个文件的 base64，会损坏视频二进制数据
-      // 因此跳过 TCP 代理，直接用本地文件路径
+      // expo-av Video 组件原生支持 file:// URI
 
-      // 快速验证文件是否存在
+      // 验证文件是否存在且非空
       try {
         const RNFetchBlob = require('react-native-blob-util');
         const exists = await RNFetchBlob.fs.exists(fileUri);
         if (!exists) {
           logger.error(`[ERROR] Cached file not found: ${fileUri}`);
+          Toast.show({ type: 'error', text1: '文件不存在', text2: '缓存文件已被删除或损坏' });
           set({
             isLoading: false,
             currentEpisodeIndex: 0,
@@ -118,8 +116,32 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
           });
           return;
         }
+
+        // 检查文件是否非空（空文件会触发 expo-av 的 error 状态）
+        const stat = await RNFetchBlob.fs.stat(fileUri);
+        if (stat.size === 0) {
+          logger.error(`[ERROR] Cached file is empty: ${fileUri}`);
+          Toast.show({ type: 'error', text1: '文件损坏', text2: '缓存文件为空，请重新下载' });
+          set({
+            isLoading: false,
+            episodes: [{ url: '', title: title || '离线视频（文件损坏）' }],
+          });
+          return;
+        }
+        logger.info(`[SUCCESS] Cached file valid: ${(stat.size / (1024*1024)).toFixed(2)}MB`);
       } catch (e) {
-        logger.warn('[WARN] Could not verify cache file existence, proceeding anyway:', e);
+        // 如果 require('react-native-blob-util') 失败（如 web 环境），回退到 FileSystem
+        try {
+          const FileSystem = require('expo-file-system');
+          const info = await FileSystem.getInfoAsync(fileUri);
+          if (!info.exists) {
+            logger.error(`[FALLBACK] File not found via FileSystem: ${fileUri}`);
+            set({ isLoading: false, episodes: [{ url: '', title: title || '文件不存在' }] });
+            return;
+          }
+        } catch (fallbackErr) {
+          logger.warn('[WARN] File existence check both failed, proceeding:', fallbackErr);
+        }
       }
 
       set({

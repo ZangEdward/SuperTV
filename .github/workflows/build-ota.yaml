@@ -120,23 +120,26 @@ jobs:
 
       - name: Update metadata files
         run: |
-          # 修复点：检查 sync-repo/log 是否存在且不是一个目录，如果是文件则删除它
+          # 1. 核心安全修复：如果 log 或 vision 路径存在且是普通文件，先进行清理，防止 mkdir 失败
           if [ -e "sync-repo/log" ] && [ ! -d "sync-repo/log" ]; then
-            echo "发现同名文件 sync-repo/log，正在清理..."
             rm -f sync-repo/log
           fi
+          if [ -e "sync-repo/log/vision" ] && [ ! -d "sync-repo/log/vision" ]; then
+            rm -f sync-repo/log/vision
+          fi
           
-          # 严格推送到要求的 log/log 目录结构下
-          mkdir -p sync-repo/log/log
-          cp package.json sync-repo/log/log/package.json
+          # 2. 严格推送到你要求的 log/vision/ 目录结构下
+          mkdir -p sync-repo/log/vision
+          cp package.json sync-repo/log/vision/package.json
           
-          # 计算大小并生成 apksize.json
+          # 3. 计算大小并将含 apksize 字段的 json 写入 log/vision/ 目录
           APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
-          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/log/apksize.json
+          echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
 
       - name: Upload APK to log repo release
         uses: softprops/action-gh-release@v2
         with:
+          # 将编译完成的 APK 文件推送到指定日志仓库的 Releases 里
           repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
@@ -182,8 +185,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add .
-          git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/log" || true
+          git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/vision" || true
           
-          # 防止由于高频冲突引发报错，加上 pull 变基策略
+          # 自动合并可能出现的并发冲突，稳定推送
           git pull origin main --rebase || git pull origin master --rebase
           git push origin main || git push origin master
