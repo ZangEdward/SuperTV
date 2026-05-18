@@ -11,7 +11,10 @@ on:
         options:
           - build-only
           - ota
+  workflow_call:
 
+permissions:
+  contents: write
 permissions:
   contents: write
 
