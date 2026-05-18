@@ -15,14 +15,21 @@ export interface DLNADevice {
 class DLNAService {
   private devices: Map<string, DLNADevice> = new Map();
   private discoveryInterval: any = null;
+  private searchTimeout: any = null;
+  private client: any = null;
 
   constructor() {}
 
   /**
    * 搜索局域网内的 DLNA 设备 (SSDP)
+   * 增强版：使用多轮广播 + 更长等待时间 + 本地 lo 地址过滤
    */
   public searchDevices(callback: (devices: DLNADevice[]) => void) {
-    logger.debug('Starting DLNA device search...');
+    // 先清理之前的搜索
+    this.stopSearch();
+
+    logger.info('Starting DLNA device search (enhanced)...');
+    this.devices.clear();
 
     const SSDP_ADDR = '239.255.255.250';
     const SSDP_PORT = 1900;
@@ -36,51 +43,93 @@ class DLNAService {
 
     try {
       const client = TcpSocket.createUdpSocket('udp4');
+      this.client = client;
 
-      client.on('message', async (msg, rinfo) => {
+      const receivedDevices = new Set<string>();
+
+      client.on('message', async (msg: Buffer, rinfo: { address: string; port: number }) => {
         const data = msg.toString();
-        logger.debug(`Received SSDP message from ${rinfo.address}`);
+        // 跳过本地回环和一些无效地址
+        if (rinfo.address.startsWith('127.') || rinfo.address === '0.0.0.0') return;
+
+        logger.debug(`SSDP from ${rinfo.address}:${rinfo.port}`);
 
         if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY * HTTP/1.1')) {
-          const locationMatch = data.match(/LOCATION: (.+)\r\n/i);
+          const locationMatch = data.match(/LOCATION:\s*(.+)\r?\n/i);
           if (locationMatch && locationMatch[1]) {
             const descriptionUrl = locationMatch[1].trim();
-            await this.parseDeviceDescription(descriptionUrl, rinfo.address);
-            callback(Array.from(this.devices.values()));
+            const deviceKey = rinfo.address + descriptionUrl.substring(0, 50);
+            if (!receivedDevices.has(deviceKey)) {
+              receivedDevices.add(deviceKey);
+              await this.parseDeviceDescription(descriptionUrl, rinfo.address);
+              callback(Array.from(this.devices.values()));
+            }
           }
         }
       });
 
-      client.on('error', (err) => {
+      client.on('error', (err: Error) => {
         logger.error('UDP Socket error:', err);
       });
 
-      client.bind(0, () => {
-        // 对每个目标发送搜索请求
+      const sendSearch = () => {
         searchTargets.forEach(st => {
           const M_SEARCH =
             'M-SEARCH * HTTP/1.1\r\n' +
             `HOST: ${SSDP_ADDR}:${SSDP_PORT}\r\n` +
             'MAN: "ssdp:discover"\r\n' +
-            'MX: 3\r\n' +
+            'MX: 5\r\n' +
             `ST: ${st}\r\n` +
-            'USER-AGENT: SuperTV/1.0 UPnP/1.1\r\n' +
+            'USER-AGENT: SuperTV/2.0 UPnP/1.1 DLNADOC/1.50\r\n' +
             '\r\n';
 
-          client.send(M_SEARCH, 0, M_SEARCH.length, SSDP_PORT, SSDP_ADDR, (err) => {
-            if (err) logger.error(`Failed to send M-SEARCH for ${st}:`, err);
+          client.send(M_SEARCH, 0, M_SEARCH.length, SSDP_PORT, SSDP_ADDR, (err?: Error) => {
+            if (err) logger.warn(`M-SEARCH send error for ${st}:`, err);
           });
         });
+      };
+
+      client.bind(0, () => {
+        // 加入多播组
+        try {
+          client.addMembership(SSDP_ADDR);
+        } catch (e) {
+          logger.warn('Failed to add multicast membership:', e);
+        }
+
+        logger.info('SSDP socket bound, sending initial M-SEARCH...');
+        // 首次发送
+        sendSearch();
+
+        // 延迟再次发送以捕获更多设备
+        setTimeout(() => sendSearch(), 1500);
       });
 
-      // 延长搜索时间到 8 秒以获取更多响应
-      setTimeout(() => {
-        client.close();
-        logger.debug('DLNA search stopped.');
-      }, 8000);
+      // 15 秒后停止搜索
+      this.searchTimeout = setTimeout(() => {
+        logger.info('DLNA search finished.');
+        this.stopSearch();
+        // 最终回调确保 UI 更新
+        callback(Array.from(this.devices.values()));
+      }, 15000);
 
     } catch (error) {
       logger.error('Failed to start DLNA search:', error);
+      callback([]);
+    }
+  }
+
+  /** 停止当前搜索 */
+  public stopSearch() {
+    if (this.searchTimeout) {
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = null;
+    }
+    if (this.client) {
+      try {
+        this.client.close();
+      } catch (e) {}
+      this.client = null;
     }
   }
 

@@ -1,34 +1,53 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
 import { StyledButton } from "./StyledButton";
 import usePlayerStore from "@/stores/playerStore";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { Tv, RefreshCw } from "lucide-react-native";
 import Toast from "react-native-toast-message";
+import Logger from '@/utils/Logger';
+
+const logger = Logger.withTag('CastModal');
 
 export const CastModal: React.FC = () => {
   const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, status } = usePlayerStore();
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchTimer, setSearchTimer] = useState<any>(null);
 
-  const startSearch = () => {
+  const startSearch = useCallback(() => {
+    if (searchTimer) clearTimeout(searchTimer);
     setIsSearching(true);
+    setDevices([]);
     dlnaService.searchDevices((foundDevices) => {
-      setDevices(foundDevices);
+      if (foundDevices.length > 0) {
+        setDevices(foundDevices);
+        setIsSearching(false);
+      }
     });
-    // 5秒后停止加载动画
-    setTimeout(() => setIsSearching(false), 5000);
-  };
+    // 15秒后停止加载动画
+    const timer = setTimeout(() => {
+      setIsSearching(false);
+    }, 15000);
+    setSearchTimer(timer);
+  }, []);
 
   useEffect(() => {
     if (showCastModal) {
       startSearch();
     }
+    return () => {
+      dlnaService.stopSearch();
+      if (searchTimer) clearTimeout(searchTimer);
+    };
   }, [showCastModal]);
 
   const onCast = async (device: DLNADevice) => {
     const currentEpisode = episodes[currentEpisodeIndex];
-    if (!currentEpisode) return;
+    if (!currentEpisode) {
+      Toast.show({ type: 'error', text1: '无可用视频', text2: '请确认已加载视频' });
+      return;
+    }
 
     try {
       Toast.show({ type: 'info', text1: '正在投屏...', text2: `连接到 ${device.name}` });
@@ -36,11 +55,14 @@ export const CastModal: React.FC = () => {
       Toast.show({ type: 'success', text1: '投屏成功', text2: '请在电视上查看' });
       setShowCastModal(false);
     } catch (error) {
-      Toast.show({ type: 'error', text1: '投屏失败', text2: '请重试或检查网络' });
+      logger.warn('Cast failed:', error);
+      Toast.show({ type: 'error', text1: '投屏失败', text2: '请检查网络连接并确认电视支持 DLNA' });
     }
   };
 
   const onClose = () => {
+    dlnaService.stopSearch();
+    if (searchTimer) clearTimeout(searchTimer);
     setShowCastModal(false);
   };
 
@@ -54,6 +76,10 @@ export const CastModal: React.FC = () => {
               <RefreshCw size={20} color={isSearching ? "#666" : "white"} />
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.tipText}>
+            请确认电视和手机在同一WiFi网络下，且电视已开启DLNA/投屏功能
+          </Text>
 
           {isSearching && devices.length === 0 && (
             <View style={styles.loadingContainer}>
@@ -116,6 +142,12 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  tipText: {
+    color: '#aaa',
+    fontSize: 12,
+    marginBottom: 15,
+    lineHeight: 18,
   },
   loadingContainer: {
     flex: 1,

@@ -387,10 +387,19 @@ export class CacheService {
   ): Promise<string> {
     return new Promise(async (resolve, reject) => {
       try {
+        const defaultHeaders: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': '*/*',
+          'Connection': 'keep-alive',
+        };
+        const mergedOptions = {
+          ...options || {},
+          headers: { ...defaultHeaders, ...(options?.headers || {}) },
+        };
         const resumable = FileSystem.createDownloadResumable(
           url,
           destinationPath,
-          options || {},
+          mergedOptions,
           (downloadProgress) => {
             const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
             if (totalBytesExpectedToWrite > 0) {

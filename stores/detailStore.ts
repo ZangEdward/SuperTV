@@ -174,7 +174,10 @@ const useDetailStore = create<DetailState>((set, get) => ({
             const fallbackEnd = performance.now();
             logger.info(`[PERF] FALLBACK search END - took ${(fallbackEnd - fallbackStart).toFixed(2)}ms, total results: ${allResults.length}`);
             
-            const filteredResults = allResults.filter(item => item.title === q);
+            const filteredResults = allResults.filter(item => {
+              if (!item.title || !q) return false;
+              return item.title.toLowerCase().includes(q.toLowerCase());
+            });
             logger.info(`[FALLBACK] Filtered results: ${filteredResults.length} matches for "${q}"`);
             
             if (filteredResults.length > 0) {
@@ -209,7 +212,10 @@ const useDetailStore = create<DetailState>((set, get) => ({
             logger.info(`[PERF] API searchVideos (background) END - took ${(searchAllEnd - searchAllStart).toFixed(2)}ms, results: ${allResults.length}`);
             
             if (signal.aborted) return;
-            await processAndSetResults(allResults.filter(item => item.title === q), searchAllEnd - searchAllStart, true);
+            await processAndSetResults(allResults.filter(item => {
+              if (!item.title || !q) return false;
+              return item.title.toLowerCase().includes(q.toLowerCase());
+            }), searchAllEnd - searchAllStart, true);
           } catch (backgroundError) {
             logger.warn(`[WARN] Background search failed, but preferred source already succeeded:`, backgroundError);
           }
