@@ -2,13 +2,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import { Platform } from "react-native";
-import RNFetchBlob from "react-native-blob-util";
 import Logger from "@/utils/Logger";
+import CryptoJS from 'crypto-js';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
+
+// 安卓使用 android/data/<package>/files/videos/，位于应用私有目录，无需额外权限
 const DOWNLOAD_DIR = Platform.OS === 'android'
-  ? `${FileSystem.externalFilesDirectory}videos/`
+  ? `${FileSystem.documentDirectory}videos/`
   : `${FileSystem.documentDirectory}cached_videos/`;
 
 interface M3U8Variant {
@@ -29,6 +31,95 @@ export interface CachedVideoItem {
   totalEpisodes: number;
   downloadedAt: number;
   resolution?: string | null;
+}
+
+export interface DetailedProgress {
+  progress: number;
+  speed: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  eta: number;
+  segmentIndex: number;
+  totalSegments: number;
+}
+
+export interface PauseController {
+  pause: () => void;
+  resume: () => void;
+  isPaused: () => boolean;
+}
+
+// ================== 活动任务映射（支持暂停/继续） ==================
+interface ActiveM3U8Task {
+  controller: AbortController;
+  isPaused: boolean;
+  pausePromise: Promise<void> | null;
+  resumeResolve: (() => void) | null;
+  tempDir?: string;
+}
+const activeM3U8Tasks = new Map<string, ActiveM3U8Task>();
+
+// ================== 辅助函数 ==================
+/**
+ * 使用 crypto-js 进行 AES-128-CBC 解密
+ * @param encryptedBase64 加密数据的 Base64 字符串
+ * @param key 16字节密钥 (WordArray)
+ * @param iv 16字节初始向量 (WordArray)
+ * @returns 解密后的 WordArray
+ */
+function aes128CbcDecrypt(encryptedBase64: string, key: CryptoJS.lib.WordArray, iv: CryptoJS.lib.WordArray): CryptoJS.lib.WordArray {
+  const cipherParams = CryptoJS.lib.CipherParams.create({
+    ciphertext: CryptoJS.enc.Base64.parse(encryptedBase64),
+  });
+  const decrypted = CryptoJS.AES.decrypt(
+    cipherParams,
+    key,
+    {
+      iv: iv,
+      mode: CryptoJS.mode.CBC,
+      padding: CryptoJS.pad.Pkcs7,
+    }
+  );
+  return decrypted;
+}
+
+/**
+ * 解密单个 TS 片段
+ * @param buffer 片段原始字节
+ * @param key 密钥
+ * @param iv 初始向量
+ * @returns 解密后的 ArrayBuffer
+ */
+function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array): ArrayBuffer {
+  try {
+    const keyWordArray = CryptoJS.lib.WordArray.create(key);
+    const ivWordArray = CryptoJS.lib.WordArray.create(iv);
+    const base64 = arrayBufferToBase64(buffer);
+    const decrypted = aes128CbcDecrypt(base64, keyWordArray, ivWordArray);
+    return wordArrayToArrayBuffer(decrypted);
+  } catch (err) {
+    logger.warn('AES decrypt failed, returning original data', err);
+    return buffer;
+  }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer {
+  const words = wordArray.words;
+  const sigBytes = wordArray.sigBytes;
+  const uint8 = new Uint8Array(sigBytes);
+  for (let i = 0; i < sigBytes; i++) {
+    uint8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+  }
+  return uint8.buffer;
 }
 
 export class CacheService {
@@ -109,7 +200,7 @@ export class CacheService {
         for (const file of listing) {
           const info = await FileSystem.getInfoAsync(`${DOWNLOAD_DIR}${file}`);
           if (info.exists) {
-            totalSize += info.size;
+            totalSize += (info.size || 0);
           }
         }
       }
@@ -118,6 +209,47 @@ export class CacheService {
       logger.warn("Failed to calculate cache size:", error);
       return 0;
     }
+  }
+
+  static async getStorageStats(): Promise<{
+    cacheSize: number;
+    freeStorage?: number;
+  }> {
+    const cacheSize = await this.calculateCacheSize();
+    let freeStorage: number | undefined;
+    try {
+      freeStorage = await FileSystem.getFreeDiskStorageAsync();
+    } catch (e) {
+      // ignore
+    }
+    return { cacheSize, freeStorage };
+  }
+
+  static formatBytes(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  /** 暂停 M3U8 下载任务 */
+  static pauseTask(itemId: string): void {
+    CacheService.pauseM3U8Task(itemId);
+  }
+
+  /** 继续 M3U8 下载任务 */
+  static resumeTask(itemId: string): void {
+    CacheService.resumeM3U8Task(itemId);
+  }
+
+  static isTaskPaused(itemId: string): boolean {
+    const task = activeM3U8Tasks.get(itemId);
+    return task?.isPaused ?? false;
+  }
+
+  static removeTaskState(itemId: string): void {
+    CacheService.cancelM3U8Task(itemId);
   }
 
   static buildFileName(source: string, id: string, episodeIndex: number, url: string): string {
@@ -212,158 +344,322 @@ export class CacheService {
     })[0];
   }
 
+  /** 注册一个 M3U8 下载任务（供暂停/继续控制） */
+  static registerM3U8Task(itemId: string): ActiveM3U8Task {
+    const existing = activeM3U8Tasks.get(itemId);
+    if (existing) {
+      // 如果任务已存在但处于暂停状态，不要覆盖
+      if (existing.isPaused) return existing;
+      // 否则取消旧任务
+      existing.controller.abort();
+    }
+    const task: ActiveM3U8Task = {
+      controller: new AbortController(),
+      isPaused: false,
+      pausePromise: null,
+      resumeResolve: null,
+    };
+    activeM3U8Tasks.set(itemId, task);
+    return task;
+  }
+
+  static unregisterM3U8Task(itemId: string): void {
+    activeM3U8Tasks.delete(itemId);
+  }
+
+  static async waitIfPaused(itemId: string): Promise<void> {
+    const task = activeM3U8Tasks.get(itemId);
+    while (task?.isPaused && task.pausePromise) {
+      await task.pausePromise;
+    }
+  }
+
+  static pauseM3U8Task(itemId: string): void {
+    const task = activeM3U8Tasks.get(itemId);
+    if (task && !task.isPaused) {
+      task.isPaused = true;
+      task.pausePromise = new Promise<void>((resolve) => {
+        task.resumeResolve = resolve;
+      });
+      logger.info(`[CacheService] Paused M3U8 task: ${itemId}`);
+    }
+  }
+
+  static resumeM3U8Task(itemId: string): void {
+    const task = activeM3U8Tasks.get(itemId);
+    if (task && task.isPaused && task.resumeResolve) {
+      task.isPaused = false;
+      task.resumeResolve();
+      task.resumeResolve = null;
+      task.pausePromise = null;
+      logger.info(`[CacheService] Resumed M3U8 task: ${itemId}`);
+    }
+  }
+
+  static cancelM3U8Task(itemId: string, tempDir?: string): void {
+    const task = activeM3U8Tasks.get(itemId);
+    if (task) {
+      task.controller.abort();
+      activeM3U8Tasks.delete(itemId);
+      // 清理临时文件（优先使用传入的 tempDir，或用任务中保存的）
+      const dirToClean = tempDir || task.tempDir;
+      if (dirToClean) {
+        CacheService.cleanupTempDir(dirToClean).catch(() => {});
+      }
+      logger.info(`[CacheService] Canceled M3U8 task: ${itemId}`);
+    }
+  }
+
+  /** 清理临时目录 */
+  private static async cleanupTempDir(tempDir: string): Promise<void> {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(tempDir);
+      if (dirInfo.exists) {
+        const files = await FileSystem.readDirectoryAsync(tempDir);
+        for (const f of files) {
+          await FileSystem.deleteAsync(`${tempDir}${f}`, { idempotent: true });
+        }
+        await FileSystem.deleteAsync(tempDir, { idempotent: true });
+      }
+    } catch (e) {
+      logger.warn('清理临时目录失败', e);
+    }
+  }
+
+  /**
+   * 下载 M3U8 并合并为 MP4（完全基于 fetch + expo-file-system，支持暂停/继续/取消）
+   * @param url M3U8 播放列表 URL
+   * @param destinationPath 目标文件路径（.mp4）
+   * @param itemId 任务唯一标识，用于暂停/继续
+   * @param signal 外部取消信号
+   * @param progressCb 进度回调 0~1
+   */
   static async downloadM3U8AsMp4(
     url: string,
     destinationPath: string,
+    itemId?: string,
     signal?: AbortSignal,
     progressCb?: (progress: number) => void
   ): Promise<string> {
     const start = Date.now();
-    logger.info(`[CacheService] downloadAndMergeM3U8 START - ${url}`);
-    const fetchText = async (uri: string): Promise<string> => {
-      const response = await fetch(uri, { signal });
-      if (!response.ok) {
-        throw new Error(`无法获取 M3U8 文件：${response.status}`);
-      }
-      return await response.text();
-    };
+    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url}`);
 
-    const loadPlaylist = async (uri: string) => {
-      const playlistText = await fetchText(uri);
-      const parsed = CacheService.parseM3U8Playlist(playlistText);
-      return { playlistText, parsed };
-    };
+    // 注册活动任务
+    const taskId = itemId || `m3u8_${Date.now()}`;
+    const activeTask = CacheService.registerM3U8Task(taskId);
+    const mergeSignal = activeTask.controller.signal;
 
-    const { playlistText, parsed } = await loadPlaylist(url);
-
-    let mediaPlaylistUrl = url;
-    let mediaParsed = parsed;
-    if (parsed.isMaster) {
-      const bestVariant = CacheService.selectBestVariant(parsed.variants);
-      if (!bestVariant.uri) {
-        throw new Error("无法解析 m3u8 播放列表中的子流");
-      }
-      mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
-      const loaded = await loadPlaylist(mediaPlaylistUrl);
-      mediaParsed = loaded.parsed;
-    }
-
-    if (mediaParsed.segments.length === 0) {
-      throw new Error("m3u8 中未找到可下载的片段");
-    }
-
-    let encryptionKey: Uint8Array | null = null;
-    let encryptionIV: Uint8Array | null = null;
-
-    if (mediaParsed.encryption && mediaParsed.encryption.method === 'AES-128') {
-      const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
-      try {
-        const resp = await fetch(keyUrl, { signal });
-        const buf = await resp.arrayBuffer();
-        encryptionKey = new Uint8Array(buf);
-
-        if (mediaParsed.encryption.iv) {
-          encryptionIV = new Uint8Array(mediaParsed.encryption.iv.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+    // 链接外部信号
+    if (signal) {
+      const onAbort = () => {
+        if (!activeTask.isPaused) {
+          activeTask.controller.abort();
+          activeM3U8Tasks.delete(taskId);
         }
-      } catch (e) {
-        logger.warn("获取加密密钥失败", e);
-        throw new Error("获取解密密钥失败");
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+      const fetchText = async (uri: string): Promise<string> => {
+        const response = await fetch(uri, { signal: mergeSignal });
+        if (!response.ok) {
+          throw new Error(`无法获取 M3U8 文件：${response.status}`);
+        }
+        return await response.text();
+      };
+
+      const loadPlaylist = async (uri: string) => {
+        const playlistText = await fetchText(uri);
+        const parsed = CacheService.parseM3U8Playlist(playlistText);
+        return { playlistText, parsed };
+      };
+
+      await CacheService.waitIfPaused(taskId);
+      if (mergeSignal.aborted) throw new Error("下载已取消");
+
+      const { parsed } = await loadPlaylist(url);
+
+      let mediaPlaylistUrl = url;
+      let mediaParsed = parsed;
+      if (parsed.isMaster) {
+        const bestVariant = CacheService.selectBestVariant(parsed.variants);
+        if (!bestVariant.uri) {
+          throw new Error("无法解析 m3u8 播放列表中的子流");
+        }
+        mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) throw new Error("下载已取消");
+        const loaded = await loadPlaylist(mediaPlaylistUrl);
+        mediaParsed = loaded.parsed;
       }
-    }
 
-    // 直接准备写入最终目标文件
-    if (await RNFetchBlob.fs.exists(destinationPath)) {
-      await RNFetchBlob.fs.unlink(destinationPath);
-    }
-    // 创建一个空文件
-    await RNFetchBlob.fs.createFile(destinationPath, '', 'utf8');
+      if (mediaParsed.segments.length === 0) {
+        throw new Error("m3u8 中未找到可下载的片段");
+      }
 
-    let index = 0;
-    const total = mediaParsed.segments.length;
-    const CONCURRENCY = 5; // 并发下载片段数
+      // 获取 AES 密钥
+      let encryptionKey: Uint8Array | null = null;
+      let encryptionIV: Uint8Array | null = null;
 
-    const downloadSegment = async (segment: string, segmentIndex: number) => {
-      if (signal?.aborted) return;
+      if (mediaParsed.encryption && mediaParsed.encryption.method === 'AES-128') {
+        const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) throw new Error("下载已取消");
+        try {
+          const resp = await fetch(keyUrl, { signal: mergeSignal });
+          const buf = await resp.arrayBuffer();
+          encryptionKey = new Uint8Array(buf);
 
-      const segmentUrl = CacheService.resolveUrl(segment, mediaPlaylistUrl);
-      const segmentTempPath = `${destinationPath}_part_${segmentIndex}`;
+          if (mediaParsed.encryption.iv) {
+            const hex = mediaParsed.encryption.iv.replace('0x', '');
+            encryptionIV = new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+          }
+        } catch (e) {
+          logger.warn("获取加密密钥失败", e);
+          throw new Error("获取解密密钥失败");
+        }
+      }
 
-      try {
-        const response = await RNFetchBlob.config({
-          path: segmentTempPath,
-          timeout: 60000,
-          fileCache: true,
-        }).fetch("GET", segmentUrl, {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': '*/*',
-          'Connection': 'keep-alive',
-          'Referer': url, // 增加 Referer 提高成功率
+      // 准备目标文件路径
+      if (!destinationPath.endsWith('.mp4')) {
+        destinationPath = destinationPath.replace(/\.[^/.]+$/, '') + '.mp4';
+      }
+
+      // 确保目标目录存在
+      const destDir = destinationPath.substring(0, destinationPath.lastIndexOf('/'));
+      const dirInfo = await FileSystem.getInfoAsync(destDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
+      }
+
+      // 删除已存在的文件
+      try { await FileSystem.deleteAsync(destinationPath, { idempotent: true }); } catch (e) { /* ignore */ }
+
+      // 所有片段 URL
+      const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
+      const total = segmentUrls.length;
+      const totalBytes = 0; // 用于速度估算
+
+      // 临时目录
+      const tempDir = `${destinationPath}_parts/`;
+      await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
+
+      const CONCURRENCY = 5;
+      let completedCount = 0;
+
+      // 存储tempDir以便cancel时清理
+      activeTask.tempDir = tempDir;
+
+      // 下载单个片段（带暂停检查）
+      const downloadSegment = async (segmentUrl: string, segIndex: number): Promise<ArrayBuffer> => {
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) throw new Error("下载已取消");
+
+        const response = await fetch(segmentUrl, {
+          signal: mergeSignal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Connection': 'keep-alive',
+            'Referer': mediaPlaylistUrl,
+          },
         });
-
-        if (response.info().status !== 200) {
-          throw new Error(`片段 ${segmentIndex} 下载失败: ${response.info().status}`);
+        if (!response.ok) {
+          throw new Error(`片段 ${segIndex} 下载失败: ${response.status}`);
         }
 
-        if (encryptionKey) {
-          // 简单的 AES-128-CBC 解密逻辑占位
-          // 实际使用时需要集成 crypto-js 等库或者通过原生桥接实现高性能解密
-          // 这里为了兼容性，如果是加密 M3U8，建议通过播放器直接处理流或者确保已在下载时完成解密
-          let data = await RNFetchBlob.fs.readFile(segmentTempPath, "base64");
-          // TODO: 完善这里的 AES-128-CBC 解密逻辑
-          return { index: segmentIndex, data, isRaw: false, path: segmentTempPath };
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) throw new Error("下载已取消");
+
+        let data = await response.arrayBuffer();
+
+        // AES 解密
+        if (encryptionKey && encryptionIV) {
+          data = decryptTSFragment(data, encryptionKey, encryptionIV);
         }
 
-        // 确保请求头包含必要信息，特别是针对某些需要验证的源
-        return { index: segmentIndex, isRaw: true, path: segmentTempPath };
-      } catch (err) {
-        logger.warn(`片段 ${segmentIndex} 下载异常`, err);
-        throw err;
-      }
-    };
+        return data;
+      };
 
-    // 分批次并发下载并顺序合并
-    for (let i = 0; i < total; i += CONCURRENCY) {
-      if (signal?.aborted) {
-        throw new Error("下载已取消");
-      }
+      // 分批次并发下载，每个片段保存到独立临时文件
+      for (let i = 0; i < total; i += CONCURRENCY) {
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) {
+          await CacheService.cleanupTempDir(tempDir);
+          throw new Error("下载已取消");
+        }
 
-      const batch = mediaParsed.segments.slice(i, i + CONCURRENCY);
-      try {
-        const results = await Promise.all(
-          batch.map((seg, batchIndex) => downloadSegment(seg, i + batchIndex))
-        );
+        const batch = segmentUrls.slice(i, i + CONCURRENCY);
 
-        // 按顺序将下载好的片段追加到主文件
-        for (const res of results) {
-          if (!res) continue;
-          if (res.isRaw) {
-            await RNFetchBlob.fs.appendFile(destinationPath, res.path, "uri");
-          } else {
-            await RNFetchBlob.fs.appendFile(destinationPath, res.data as string, "base64");
+        try {
+          const results = await Promise.all(
+            batch.map((segUrl, idx) => downloadSegment(segUrl, i + idx))
+          );
+
+          // 将本批次每个片段保存到独立临时文件
+          for (let j = 0; j < results.length; j++) {
+            const data = results[j];
+            const partPath = `${tempDir}part_${i + j}`;
+            const base64Data = arrayBufferToBase64(data);
+            // 写入临时文件
+            await FileSystem.writeAsStringAsync(partPath, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+            completedCount++;
+            progressCb?.(completedCount / total);
           }
-          await RNFetchBlob.fs.unlink(res.path);
-
-          index += 1;
-          // 只有进度发生显著变化时才回调，减少 UI 刷新压力
-          if (index % 5 === 0 || index === total) {
-            try {
-              progressCb?.(index / total);
-            } catch {}
+        } catch (err) {
+          if (mergeSignal.aborted) {
+            await CacheService.cleanupTempDir(tempDir);
+            throw new Error("下载已取消");
           }
+          logger.warn(`Batch download failed at index ${i}`, err);
+          throw err;
         }
-      } catch (err) {
-        logger.warn(`Batch download failed at index ${i}`, err);
-        // 如果是终止信号则退出
-        if (signal?.aborted) throw new Error("下载已取消");
-        // 否则可以尝试重试逻辑，这里先简单抛出
-        throw err;
       }
+
+      // 所有片段下载完成后，按顺序合并到最终文件
+      // 一次性读取所有 part 并拼接，避免多次 I/O
+      const allBase64Parts: string[] = [];
+      let totalStrLen = 0;
+      for (let segIdx = 0; segIdx < total; segIdx++) {
+        await CacheService.waitIfPaused(taskId);
+        if (mergeSignal.aborted) {
+          await CacheService.cleanupTempDir(tempDir);
+          throw new Error("下载已取消");
+        }
+
+        const partPath = `${tempDir}part_${segIdx}`;
+        const partInfo = await FileSystem.getInfoAsync(partPath);
+        if (!partInfo.exists) continue;
+
+        // 读取该片段 base64 数据
+        const partBase64 = await FileSystem.readAsStringAsync(partPath, { encoding: FileSystem.EncodingType.Base64 });
+        allBase64Parts.push(partBase64);
+        totalStrLen += partBase64.length;
+
+        // 删除临时片段文件（释放空间）
+        await FileSystem.deleteAsync(partPath, { idempotent: true });
+      }
+
+      // 一次性合并写入最终文件
+      const mergedBase64 = allBase64Parts.join('');
+      await FileSystem.writeAsStringAsync(destinationPath, mergedBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // 释放内存
+      allBase64Parts.length = 0;
+
+      // 清理临时目录
+      await CacheService.cleanupTempDir(tempDir);
+
+      const elapsed = Date.now() - start;
+      logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
+
+      return destinationPath;
+    } finally {
+      activeM3U8Tasks.delete(taskId);
     }
-
-    const elapsed = Date.now() - start;
-    logger.info(`[CacheService] downloadAndMergeM3U8 COMPLETE - saved to ${destinationPath} in ${elapsed}ms`);
-
-    return destinationPath;
   }
 
   static async saveToPublicStorage(fileUri: string, albumName: string = "SuperTV"): Promise<string | null> {

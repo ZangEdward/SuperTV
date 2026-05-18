@@ -19,6 +19,8 @@ export default function CacheDetailScreen() {
     queue,
     downloadProgress,
     downloadQueuedEpisode,
+    pauseQueuedEpisode,
+    resumeQueuedEpisode,
     removeCacheItem,
     cancelQueuedEpisode,
     loadCache
@@ -102,6 +104,18 @@ export default function CacheDetailScreen() {
     }
   };
 
+  const handlePause = async (groupId?: string, index?: number) => {
+    if (groupId !== undefined && index !== undefined) {
+      await pauseQueuedEpisode(groupId, index);
+    }
+  };
+
+  const handleResume = async (groupId?: string, index?: number) => {
+    if (groupId !== undefined && index !== undefined) {
+      await resumeQueuedEpisode(groupId, index);
+    }
+  };
+
   const handleDownload = (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
       downloadQueuedEpisode(groupId, index);
@@ -113,7 +127,7 @@ export default function CacheDetailScreen() {
     const progressPercent = Math.round((item.progress || 0) * 100);
     const isDownloading = item.status === 'downloading';
     const isCompleted = item.status === 'completed';
-    const isPaused = item.status === 'cancelled' || (item.status === 'failed' && item.progress! > 0);
+    const isPaused = item.status === 'paused';
 
     return (
       <View style={styles.episodeCard}>
@@ -121,7 +135,7 @@ export default function CacheDetailScreen() {
           <View style={styles.episodeInfo}>
             <ThemedText style={styles.episodeText}>{epTitle}</ThemedText>
             <ThemedText style={[styles.statusText, isCompleted && { color: Colors.dark.primary }]}>
-              {isCompleted ? '已完成' : isDownloading ? `下载中 ${progressPercent}%` : isPaused ? `暂停 ${progressPercent}%` : '等待中'}
+              {isCompleted ? '已完成' : isDownloading ? `下载中 ${progressPercent}%` : isPaused ? `已暂停 ${progressPercent}%` : '等待中'}
             </ThemedText>
           </View>
 
@@ -145,7 +159,7 @@ export default function CacheDetailScreen() {
               <>
                 <StyledButton
                   variant="default"
-                  onPress={() => handleCancel(item.groupId, item.index)}
+                  onPress={() => handlePause(item.groupId, item.index)}
                   style={styles.actionBtn}
                   text="暂停"
                 />
@@ -156,13 +170,28 @@ export default function CacheDetailScreen() {
                   text="删除"
                 />
               </>
+            ) : isPaused ? (
+              <>
+                <StyledButton
+                  variant="primary"
+                  onPress={() => handleResume(item.groupId, item.index)}
+                  style={styles.actionBtn}
+                  text="继续"
+                />
+                <StyledButton
+                  variant="ghost"
+                  onPress={() => handleCancel(item.groupId, item.index)}
+                  style={styles.actionBtn}
+                  text="取消"
+                />
+              </>
             ) : (
               <>
                 <StyledButton
                   variant="primary"
                   onPress={() => handleDownload(item.groupId, item.index)}
                   style={styles.actionBtn}
-                  text={isPaused ? "继续" : "下载"}
+                  text="下载"
                 />
                 <StyledButton
                   variant="ghost"
