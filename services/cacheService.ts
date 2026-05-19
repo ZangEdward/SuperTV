@@ -107,10 +107,28 @@ function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array)
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  // 使用 global.btoa 或兼容方案
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  } else {
+    // 兜底方案，如果环境没有 btoa
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let res = '';
+    for (let i = 0; i < len; i += 3) {
+      const a = bytes[i];
+      const b = i + 1 < len ? bytes[i + 1] : 0;
+      const c = i + 2 < len ? bytes[i + 2] : 0;
+      res += base64Chars[a >> 2];
+      res += base64Chars[((a & 3) << 4) | (b >> 4)];
+      res += i + 1 < len ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
+      res += i + 2 < len ? base64Chars[c & 63] : '=';
+    }
+    return res;
+  }
 }
 
 function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer {
@@ -467,6 +485,7 @@ export class CacheService {
       if (mergeSignal.aborted) throw new Error("下载已取消");
 
       // 解析主 playlist
+      logger.info(`[CacheService] Fetching playlist from ${url}`);
       const playlistText = await fetchText(url);
       const parsed = CacheService.parseM3U8Playlist(playlistText);
 
@@ -474,7 +493,7 @@ export class CacheService {
       let mediaParsed = parsed;
       if (parsed.isMaster) {
         const bestVariant = CacheService.selectBestVariant(parsed.variants);
-        if (!bestVariant.uri) throw new Error("无法解析 m3u8 子流");
+        if (!bestVariant || !bestVariant.uri) throw new Error("无法解析 m3u8 子流");
         mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
@@ -519,36 +538,38 @@ export class CacheService {
       const CONCURRENCY = 16; // 提高并发数
       let completedCount = 0;
 
+      // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一，建议移除
+      const normalizedDestPath = Platform.OS === 'android' ? destinationPath.replace('file://', '') : destinationPath;
+
+      logger.info(`[CacheService] Starting download to ${normalizedDestPath}, total segments: ${total}`);
+
       // 创建空的目标文件
-      await RNFetchBlob.fs.writeFile(destinationPath, '', 'utf8');
-
-      // 下载单个片段，返回 base64 字符串
-      const downloadSegment = async (segmentUrl: string, segIndex: number): Promise<string> => {
-        await CacheService.waitIfPaused(taskId);
-        if (mergeSignal.aborted) throw new Error("下载已取消");
-
-        const response = await fetch(segmentUrl, {
-          signal: mergeSignal,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': '*/*', 'Connection': 'keep-alive', 'Referer': mediaPlaylistUrl,
-          },
-        });
-        if (!response.ok) throw new Error(`片段 ${segIndex} 下载失败: ${response.status}`);
-
-        await CacheService.waitIfPaused(taskId);
-        if (mergeSignal.aborted) throw new Error("下载已取消");
-
-        let data = await response.arrayBuffer();
-        if (encryptionKey && encryptionIV) data = decryptTSFragment(data, encryptionKey, encryptionIV);
-
-        // 直接返回 base64 编码，用于 RNFetchBlob.fs.appendFile
-        return arrayBufferToBase64(data);
-      };
+      await RNFetchBlob.fs.writeFile(normalizedDestPath, '', 'utf8');
 
       // 结果缓冲区，按索引存储下载好的片段
       const resultsBuffer: { [index: number]: string } = {};
       let nextIndexToWrite = 0;
+      let isWriting = false;
+
+      // 顺序写入锁
+      const tryWriteSequentially = async () => {
+        if (isWriting) return;
+        isWriting = true;
+        try {
+          while (resultsBuffer[nextIndexToWrite] !== undefined) {
+            const data = resultsBuffer[nextIndexToWrite];
+            await RNFetchBlob.fs.appendFile(normalizedDestPath, data, 'base64');
+            delete resultsBuffer[nextIndexToWrite];
+            nextIndexToWrite++;
+            completedCount++;
+            progressCb?.(completedCount / total);
+          }
+        } catch (err) {
+          logger.warn("Sequentially writing failed", err);
+        } finally {
+          isWriting = false;
+        }
+      };
 
       // 下载并立即尝试顺序写入
       const downloadAndWrite = async (index: number) => {
@@ -556,15 +577,7 @@ export class CacheService {
           const segUrl = segmentUrls[index];
           const b64 = await downloadSegment(segUrl, index);
           resultsBuffer[index] = b64;
-
-          // 尝试顺序写入可用的片段
-          while (resultsBuffer[nextIndexToWrite] !== undefined) {
-            await RNFetchBlob.fs.appendFile(destinationPath, resultsBuffer[nextIndexToWrite], 'base64');
-            delete resultsBuffer[nextIndexToWrite];
-            nextIndexToWrite++;
-            completedCount++;
-            progressCb?.(completedCount / total);
-          }
+          await tryWriteSequentially();
         } catch (err) {
           logger.warn(`Segment ${index} download failed`, err);
           throw err;
@@ -589,10 +602,8 @@ export class CacheService {
 
       await executePool();
 
-      await executePool();
-
       // 验证文件完整性
-      const fileStat = await RNFetchBlob.fs.stat(destinationPath);
+      const fileStat = await RNFetchBlob.fs.stat(normalizedDestPath);
       if (!fileStat || fileStat.size === 0) {
         throw new Error("合并后的文件为空，下载失败");
       }

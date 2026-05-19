@@ -52,8 +52,10 @@ export default function RootLayout() {
   useEffect(() => {
     async function lockOrientation() {
       if (responsiveConfig.deviceType === 'mobile') {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        // 移动端跟随系统传感器旋转
+        await ScreenOrientation.unlockAsync();
       } else {
+        // TV 和平板锁定横屏
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       }
     }

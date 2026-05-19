@@ -66,11 +66,11 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         longPressTriggered.current = false;
         return;
       }
-      // 如果有播放进度，直接转到播放页面
-      if (progress !== undefined && episodeIndex !== undefined) {
+      // 如果有集数索引，说明是播放记录，直接转到播放页面
+      if (episodeIndex !== undefined) {
         router.push({
           pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 },
+          params: { source, id, episodeIndex: episodeIndex - 1, title, position: (playTime || 0) * 1000 },
         });
       } else {
         router.push({
