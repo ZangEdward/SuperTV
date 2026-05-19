@@ -78,7 +78,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       # -------------------------------
-      # SuperTV 主仓库：删除旧 asset
+      # 上传 APK 到 SuperTV 仓库的 Releases
       # -------------------------------
       - name: Delete old asset if exists (SuperTV repo)
         run: |
@@ -112,7 +112,7 @@ jobs:
           fi
 
       - name: Upload to GitHub Releases (SuperTV repo)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
@@ -145,7 +145,6 @@ jobs:
         run: |
           VERSION="${{ needs.build.outputs.VERSION }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
 
       - name: Clone log repository
         run: |
@@ -194,7 +193,7 @@ jobs:
           fi
 
       - name: Upload APK to log repo release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
           repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
@@ -244,5 +243,5 @@ jobs:
           git add .
           git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/vision" || true
 
-          git pull origin main --rebase || git pull origin master --rebase || true
-          git push origin main || git push origin master
+          # 使用 PAT token URL 直接 push（与 sync APK yaml 保持一致，避免 pull rebase 冲突失败）
+          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git

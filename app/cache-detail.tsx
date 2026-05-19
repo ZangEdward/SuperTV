@@ -116,17 +116,27 @@ export default function CacheDetailScreen() {
     }
   };
 
-  const handleDownload = async (groupId?: string, index?: number) => {
+
+  const handleRetry = async (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
-      // 通过 store 直接修改状态并触发队列处理
-      const group = queue.find(g => g.groupId === groupId);
+
+
+      const state = useCacheStore.getState();
+      const group = state.queue.find(g => g.groupId === groupId);
       if (group) {
         const ep = group.episodes.find(e => e.index === index);
         if (ep) {
+          // 重置状态为 pending，让队列重新调度
           ep.status = 'pending';
           ep.progress = 0;
-          // @ts-ignore - processQueue is internal
-          useCacheStore.getState().processQueue?.();
+
+
+          // 通知 Zustand 状态变更，React 重新渲染
+          useCacheStore.setState({ queue: [...state.queue] });
+          // 触发队列处理
+          setTimeout(() => {
+            useCacheStore.getState().processQueue?.();
+          }, 50);
         }
       }
     }
@@ -168,7 +178,8 @@ export default function CacheDetailScreen() {
       statusColor = '#757575';
       barColor = '#757575';
     } else if (isFailed) {
-      statusLabel = '已取消';
+
+      statusLabel = item.status === 'cancelled' ? '已取消' : '下载失败';
       statusColor = '#F44336';
       barColor = '#555';
     } else {
@@ -248,8 +259,10 @@ export default function CacheDetailScreen() {
             <>
               <StyledButton
                 variant="primary"
-                onPress={() => handleDownload(item.groupId, item.index)}
-                text="⬇ 开始下载"
+
+
+                onPress={() => handleRetry(item.groupId, item.index)}
+                              text="⬇ 开始下载"
               />
               <StyledButton
                 variant="ghost"
@@ -262,7 +275,7 @@ export default function CacheDetailScreen() {
             <>
               <StyledButton
                 variant="default"
-                onPress={() => handleDownload(item.groupId, item.index)}
+                onPress={() => handleRetry(item.groupId, item.index)}
                 text="↻ 重试"
               />
               <StyledButton
