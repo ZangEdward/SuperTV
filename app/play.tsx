@@ -56,6 +56,7 @@ export default function PlayScreen() {
 
   const initialEpIndex = parseInt(episodeIndexStr || "0", 10);
   const position = positionStr ? parseInt(positionStr, 10) : undefined;
+  const isLocalFile = !!fileUri;
 
   const { detail, searchResults, setDetail, error: detailError, loading: detailLoading } = useDetailStore();
   const source = sourceStr || detail?.source;
@@ -202,8 +203,6 @@ export default function PlayScreen() {
       resolution: (detail as any)?.resolution || null,
     });
   };
-
-  const isLocalFile = !!fileUri;
 
   // 如果初始化失败（detail为null且无法获取），显示错误页面
   if (!isLocalFile && !detail && isInitFailed) {
