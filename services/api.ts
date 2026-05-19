@@ -221,15 +221,24 @@ export class API {
   async searchVideo(query: string, resourceId: string, signal?: AbortSignal): Promise<{ results: SearchResult[] }> {
     const url = `/api/search/one?q=${encodeURIComponent(query)}&resourceId=${encodeURIComponent(resourceId)}`;
     const response = await this._fetch(url, { signal });
-    const { results } = await response.json();
-    // 使用宽松匹配：标题包含搜索词（不区分大小写）
+    const data = await response.json();
+    const results = data.results || [];
+
+    // 确保每个结果都有正确的 source
     const keyword = query.toLowerCase();
-    const filtered = results.filter((item: any) =>
+    const mappedResults = results.map((item: any) => ({
+      ...item,
+      source: item.source || resourceId
+    }));
+
+    // 使用宽松匹配：标题包含搜索词（不区分大小写）
+    const filtered = mappedResults.filter((item: any) =>
       item.title && item.title.toLowerCase().includes(keyword)
     );
+
     // 如果过滤后为空，返回原始结果的前20条作为兜底
-    if (filtered.length === 0 && results.length > 0) {
-      return { results: results.slice(0, 20) };
+    if (filtered.length === 0 && mappedResults.length > 0) {
+      return { results: mappedResults.slice(0, 20) };
     }
     return { results: filtered };
   }

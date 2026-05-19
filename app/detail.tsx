@@ -105,7 +105,21 @@ export default function DetailScreen() {
     );
   }
 
-  if (!detail) return null;
+  if (!detail) {
+    return (
+      <ResponsiveNavigation>
+        <ResponsiveHeader title="详情" showBackButton />
+        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
+          <ThemedText type="subtitle" style={{ color: '#888' }}>未找到相关影片详情</ThemedText>
+          <StyledButton
+            text="返回重试"
+            onPress={() => router.back()}
+            style={{ marginTop: 20, minWidth: 120 }}
+          />
+        </ThemedView>
+      </ResponsiveNavigation>
+    );
+  }
 
   if (!isMobile) {
     return (

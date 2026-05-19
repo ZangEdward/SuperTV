@@ -80,7 +80,10 @@ const useSearchStore = create<SearchState>((set, get) => ({
       // 3. 并行搜索，动态异步刷新结果
       const searchPromises = enabledResources.map(async (resource) => {
         try {
-          const { results } = await api.searchVideo(term, resource.key, signal);
+          const response = await api.searchVideo(term, resource.key, signal);
+          if (!response || !response.results) return;
+
+          const { results } = response;
 
           if (signal.aborted) return;
 
@@ -95,11 +98,15 @@ const useSearchStore = create<SearchState>((set, get) => ({
                 return true;
               });
 
-              if (newResults.length === 0) return state;
+              if (newResults.length === 0) {
+                 // 如果没有新结果且是第一个源返回，也要关闭 loading 吗？
+                 // 不，最好等有结果。但如果所有源都返回空，则最后会处理。
+                 return state;
+              }
 
               const updatedResults = [...state.results, ...newResults];
 
-              // 异步刷新：只要有新结果就立即显示，且如果是第一批结果则关闭 loading
+              // 异步刷新：只要有新结果就立即显示
               if (!firstBatchFound) {
                 firstBatchFound = true;
                 return { results: updatedResults, loading: false };
@@ -118,7 +125,8 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       if (signal.aborted) return;
 
-      if (totalFound === 0) {
+      // 如果全部搜索完成但没有找到任何结果，则尝试 fallback 或报错
+      if (totalFound === 0 || get().results.length === 0) {
         // 降级策略：所有单源搜索都返回空时，尝试批量搜索端点
         // 参考 detailStore.ts 中的 fallback 机制
         logger.warn(`[WARN] All individual source searches returned 0 results for "${term}", trying bulk search endpoint`);

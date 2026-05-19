@@ -95,6 +95,20 @@ export function CacheSection() {
         {isMobile && (
           <View style={styles.row}>
             <View style={styles.info}>
+              <ThemedText style={styles.label}>缓存管理</ThemedText>
+              <ThemedText style={styles.subtitle}>进入缓存管理页面查看已下载视频</ThemedText>
+            </View>
+            <StyledButton
+              text="查看"
+              onPress={() => router.push("/cache-management")}
+              style={styles.actionButton}
+            />
+          </View>
+        )}
+
+        {isMobile && (
+          <View style={[styles.row, { marginTop: 16 }]}>
+            <View style={styles.info}>
               <ThemedText style={styles.label}>已下载缓存</ThemedText>
               <ThemedText style={styles.value}>{cacheSize}</ThemedText>
             </View>
@@ -109,33 +123,6 @@ export function CacheSection() {
         )}
 
         <View style={[styles.row, { marginTop: isMobile ? 16 : 0 }]}>
-          <View style={styles.info}>
-            <ThemedText style={styles.label}>播放历史记录</ThemedText>
-            <ThemedText style={styles.subtitle}>清除所有视频的观看进度</ThemedText>
-          </View>
-          <StyledButton
-            onPress={handleClearHistory}
-            variant="ghost"
-            disabled={clearing}
-            style={styles.actionButton}
-          >
-            <ThemedText style={[styles.buttonText, { color: '#ff4d4f' }]}>清除历史</ThemedText>
-          </StyledButton>
-        </View>
-
-        {isMobile && (
-          <View style={[styles.row, { marginTop: 16 }]}>
-            <View style={styles.info}>
-              <ThemedText style={styles.label}>缓存管理</ThemedText>
-              <ThemedText style={styles.subtitle}>进入缓存管理页面查看已下载视频</ThemedText>
-            </View>
-            <StyledButton
-              text="查看"
-              onPress={() => router.push("/cache-management")}
-              style={styles.actionButton}
-            />
-          </View>
-        )}
       </View>
     </SettingsSection>
   );

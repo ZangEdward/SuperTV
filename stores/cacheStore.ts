@@ -103,8 +103,9 @@ const useCacheStore = create<CacheState>((set, get) => ({
   },
 
   loadCache: async () => {
-    // 如果已经有正在下载的任务，只更新已完成列表，不更新队列以免干扰进度
-    const hasActiveTasks = get().queue.some(g => g.episodes.some(e => e.status === 'downloading'));
+    const state = get();
+    // 只有当内存中已经有活跃任务且队列不为空时，才跳过从存储加载队列
+    const hasActiveTasks = state.queue.length > 0 && state.queue.some(g => g.episodes.some(e => e.status === 'downloading'));
 
     set({ loading: true, error: null });
     try {
@@ -581,27 +582,32 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }
   },
   pauseAll: async () => {
-    const { queue, pauseQueuedEpisode } = get();
-    const downloadingEpisodes = queue.flatMap(g =>
+    const currentQueue = get().queue;
+    const downloadingEpisodes = currentQueue.flatMap(g =>
       g.episodes
         .filter(ep => ep.status === 'downloading')
         .map(ep => ({ groupId: g.groupId, index: ep.index }))
     );
+
+    // 依次暂停所有正在下载的片段
     for (const item of downloadingEpisodes) {
-      await pauseQueuedEpisode(item.groupId, item.index);
+      await get().pauseQueuedEpisode(item.groupId, item.index);
     }
-    // Also mark queued ones as paused
-    const nextQueue = get().queue.map(group => ({
-      ...group,
-      episodes: group.episodes.map(ep => {
-        if (ep.status === 'queued' || ep.status === 'pending') {
-          return { ...ep, status: 'paused' as const };
-        }
-        return ep;
-      })
+
+    // 将所有排队中或等待中的任务也设为暂停
+    set((state) => ({
+      queue: state.queue.map(group => ({
+        ...group,
+        episodes: group.episodes.map(ep => {
+          if (ep.status === 'queued' || ep.status === 'pending') {
+            return { ...ep, status: 'paused' as const };
+          }
+          return ep;
+        })
+      }))
     }));
-    set({ queue: nextQueue });
-    await CacheService.saveQueue(nextQueue);
+
+    await CacheService.saveQueue(get().queue);
   },
   resumeAll: async () => {
     const nextQueue = get().queue.map(group => ({
