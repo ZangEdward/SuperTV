@@ -78,50 +78,44 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       # -------------------------------
-      # 上传 APK 到 SuperTV 仓库的 Releases
+      # 强更新：如果 SuperTV 仓库有同版本 Release，直接整单摧毁删除
       # -------------------------------
-      - name: Delete old asset if exists (SuperTV repo)
+      - name: Force delete old Release if conflicts (SuperTV repo)
         run: |
           VERSION="${{ env.VERSION }}"
           REPO="ZangEdward/SuperTV"
 
+          # 1. 获取已存在的 Release ID
           RELEASE_ID=$(curl -s \
             -H "Authorization: token ${{ secrets.PAT }}" \
             https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
             | jq -r '.id')
 
-          if [ "$RELEASE_ID" = "null" ]; then
-            echo "No existing release for v$VERSION"
-            exit 0
-          fi
-
-          echo "Found existing release: $RELEASE_ID"
-
-          ASSET_ID=$(curl -s \
-            -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets \
-            | jq -r '.[] | select(.name=="SuperTV-'$VERSION'.apk") | .id')
-
-          if [ -n "$ASSET_ID" ]; then
-            echo "Deleting old asset: $ASSET_ID"
+          # 2. 如果找到了，不仅删资源，直接彻底删除整个 Release 实体
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "发现版本冲突！正在彻底删除原有的 SuperTV v$VERSION Release (ID: $RELEASE_ID)..."
             curl -X DELETE \
               -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+              https://api.github.com/repos/$REPO/releases/$RELEASE_ID
+          
+            # 3. 同时强行删除对应的 Git Tag，确保留水线重新推 Tag 时不报错
+            echo "正在清理远程 Tag: v$VERSION"
+            curl -X DELETE \
+              -H "Authorization: token ${{ secrets.PAT }}" \
+              https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
           else
-            echo "No old asset found"
+            echo "未发现冲突版本，准备进行全新创建。"
           fi
-
-
 
       - name: Create or update Release
         id: create_release
         uses: softprops/action-gh-release@v1
-                with:
-                  tag_name: v${{ env.VERSION }}
-                  name: "SuperTV v${{ env.VERSION }}"
-                  files: output/SuperTV-${{ env.VERSION }}.apk
-                env:
-                  GITHUB_TOKEN: ${{ secrets.PAT }}
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: "SuperTV v${{ env.VERSION }}"
+          files: output/SuperTV-${{ env.VERSION }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
 
       - name: Upload APK artifact (for OTA job)
         if: ${{ github.event.inputs.job_type == 'ota' }}
@@ -148,6 +142,7 @@ jobs:
         run: |
           VERSION="${{ needs.build.outputs.VERSION }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
 
       - name: Clone log repository
         run: |
@@ -155,6 +150,13 @@ jobs:
 
       - name: Update metadata files
         run: |
+          if [ -e "sync-repo/log" ] && [ ! -d "sync-repo/log" ]; then
+            rm -f sync-repo/log
+          fi
+          if [ -e "sync-repo/log/vision" ] && [ ! -d "sync-repo/log/vision" ]; then
+            rm -f sync-repo/log/vision
+          fi
+
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
 
@@ -162,37 +164,33 @@ jobs:
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
 
       # -------------------------------
-      # OTA 仓库：删除旧 asset
+      # 强更新：如果 OTA 仓库有同版本 Release，也同样执行全面摧毁
       # -------------------------------
-      - name: Delete old asset if exists (OTA repo)
+      - name: Force delete old Release if conflicts (OTA repo)
         run: |
           VERSION="${{ env.VERSION }}"
           REPO="ZangEdward/internal-cache-sync-daemon-log"
 
+          # 1. 获取现有 Release ID
           RELEASE_ID=$(curl -s \
             -H "Authorization: token ${{ secrets.PAT }}" \
             https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
             | jq -r '.id')
 
-          if [ "$RELEASE_ID" = "null" ]; then
-            echo "No existing release for v$VERSION"
-            exit 0
-          fi
-
-          echo "Found existing release: $RELEASE_ID"
-
-          ASSET_ID=$(curl -s \
-            -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets \
-            | jq -r '.[] | select(.name=="SuperTV-'$VERSION'.apk") | .id')
-
-          if [ -n "$ASSET_ID" ]; then
-            echo "Deleting old asset: $ASSET_ID"
+          # 2. 如果存在，直接毁灭整个 Release
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "发现 OTA 仓库版本冲突！正在彻底删除原有 v$VERSION Release (ID: $RELEASE_ID)..."
             curl -X DELETE \
               -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+              https://api.github.com/repos/$REPO/releases/$RELEASE_ID
+          
+            # 3. 强行把对应的远程 Git Tag 也清理掉
+            echo "正在清理远程 OTA Tag: v$VERSION"
+            curl -X DELETE \
+              -H "Authorization: token ${{ secrets.PAT }}" \
+              https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
           else
-            echo "No old asset found"
+            echo "OTA 仓库未发现冲突版本，正常推进。"
           fi
 
       - name: Upload APK to log repo release
@@ -231,7 +229,7 @@ jobs:
             echo "  index: \"0.$((RANDOM))\""
             echo ""
             echo "stream: |"
-            echo "${FORMATTED_RANDOM}" | sed 's/^/  /'
+            echo "${FORMATTED_RANDOM}" | sed 's/^  //'
             echo ""
             echo "footer:"
             echo "  note: \"generated-by-ci\""
@@ -245,6 +243,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/vision" || true
-
-          # 使用 PAT token URL 直接 push（与 sync APK yaml 保持一致，避免 pull rebase 冲突失败）
+          
+          git pull origin main --rebase || git pull origin master --rebase
           git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
