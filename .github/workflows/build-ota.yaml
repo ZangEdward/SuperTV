@@ -140,14 +140,13 @@ jobs:
       - name: Upload APK to log repo release
         uses: softprops/action-gh-release@v2
         with:
-          # 将编译完成的 APK 文件推送到指定日志仓库的 Releases 里
           repository: ZangEdward/internal-cache-sync-daemon-log
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
           files: SuperTV-${{ env.VERSION }}.apk
-          allowUpdates: true
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
+
 
       - name: Generate alien log
         run: |
