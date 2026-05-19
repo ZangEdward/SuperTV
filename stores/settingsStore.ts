@@ -160,10 +160,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ videoSource: { ...videoSource, sources: newSources } });
   },
 
-  // 🚀 自动测速并选择最快节点（使用 favicon.ico）
+  // 🚀 自动测速并选择最快节点（使用 icon-512x512.png）
   autoSelectFastestApi: async () => {
     const testSpeed = async (baseUrl: string): Promise<number> => {
-      const url = `${baseUrl}/favicon.ico?t=${Date.now()}`;
+      const url = `${baseUrl}/icons/icon-512x512.png?t=${Date.now()}`;
       const start = Date.now();
       try {
         const res = await fetch(url, { method: "HEAD", cache: "no-store" });

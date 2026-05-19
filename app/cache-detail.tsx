@@ -23,6 +23,7 @@ export default function CacheDetailScreen() {
     resumeQueuedEpisode,
     removeCacheItem,
     cancelQueuedEpisode,
+    retryDownload,
     loadCache
   } = useCacheStore();
 
@@ -119,26 +120,7 @@ export default function CacheDetailScreen() {
 
   const handleRetry = async (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
-
-
-      const state = useCacheStore.getState();
-      const group = state.queue.find(g => g.groupId === groupId);
-      if (group) {
-        const ep = group.episodes.find(e => e.index === index);
-        if (ep) {
-          // 重置状态为 pending，让队列重新调度
-          ep.status = 'pending';
-          ep.progress = 0;
-
-
-          // 通知 Zustand 状态变更，React 重新渲染
-          useCacheStore.setState({ queue: [...state.queue] });
-          // 触发队列处理
-          setTimeout(() => {
-            useCacheStore.getState().processQueue?.();
-          }, 50);
-        }
-      }
+      retryDownload(groupId, index);
     }
   };
 

@@ -79,9 +79,15 @@ const useSearchStore = create<SearchState>((set, get) => ({
           if (results && results.length > 0) {
             totalFound += results.length;
             set((state) => {
-              // 避免重复项（根据 title + source 简单去重，或者 server 返回的 id）
-              const existingKeys = new Set(state.results.map(r => `${r.source}_${r.id}`));
-              const newResults = results.filter(r => !existingKeys.has(`${r.source}_${r.id}`));
+              // 关键优化：根据 title 全局去重
+              // 用户指出：同一个剧集不同播放源已经在详情页展示了，搜索结果不需要重复出现
+              const existingTitles = new Set(state.results.map(r => r.title.trim().toLowerCase()));
+              const newResults = results.filter(r => {
+                const normalizedTitle = r.title.trim().toLowerCase();
+                if (existingTitles.has(normalizedTitle)) return false;
+                existingTitles.add(normalizedTitle);
+                return true;
+              });
 
               if (newResults.length === 0) return state;
 

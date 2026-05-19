@@ -1,427 +1,60 @@
-﻿import React, { useMemo, useEffect } from "react";
-import { View, StyleSheet, Image, FlatList, TouchableOpacity } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import useCacheStore from "@/stores/cacheStore";
-import { ThemedView } from "@/components/ThemedView";
-import { ThemedText } from "@/components/ThemedText";
-import { StyledButton } from "@/components/StyledButton";
-import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
-import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
-import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
-import { Colors } from "@/constants/Colors";
+﻿# SuperTV 📺
 
-export default function CacheDetailScreen() {
-  const router = useRouter();
-  const { title } = useLocalSearchParams<{ title: string }>();
-  const {
-    items,
-    queue,
-    downloadProgress,
-    downloadQueuedEpisode,
-    pauseQueuedEpisode,
-    resumeQueuedEpisode,
-    removeCacheItem,
-    cancelQueuedEpisode,
-    loadCache
-  } = useCacheStore();
+一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。
 
-  const responsiveConfig = useResponsiveLayout();
-  const commonStyles = getCommonResponsiveStyles(responsiveConfig);
-  const { spacing } = responsiveConfig;
+## ✨ 功能特性
 
-  useEffect(() => {
-    loadCache();
-  }, [loadCache]);
+- **框架跨平台支持**: 同时支持构建 Apple TV 和 Android TV。
+- **现代化前端**: 使用 Expo、React Native TVOS 和 TypeScript 构建，性能卓越。
+- **Expo Router**: 基于文件系统的路由，使导航逻辑清晰简单。
+- **TV 优化的 UI**: 专为电视遥控器交互设计的用户界面。
+- **缓存下载**: 支持 M3U8/MP4 视频离线缓存，多线程加速下载。
+- **优选节点**: 智能测速并选择最佳 API 节点。
 
-  const movieInfo = useMemo(() => {
-    const queuedGroup = queue.find((g) => g.title === title);
-    if (queuedGroup) return { title: queuedGroup.title, poster: queuedGroup.poster };
+📝 版本更新历史 (Changelog)
 
-    const cachedItem = items.find((it) => it.title === title);
-    if (cachedItem) return { title: cachedItem.title, poster: cachedItem.poster };
+📱 v5.5.20.523 (Latest)
+- 🔍 **搜索去重优化**：搜索结果现在根据标题全局去重，避免同一剧集在不同来源下重复出现，界面更整洁。
+- ⚡ **精准测速优化**：优选节点功能改用 `/icons/icon-512x512.png` 进行测速，并添加随机时间戳，彻底规避 CDN 缓存干扰，测速结果更真实。
+- ⬇️ **缓存引擎重构**：参考 LunaTV 优化了 M3U8 下载核心，增强了对 Master Playlist 的解析能力。
+- 🔄 **下载重试修复**：修复了从详情页点击“开始下载”后可能无法立即触发任务的 Bug，重构了状态管理以确保任务实时调度。
+- 🏗️ **版本号升级**：全线同步至 `v5.5.20.523`。
 
-    return { title: title || "未知影片", poster: undefined };
-  }, [items, queue, title]);
+📱 v5.5.19.523
+- 🚀 **M3U8 下载加速**：优化并发下载逻辑，支持多线程同时下载 TS 片段，显著提升下载速度。
+- 📁 **缓存目录调整**：将默认缓存目录迁移至 `/Android/data/com.supertv.app/files/download`。
+- 🗑️ **缓存管理增强**：修复详情页删除按钮失效问题，新增长按删除整部剧集及关联海报条目功能。
+- 🎨 **图标修复**：修复应用图标丢失的问题，恢复标准的 Expo 配置。
+- 🛠️ **Workflow 优化**：修复 `build-ota.yaml` 失败问题，完善自动化部署流程。
 
-  const episodes = useMemo(() => {
-    const list: { index: number; status: string; progress?: number; fileUri?: string; groupId?: string; id?: string }[] = [];
+📱 v5.5.18.523
+- 🐛 **修复缓存目录缺失**：`loadCache` 时自动调用 `ensureDownloadDirectory()`，确保 `videos/` 文件夹在首次使用时被创建。
+- 🔄 **版本号同步统一**：`package.json` 和 `app.json` 版本同步。
+- 🎨 **缓存详情页 UI 大改版**。
 
-    queue.filter(g => g.title === title).forEach(group => {
-      group.episodes.forEach(ep => {
-        const itemId = `${group.source}_${group.id}_${ep.index}`;
-        list.push({
-          index: ep.index,
-          status: ep.status,
-          progress: downloadProgress?.[itemId] ?? ep.progress ?? 0,
-          groupId: group.groupId,
-          id: itemId
-        });
-      });
-    });
+## 🛠️ 技术栈
 
-    items.filter(it => it.title === title).forEach(it => {
-      const existing = list.find(e => e.index === it.episodeIndex);
-      if (existing) {
-        existing.status = 'completed';
-        existing.fileUri = it.fileUri;
-        existing.progress = 1;
-      } else {
-        list.push({
-          index: it.episodeIndex,
-          status: 'completed',
-          progress: 1,
-          fileUri: it.fileUri,
-          id: it.id
-        });
-      }
-    });
+- **前端**:
+  - [React Native TVOS](https://github.com/react-native-tvos/react-native-tvos)
+  - [Expo](https://expo.dev/) (~51.0)
+  - [Expo Router](https://docs.expo.dev/router/introduction/)
+  - [Expo AV](https://docs.expo.dev/versions/latest/sdk/av/)
+  - TypeScript
 
-    return list.sort((a, b) => a.index - b.index);
-  }, [items, queue, title, downloadProgress]);
+## 📂 项目结构
 
-  const handlePlay = (fileUri: string, epTitle: string) => {
-    const playTitle = `${movieInfo.title} ${epTitle}`;
-    router.push({
-      pathname: "/play",
-      params: {
-        title: playTitle,
-        fileUri: fileUri,
-        q: movieInfo.title
-      }
-    });
-  };
+```
+.
+├── app/              # Expo Router 路由和页面
+├── assets/           # 静态资源 (字体, 图片, TV 图标)
+├── components/       # React 组件
+├── constants/        # 应用常量 (颜色, 样式)
+├── hooks/            # 自定义 Hooks
+├── services/         # 服务层 (API, 存储)
+├── package.json      # 前端依赖和脚本
+└── ...
+```
 
-  const handleDelete = async (itemId?: string) => {
-    if (itemId) {
-      await removeCacheItem(itemId);
-    }
-  };
+## 📜 License
 
-  const handleCancel = async (groupId?: string, index?: number) => {
-    if (groupId !== undefined && index !== undefined) {
-      await cancelQueuedEpisode(groupId, index);
-    }
-  };
-
-  const handlePause = async (groupId?: string, index?: number) => {
-    if (groupId !== undefined && index !== undefined) {
-      await pauseQueuedEpisode(groupId, index);
-    }
-  };
-
-  const handleResume = async (groupId?: string, index?: number) => {
-    if (groupId !== undefined && index !== undefined) {
-      await resumeQueuedEpisode(groupId, index);
-    }
-  };
-
-
-  const handleRetry = async (groupId?: string, index?: number) => {
-    if (groupId !== undefined && index !== undefined) {
-
-
-      const state = useCacheStore.getState();
-      const group = state.queue.find(g => g.groupId === groupId);
-      if (group) {
-        const ep = group.episodes.find(e => e.index === index);
-        if (ep) {
-          // 重置状态为 pending，让队列重新调度
-          ep.status = 'pending';
-          ep.progress = 0;
-
-
-          // 通知 Zustand 状态变更，React 重新渲染
-          useCacheStore.setState({ queue: [...state.queue] });
-          // 触发队列处理
-          setTimeout(() => {
-            useCacheStore.getState().processQueue?.();
-          }, 50);
-        }
-      }
-    }
-  };
-
-  const renderEpisodeItem = ({ item }: { item: typeof episodes[0] }) => {
-    const epTitle = `第 ${item.index + 1} 集`;
-    const progressPercent = Math.min(100, Math.round((item.progress || 0) * 100));
-    const isDownloading = item.status === 'downloading';
-    const isCompleted = item.status === 'completed';
-    const isPaused = item.status === 'paused';
-    const isQueued = item.status === 'queued';
-    const isPending = item.status === 'pending';
-    const isFailed = item.status === 'failed' || item.status === 'cancelled';
-
-    // 状态文本与颜色映射
-    let statusLabel: string;
-    let statusColor: string;
-    let barColor: string;
-
-    if (isCompleted) {
-      statusLabel = `已完成 100%`;
-      statusColor = '#4CAF50';
-      barColor = '#4CAF50';
-    } else if (isDownloading) {
-      statusLabel = `下载中 ${progressPercent}%`;
-      statusColor = '#FF9800';
-      barColor = '#FF9800';
-    } else if (isPaused) {
-      statusLabel = `已暂停 ${progressPercent}%`;
-      statusColor = '#2196F3';
-      barColor = '#2196F3';
-    } else if (isQueued) {
-      statusLabel = '排队中';
-      statusColor = '#9E9E9E';
-      barColor = '#9E9E9E';
-    } else if (isPending) {
-      statusLabel = '等待下载';
-      statusColor = '#757575';
-      barColor = '#757575';
-    } else if (isFailed) {
-
-      statusLabel = item.status === 'cancelled' ? '已取消' : '下载失败';
-      statusColor = '#F44336';
-      barColor = '#555';
-    } else {
-      statusLabel = '等待中';
-      statusColor = '#757575';
-      barColor = '#757575';
-    }
-
-    return (
-      <View style={styles.episodeCard}>
-        {/* 上方：剧集编号 + 状态标签 */}
-        <View style={styles.episodeHeader}>
-          <ThemedText style={styles.episodeText}>{epTitle}</ThemedText>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20', borderColor: statusColor + '40' }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <ThemedText style={[styles.statusLabel, { color: statusColor }]}>{statusLabel}</ThemedText>
-          </View>
-        </View>
-
-        {/* 进度条（所有状态都显示）*/}
-        <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { backgroundColor: '#222' }]}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${progressPercent}%`,
-                  backgroundColor: barColor,
-                },
-              ]}
-            />
-          </View>
-        </View>
-
-        {/* 底部：操作按钮区域 */}
-        <View style={styles.actionRow}>
-          {isCompleted ? (
-            <>
-              <StyledButton
-                variant="primary"
-                onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
-                text="▶ 播放"
-              />
-              <StyledButton
-                variant="ghost"
-                onPress={() => handleDelete(item.id)}
-                text="🗑 删除"
-              />
-            </>
-          ) : isDownloading ? (
-            <>
-              <StyledButton
-                variant="default"
-                onPress={() => handlePause(item.groupId, item.index)}
-                text="⏸ 暂停"
-              />
-              <StyledButton
-                variant="ghost"
-                onPress={() => handleCancel(item.groupId, item.index)}
-                text="✕ 取消"
-              />
-            </>
-          ) : isPaused ? (
-            <>
-              <StyledButton
-                variant="primary"
-                onPress={() => handleResume(item.groupId, item.index)}
-                text="▶ 继续"
-              />
-              <StyledButton
-                variant="ghost"
-                onPress={() => handleCancel(item.groupId, item.index)}
-                text="✕ 取消"
-              />
-            </>
-          ) : isQueued || isPending ? (
-            <>
-              <StyledButton
-                variant="primary"
-
-
-
-
-                onPress={() => {
-                  // 直接调用 downloadQueuedEpisode 启动下载，而非依赖 processQueue
-                  if (item.groupId !== undefined && item.index !== undefined) {
-                    const state = useCacheStore.getState();
-                    const group = state.queue.find(g => g.groupId === item.groupId);
-                    if (group) {
-                      const ep = group.episodes.find(e => e.index === item.index);
-                      if (ep) {
-                        ep.status = 'pending';
-                        ep.progress = 0;
-                        useCacheStore.setState({ queue: [...state.queue] });
-                        setTimeout(() => {
-                          useCacheStore.getState().downloadQueuedEpisode(item.groupId!, item.index!);
-                        }, 50);
-                      }
-                    }
-                  }
-                }}
-                text="⬇ 开始下载"
-              />
-              <StyledButton
-                variant="ghost"
-                onPress={() => handleCancel(item.groupId, item.index)}
-                text="✕ 移除"
-              />
-            </>
-          ) : (
-            /* failed / cancelled 显示重试 */
-            <>
-              <StyledButton
-                variant="default"
-                onPress={() => handleRetry(item.groupId, item.index)}
-                text="↻ 重试"
-              />
-              <StyledButton
-                variant="ghost"
-                onPress={() => handleDelete(item.id)}
-                text="🗑 删除"
-              />
-            </>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  return (
-    <ResponsiveNavigation>
-      <ResponsiveHeader title="缓存详情" showBackButton />
-      <ThemedView style={[commonStyles.container, styles.container]}>
-        <View style={styles.header}>
-          {movieInfo.poster && (
-            <Image source={{ uri: movieInfo.poster }} style={styles.poster} />
-          )}
-          <View style={styles.headerInfo}>
-            <ThemedText type="title" style={styles.title}>{movieInfo.title}</ThemedText>
-            <ThemedText style={styles.subtitle}>
-              共 {episodes.length} 个项目 · 已完成 {episodes.filter(e => e.status === 'completed').length}
-            </ThemedText>
-          </View>
-        </View>
-
-        <FlatList
-          data={episodes}
-          renderItem={renderEpisodeItem}
-          keyExtractor={(item, index) => `${item.index}_${index}`}
-          contentContainerStyle={[styles.listContent, { paddingBottom: spacing * 2 }]}
-        />
-      </ThemedView>
-    </ResponsiveNavigation>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    padding: 20,
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: "#1a1a1a",
-  },
-  poster: {
-    width: 60,
-    height: 90,
-    borderRadius: 6,
-    marginRight: 16,
-    backgroundColor: '#1a1a1a',
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#666",
-  },
-  listContent: {
-    padding: 16,
-  },
-  episodeCard: {
-    backgroundColor: '#111',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  episodeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  episodeText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#eee",
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 5,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-  },
-  progressContainer: {
-    marginBottom: 10,
-  },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  actionRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-    paddingTop: 4,
-  },
-});
+本项目采用 MIT 许可证。

@@ -24,6 +24,7 @@ export interface CacheState {
   resumeQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
   cancelQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
   cancelGroup: (groupId: string) => Promise<void>;
+  retryDownload: (groupId: string, episodeIndex: number) => void;
   loadCache: () => Promise<void>;
   downloadEpisode: (options: {
     source: string;
@@ -128,32 +129,41 @@ const useCacheStore = create<CacheState>((set, get) => ({
   // start download for a queued episode respecting concurrency
   downloadQueuedEpisode: async (groupId, episodeIndex) => {
     const state = get();
-    const group = state.queue.find((g) => g.groupId === groupId);
-    if (!group) return;
-    const ep = group.episodes.find((e) => e.index === episodeIndex);
-    if (!ep) return;
+    const groupIndex = state.queue.findIndex((g) => g.groupId === groupId);
+    if (groupIndex === -1) return;
+
+    const epIndex = state.queue[groupIndex].episodes.findIndex((e) => e.index === episodeIndex);
+    if (epIndex === -1) return;
+
+    const ep = state.queue[groupIndex].episodes[epIndex];
 
     // 如果已经在下载中，不要重复启动
     if (ep.status === 'downloading') return;
 
     // mark as queued if concurrency full
     if (state.activeCount >= state.concurrency) {
-      ep.status = 'queued';
-      set({ queue: [...state.queue] });
+      const nextQueue = [...state.queue];
+      nextQueue[groupIndex].episodes[epIndex].status = 'queued';
+      set({ queue: nextQueue });
       return;
     }
 
     // start downloading
-    ep.status = 'downloading';
-    // 重试时进度重置
-    ep.progress = 0;
-    set((s) => ({ activeCount: s.activeCount + 1, queue: [...s.queue] }));
-    const itemId = `${group.source}_${group.id}_${ep.index}`;
+    const nextQueue = [...state.queue];
+    nextQueue[groupIndex].episodes[epIndex].status = 'downloading';
+    nextQueue[groupIndex].episodes[epIndex].progress = 0;
+
+    set((s) => ({
+      activeCount: s.activeCount + 1,
+      queue: nextQueue
+    }));
+
+    const itemId = `${state.queue[groupIndex].source}_${state.queue[groupIndex].id}_${ep.index}`;
     set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
 
     try {
       await CacheService.ensureDownloadDirectory();
-      const fileName = CacheService.buildFileName(group.source, group.id, ep.index, ep.url);
+      const fileName = CacheService.buildFileName(state.queue[groupIndex].source, state.queue[groupIndex].id, ep.index, ep.url);
       const fileUri = `${CacheService.getDownloadDirectory()}${fileName}`;
 
       let downloadUri = fileUri;
@@ -161,8 +171,18 @@ const useCacheStore = create<CacheState>((set, get) => ({
         // 传递 itemId 以支持暂停/继续
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
         downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p) => {
-          ep.progress = p;
-          set((s) => ({ downloadProgress: { ...(s.downloadProgress || {}), [itemId]: p }, queue: [...s.queue] }));
+          const q = get().queue;
+          const gi = q.findIndex(g => g.groupId === groupId);
+          if (gi !== -1) {
+            const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
+            if (ei !== -1) {
+              q[gi].episodes[ei].progress = p;
+              set({
+                downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
+                queue: [...q]
+              });
+            }
+          }
         });
         delete (get() as any)._controllers[itemId];
       } else {
@@ -170,8 +190,18 @@ const useCacheStore = create<CacheState>((set, get) => ({
         const resumable = FileSystem.createDownloadResumable(ep.url, fileUri, {}, (progress) => {
           if (progress.totalBytesExpectedToWrite > 0) {
             const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-            ep.progress = p;
-            set((s) => ({ downloadProgress: { ...(s.downloadProgress || {}), [itemId]: p }, queue: [...s.queue] }));
+            const q = get().queue;
+            const gi = q.findIndex(g => g.groupId === groupId);
+            if (gi !== -1) {
+              const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
+              if (ei !== -1) {
+                q[gi].episodes[ei].progress = p;
+                set({
+                  downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
+                  queue: [...q]
+                });
+              }
+            }
           }
         });
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: resumable };
@@ -183,29 +213,55 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
       const cachedItem: CachedVideoItem = {
         id: itemId,
-        source: group.source,
-        source_name: group.title,
-        title: group.title,
-        poster: group.poster,
+        source: state.queue[groupIndex].source,
+        source_name: state.queue[groupIndex].title,
+        title: state.queue[groupIndex].title,
+        poster: state.queue[groupIndex].poster,
         episodeIndex: ep.index,
         episodeTitle: `第 ${ep.index + 1} 集`,
         fileUri: downloadUri,
-        totalEpisodes: group.episodes.length,
+        totalEpisodes: state.queue[groupIndex].episodes.length,
         downloadedAt: Date.now(),
       };
       await CacheService.add(cachedItem);
+
       // mark completed
-      ep.status = 'completed';
-      ep.progress = 1;
-      set((s) => ({ items: [cachedItem, ...s.items], currentDownloadId: null, activeCount: s.activeCount - 1, downloadProgress: { ...(s.downloadProgress || {}), [itemId]: 1 }, queue: [...s.queue] }));
+      const finalQueue = get().queue;
+      const fgi = finalQueue.findIndex(g => g.groupId === groupId);
+      if (fgi !== -1) {
+        const fei = finalQueue[fgi].episodes.findIndex(e => e.index === episodeIndex);
+        if (fei !== -1) {
+          finalQueue[fgi].episodes[fei].status = 'completed';
+          finalQueue[fgi].episodes[fei].progress = 1;
+        }
+      }
+
+      set((s) => ({
+        items: [cachedItem, ...s.items],
+        currentDownloadId: null,
+        activeCount: Math.max(0, s.activeCount - 1),
+        downloadProgress: { ...(s.downloadProgress || {}), [itemId]: 1 },
+        queue: [...finalQueue]
+      }));
     } catch (err) {
       logger.warn('downloadQueuedEpisode failed', err);
-      ep.status = 'failed';
-      set((s) => ({ currentDownloadId: null, activeCount: Math.max(0, s.activeCount - 1), queue: [...s.queue] }));
+      const errorQueue = get().queue;
+      const egi = errorQueue.findIndex(g => g.groupId === groupId);
+      if (egi !== -1) {
+        const eei = errorQueue[egi].episodes.findIndex(e => e.index === episodeIndex);
+        if (eei !== -1) {
+          errorQueue[egi].episodes[eei].status = 'failed';
+        }
+      }
+      set((s) => ({
+        currentDownloadId: null,
+        activeCount: Math.max(0, s.activeCount - 1),
+        queue: [...errorQueue]
+      }));
     }
 
     // process next queued episode(s) if there is now available capacity
-    (get() as any).processQueue?.();
+    get().processQueue?.();
   },
 
   /** 暂停下载任务（对 M3U8 使用 CacheService.pauseTask；对 MP4 使用 DownloadResumable.pauseAsync） */
@@ -334,6 +390,21 @@ const useCacheStore = create<CacheState>((set, get) => ({
     // remove group
     set((s) => ({ queue: s.queue.filter((g) => g.groupId !== groupId) }));
     (get() as any).processQueue?.();
+  },
+
+  retryDownload: (groupId, episodeIndex) => {
+    const queue = get().queue;
+    const gIdx = queue.findIndex(g => g.groupId === groupId);
+    if (gIdx === -1) return;
+    const eIdx = queue[gIdx].episodes.findIndex(e => e.index === episodeIndex);
+    if (eIdx === -1) return;
+
+    const nextQueue = [...queue];
+    nextQueue[gIdx].episodes[eIdx].status = 'pending';
+    nextQueue[gIdx].episodes[eIdx].progress = 0;
+
+    set({ queue: nextQueue });
+    get().processQueue?.();
   },
 
   downloadEpisode: async ({
