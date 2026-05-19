@@ -137,7 +137,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
           const response = await api.searchVideo(q, preferredSource, signal);
           preferredResult = response.results;
         } catch (error) {
-          logger.error(`[ERROR] API searchVideo (preferred) FAILED`, error);
+          logger.error(`[ERROR] API searchVideo (preferred) FAILED - source: ${preferredSource}`, error);
         }
 
         if (signal.aborted) return;
@@ -146,7 +146,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
           await processAndSetResults(preferredResult, 0, false);
           set({ loading: false });
         } else {
-          // Fallback
+          // Fallback: 从所有资源中搜索
+          logger.info(`[FALLBACK] Preferred source "${preferredSource}" returned no results, trying all sources`);
           try {
             const { results: allResults } = await api.searchVideos(q);
             if (signal.aborted) return;
@@ -155,13 +156,17 @@ const useDetailStore = create<DetailState>((set, get) => ({
               await processAndSetResults(filteredResults, 0, false);
               set({ loading: false });
             } else {
-              set({ error: `未找到 "${q}" 的播放源`, loading: false });
+              // 完全不设置error，允许play.tsx检测到detail为null后显示专用错误页
+              logger.warn(`[WARN] No results found for "${q}" in any source`);
+              set({ loading: false }); // 标记加载完成但无数据
             }
           } catch (fallbackError) {
-            set({ error: "搜索失败", loading: false });
+            logger.warn(`[FALLBACK ERROR] All sources search failed for "${q}"`, fallbackError);
+            set({ loading: false }); // 标记加载完成，让play.tsx处理null detail
           }
         }
         
+        // 如果首选源有结果，异步请求所有资源以获取完整列表（换源用）
         if (preferredResult.length > 0) {
           try {
             const { results: allResults } = await api.searchVideos(q);

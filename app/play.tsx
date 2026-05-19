@@ -11,13 +11,15 @@ import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
 import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
-import { ArrowLeft, ArrowUpDown } from "lucide-react-native";
+import { ArrowLeft, ArrowUpDown, Download } from "lucide-react-native";
 import { ArtIconCast } from "@/components/ArtIcons";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
+import useCacheStore from "@/stores/cacheStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
+import { StyledButton } from "@/components/StyledButton";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('PlayScreen');
@@ -55,7 +57,7 @@ export default function PlayScreen() {
   const initialEpIndex = parseInt(episodeIndexStr || "0", 10);
   const position = positionStr ? parseInt(positionStr, 10) : undefined;
 
-  const { detail, searchResults, setDetail, error: detailError } = useDetailStore();
+  const { detail, searchResults, setDetail, error: detailError, loading: detailLoading } = useDetailStore();
   const source = sourceStr || detail?.source;
   const id = videoId || detail?.id.toString();
   const title = videoTitle || detail?.title;
@@ -75,9 +77,11 @@ export default function PlayScreen() {
     loadVideo,
   } = usePlayerStore();
 
+  const { downloadEpisode } = useCacheStore();
   const currentEpisode = usePlayerStore(selectCurrentEpisode);
 
   const [isReverse, setIsReverse] = useState(false);
+  const [isInitFailed, setIsInitFailed] = useState(false);
 
   const { videoProps } = useVideoHandlers({
     videoRef,
@@ -110,6 +114,21 @@ export default function PlayScreen() {
     }
     return () => reset();
   }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri]);
+
+  // 检测初始化失败：detail为null且detailStore已完成加载
+  useEffect(() => {
+    if (!isLocalFile && !detail && !detailLoading && !detailError) {
+      const timer = setTimeout(() => {
+        const currentDetail = useDetailStore.getState().detail;
+        if (!currentDetail) {
+          setIsInitFailed(true);
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    } else if (detail) {
+      setIsInitFailed(false);
+    }
+  }, [detail, detailLoading, detailError, isLocalFile]);
 
   const onScreenPress = useCallback(() => {
     if (deviceType === "tv") {
@@ -167,15 +186,91 @@ export default function PlayScreen() {
     });
   };
 
+  const handleDownloadCurrent = () => {
+    if (!currentEpisode || !currentEpisode.url || !source || !id || !title) return;
+    const episodeTitle = `第 ${currentEpisodeIndex + 1} 集`;
+    downloadEpisode({
+      source,
+      source_name: detail?.source_name || source,
+      title,
+      poster: detail?.poster || '',
+      id,
+      episodeIndex: currentEpisodeIndex,
+      episodeTitle,
+      episodeUrl: currentEpisode.url,
+      totalEpisodes: episodes.length || 1,
+      resolution: (detail as any)?.resolution || null,
+    });
+  };
+
   const isLocalFile = !!fileUri;
 
-  // 本地缓存文件播放：无需 detail 数据
+  // 如果初始化失败（detail为null且无法获取），显示错误页面
+  if (!isLocalFile && !detail && isInitFailed) {
+    return (
+      <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+        <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
+          <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 12, fontWeight: '600' }}>无法加载播放源</Text>
+          <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 24, textAlign: 'center', lineHeight: 20 }}>
+            该视频的播放源可能已过期或不可用{'\n'}请尝试从详情页重新选择播放源
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
+            <StyledButton
+              text="从详情页打开"
+              onPress={() => {
+                if (title) {
+                  router.replace({
+                    pathname: '/detail',
+                    params: { q: title, source: source || '', id: id || '' }
+                  });
+                } else {
+                  router.back();
+                }
+              }}
+              variant="primary"
+            />
+          </View>
+        </View>
+      </ThemedView>
+    );
+  }
+
   if (!isLocalFile && !detail) {
     if (detailError) {
       return (
-        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Text style={{ color: 'white', marginBottom: 20 }}>{detailError}</Text>
-          <StyledButton text="返回" onPress={() => router.back()} />
+        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+          <Text style={{ color: 'white', marginBottom: 20, fontSize: 16 }}>{detailError}</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
+            <StyledButton
+              text="从详情页打开"
+              onPress={() => {
+                if (title) {
+                  router.replace({
+                    pathname: '/detail',
+                    params: { q: title, source: source || '', id: id || '' }
+                  });
+                } else {
+                  router.back();
+                }
+              }}
+              variant="primary"
+            />
+          </View>
+        </ThemedView>
+      );
+    }
+    if (!detailLoading) {
+      return (
+        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+          <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
+            <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 12, fontWeight: '600' }}>播放源不可用</Text>
+            <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 24, textAlign: 'center', lineHeight: 20 }}>
+              该视频播放源可能已过期或不可用{'\n'}请尝试从详情页选择其他播放源
+            </Text>
+            <StyledButton text="返回" onPress={() => router.back()} variant="primary" />
+          </View>
         </ThemedView>
       );
     }
@@ -191,6 +286,11 @@ export default function PlayScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
         <View style={styles.headerIcons}>
+          {currentEpisode?.url && !isLocalFile && (
+            <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
+              <Download size={20} color="white" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
             <ArtIconCast size={24} color="white" />
           </TouchableOpacity>
@@ -202,7 +302,7 @@ export default function PlayScreen() {
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-          ) : isLoading ? (
+          ) : git push origin masterisLoading ? (
             <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
           ) : (
             <View style={styles.loadingContainer}>
