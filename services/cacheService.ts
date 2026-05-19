@@ -60,7 +60,7 @@ interface ActiveM3U8Task {
 }
 const activeM3U8Tasks = new Map<string, ActiveM3U8Task>();
 
-"// ================== 临时文件管理（类似Chrome .crdownload / .tmp 机制） ==================
+// ================== 临时文件管理（类似Chrome .crdownload / .tmp 机制） ==================
 const TEMP_DIR = `${FileSystem.cacheDirectory}m3u8_temp/`;
 const TMP_EXTENSION = '.supertv.tmp';
 
@@ -90,7 +90,7 @@ async function cleanTempDir(): Promise<void> {
   }
 }
 
-// ================== 辅助函数 =================="
+// ================== 辅助函数 ==================
 /**
  * 使用 crypto-js 进行 AES-128-CBC 解密
  * @param encryptedBase64 加密数据的 Base64 字符串
