@@ -13,7 +13,7 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 export default function CacheManagementScreen() {
   const router = useRouter();
   const cacheStore = useCacheStore();
-  const { items, loadCache, concurrency, setConcurrency, removeCacheItem, cancelQueuedEpisode } = cacheStore;
+  const { items, loadCache, concurrency, setConcurrency, removeSeries, cancelQueuedEpisode } = cacheStore;
   const { queue, downloadProgress, currentDownloadId } = cacheStore;
   const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const responsiveConfig = useResponsiveLayout();
@@ -59,21 +59,7 @@ export default function CacheManagementScreen() {
           text: '删除全部',
           style: 'destructive',
           onPress: async () => {
-            // 删除 AsyncStorage 中该标题的所有缓存记录
-            const allItems = [...items];
-            const seriesItems = allItems.filter(it => it.title === title);
-            for (const item of seriesItems) {
-              await removeCacheItem(item.id);
-            }
-            // 删除队列中的任务
-            const allQueue = [...queue];
-            const seriesQueue = allQueue.filter(g => g.title === title);
-            for (const group of seriesQueue) {
-              // 取消队列中所有下载
-              for (const ep of group.episodes) {
-                await cancelQueuedEpisode(group.groupId, ep.index);
-              }
-            }
+            await removeSeries(title);
             await loadCache();
           },
         },

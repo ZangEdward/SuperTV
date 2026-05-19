@@ -9,9 +9,9 @@ import RNFetchBlob from 'react-native-blob-util';
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
 
-// 安卓使用 android/data/<package>/files/videos/，位于应用私有目录，无需额外权限
+// 安卓使用 android/data/<package>/files/download/
 const DOWNLOAD_DIR = Platform.OS === 'android'
-  ? `${FileSystem.documentDirectory}videos/`
+  ? `${FileSystem.documentDirectory}download/`
   : `${FileSystem.documentDirectory}cached_videos/`;
 
 interface M3U8Variant {
@@ -516,7 +516,7 @@ export class CacheService {
 
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const CONCURRENCY = 5;
+      const CONCURRENCY = 16; // 提高并发数
       let completedCount = 0;
 
       // 创建空的目标文件
@@ -546,29 +546,50 @@ export class CacheService {
         return arrayBufferToBase64(data);
       };
 
-      // 分批并发下载，每段通过 appendFile 直接写入最终文件
-      for (let i = 0; i < total; i += CONCURRENCY) {
-        await CacheService.waitIfPaused(taskId);
-        if (mergeSignal.aborted) throw new Error("下载已取消");
+      // 结果缓冲区，按索引存储下载好的片段
+      const resultsBuffer: { [index: number]: string } = {};
+      let nextIndexToWrite = 0;
 
-        const batch = segmentUrls.slice(i, i + CONCURRENCY);
+      // 下载并立即尝试顺序写入
+      const downloadAndWrite = async (index: number) => {
         try {
-          const base64Results = await Promise.all(
-            batch.map((segUrl, idx) => downloadSegment(segUrl, i + idx))
-          );
+          const segUrl = segmentUrls[index];
+          const b64 = await downloadSegment(segUrl, index);
+          resultsBuffer[index] = b64;
 
-          for (const b64Chunk of base64Results) {
-            // 直接追加 base64 编码的二进制数据
-            await RNFetchBlob.fs.appendFile(destinationPath, b64Chunk, 'base64');
+          // 尝试顺序写入可用的片段
+          while (resultsBuffer[nextIndexToWrite] !== undefined) {
+            await RNFetchBlob.fs.appendFile(destinationPath, resultsBuffer[nextIndexToWrite], 'base64');
+            delete resultsBuffer[nextIndexToWrite];
+            nextIndexToWrite++;
             completedCount++;
             progressCb?.(completedCount / total);
           }
         } catch (err) {
-          if (mergeSignal.aborted) throw new Error("下载已取消");
-          logger.warn(`Batch download failed at index ${i}`, err);
+          logger.warn(`Segment ${index} download failed`, err);
           throw err;
         }
-      }
+      };
+
+      // 任务队列执行
+      const indices = Array.from({ length: total }, (_, i) => i);
+      const executePool = async () => {
+        const workers = [];
+        for (let i = 0; i < Math.min(CONCURRENCY, total); i++) {
+          workers.push((async () => {
+            while (indices.length > 0) {
+              const idx = indices.shift();
+              if (idx === undefined) break;
+              await downloadAndWrite(idx);
+            }
+          })());
+        }
+        await Promise.all(workers);
+      };
+
+      await executePool();
+
+      await executePool();
 
       // 验证文件完整性
       const fileStat = await RNFetchBlob.fs.stat(destinationPath);

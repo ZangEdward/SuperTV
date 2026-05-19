@@ -38,6 +38,7 @@ export interface CacheState {
     resolution?: string | null;
   }) => Promise<void>;
   removeCacheItem: (id: string) => Promise<void>;
+  removeSeries: (title: string) => Promise<void>;
   clearCache: () => Promise<void>;
 }
 
@@ -380,18 +381,71 @@ const useCacheStore = create<CacheState>((set, get) => ({
   removeCacheItem: async (id) => {
     set({ loading: true, error: null });
     try {
+      // 1. 处理已完成的项
       const existing = get().items.find((item) => item.id === id);
       if (existing) {
         await CacheService.deleteFile(existing.fileUri);
+        await CacheService.remove(id);
+        const nextItems = get().items.filter((item) => item.id !== id);
+        set({ items: nextItems });
       }
-      await CacheService.remove(id);
-      const next = get().items.filter((item) => item.id !== id);
+
+      // 2. 处理队列中的项（如失败或取消的）
+      const nextQueue = get().queue.map(group => ({
+        ...group,
+        episodes: group.episodes.filter(ep => {
+          const epId = `${group.source}_${group.id}_${ep.index}`;
+          return epId !== id;
+        })
+      })).filter(group => group.episodes.length > 0);
+
       const dp = { ...(get().downloadProgress || {}) };
       delete dp[id];
-      set((state) => ({ items: next, loading: false, downloadProgress: dp }));
-      Toast.show({ type: "success", text1: "已删除缓存" });
+
+      set((state) => ({
+        queue: nextQueue,
+        loading: false,
+        downloadProgress: dp
+      }));
+
+      Toast.show({ type: "success", text1: "已删除缓存记录" });
     } catch (error) {
       logger.warn("removeCacheItem failed", error);
+      set({ loading: false, error: "删除失败" });
+      Toast.show({ type: "error", text1: "删除失败" });
+    }
+  },
+
+  removeSeries: async (title) => {
+    set({ loading: true, error: null });
+    try {
+      // 1. 获取该系列的所有已下载项并删除文件
+      const seriesItems = get().items.filter((it) => it.title === title);
+      for (const item of seriesItems) {
+        await CacheService.deleteFile(item.fileUri);
+        await CacheService.remove(item.id);
+      }
+
+      // 2. 取消该系列的所有正在下载/排队的任务
+      const seriesQueue = get().queue.filter((g) => g.title === title);
+      for (const group of seriesQueue) {
+        await (get() as any).cancelGroup(group.groupId);
+      }
+
+      // 3. 更新状态
+      const nextItems = get().items.filter((it) => it.title !== title);
+      const dp = { ...(get().downloadProgress || {}) };
+      seriesItems.forEach(it => delete dp[it.id]);
+
+      set((state) => ({
+        items: nextItems,
+        loading: false,
+        downloadProgress: dp
+      }));
+
+      Toast.show({ type: "success", text1: "已删除整部剧集缓存" });
+    } catch (error) {
+      logger.warn("removeSeries failed", error);
       set({ loading: false, error: "删除失败" });
       Toast.show({ type: "error", text1: "删除失败" });
     }
