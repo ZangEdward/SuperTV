@@ -111,14 +111,17 @@ jobs:
             echo "No old asset found"
           fi
 
-      - name: Upload to GitHub Releases (SuperTV repo)
+
+
+      - name: Create or update Release
+        id: create_release
         uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ env.VERSION }}
-          name: "SuperTV v${{ env.VERSION }}"
-          files: output/SuperTV-${{ env.VERSION }}.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+                with:
+                  tag_name: v${{ env.VERSION }}
+                  name: "SuperTV v${{ env.VERSION }}"
+                  files: output/SuperTV-${{ env.VERSION }}.apk
+                env:
+                  GITHUB_TOKEN: ${{ secrets.PAT }}
 
       - name: Upload APK artifact (for OTA job)
         if: ${{ github.event.inputs.job_type == 'ota' }}

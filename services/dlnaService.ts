@@ -13,37 +13,46 @@ export interface DLNADevice {
 }
 
 /**
- * 基于 Cling (4thline) 设计思路重构的 DLNA/SSDP 服务
- * 改进点：
- *   - 轮询 M-SEARCH (0s, 1s, 3s, 6s, 10s) — Cling 的 MultipleSearchAndNotifyListener
- *   - 持续监听多播消息（M-SEARCH response + NOTIFY ssdp:alive）
- *   - 绑定到 1900 端口，若失败则尝试其他端口（但通知发送到 1900）
- *   - 处理 ssdp:byebye 自动移除设备
- *   - 修正 XML 元数据转义问题（仅转义文本内容，保留 XML 结构）
- *   - 支持带 CDATA 的 CurrentURIMetaData 投送
- *   - 增强：加入持续 alive 监听（NOTIFY），类似 Cling 的 AliveListener
- *   - 增强：重复 M-SEARCH 直到收到首个响应，类似 Cling 的重试机制
+ * 修复版 DLNA/SSDP 服务（2024）
+ *
+ * 核心问题修复：
+ * 1. 双 Socket 架构：接收 socket 和发送 socket 分离
+ *    - recvSocket: 监听随机端口，接收 SSDP 响应
+ *    - sendSocket: 定时发送 M-SEARCH，发完即丢弃
+ *    避免同一个 socket 既发又收导致的 Android 兼容性问题
+ *
+ * 2. 放弃绑定端口 1900（特权端口，Android 12+ 无法绑定）
+ *    改为绑定随机端口，配合 `CHANGE_WIFI_MULTICAST_STATE` 权限加入组播
+ *
+ * 3. 强制加入组播组，即使绑定随机端口也尝试 addMembership
+ *    确保能收到 SSDP NOTIFY 和 M-SEARCH 响应
+ *
+ * 4. 修复回调锁定问题：搜索结束后不管有没有设备都通知 callback
+ *
+ * 5. 缓存设备列表，stopSearch 不清空（避免下次打开空白）
+ *
+ * 6. 投屏 URL 转换：本地 file:// 地址自动转换为 HTTP 地址
+ *
+ * 7. 使用 Platform 检测，web 环境绕过原生 TCP
  */
 class DLNAService {
   private devices: Map<string, DLNADevice> = new Map();
   private searchTimeout: any = null;
-  private listenClient: any = null;
+  private recvSocket: any = null;
+  private sendSocket: any = null;
   private searchTimers: any[] = [];
   private scanning = false;
   private currentCallback: ((devices: DLNADevice[]) => void) | null = null;
   private receivedKeys: Set<string> = new Set();
-  /** 连续搜索+监听时的响应用来重置计时器 */
   private lastResponseTime: number = 0;
+  private backoffTimer: any = null;
+  private listenPort: number = 0;
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
-  /** Cling 风格: 搜索轮询间隔 (ms) */
-  private readonly SEARCH_INTERVALS = [0, 1000, 2000, 4000, 8000, 12000];
-  /** 总搜索超时 (ms) */
-  private readonly SEARCH_TIMEOUT = 18000;
-  /** 无响应超时：如果 3.5 秒没收到任何响应，重发 M-SEARCH (Cling 的 BACKOFF) */
-  private readonly BACKOFF_TIMEOUT = 3500;
-  private backoffTimer: any = null;
+  private readonly SEARCH_INTERVALS = [0, 500, 1000, 2000, 3000, 5000];
+  private readonly SEARCH_TIMEOUT = 15000;
+  private readonly BACKOFF_TIMEOUT = 3000;
 
   constructor() {}
 
@@ -60,21 +69,21 @@ class DLNAService {
     this.receivedKeys.clear();
     this.lastResponseTime = Date.now();
 
-    logger.info('Starting DLNA device search (Cling-inspired multi-search)...');
-    this.devices.clear();
+    logger.info('Starting DLNA device search (dual-socket mode)...');
 
-    // 1. 启动监听
-    this.startListenSocket(() => {
-      // 2. 按 Cling 的 MultipleSearchAndNotifyListener 风格发 M-SEARCH
+    // 1. 启动监听 socket
+    this.startRecvSocket(() => {
+      // 2. 发送 M-SEARCH 探测
       this.fireMultiSearch();
     });
 
-    // 3. 总超时
+    // 3. 总超时 — 结束后一定回调（即使没找到设备）
     this.searchTimeout = setTimeout(() => {
       this.stopSearch();
       if (this.currentCallback) {
         this.currentCallback(this.getDevices());
       }
+      this.currentCallback = null;
     }, this.SEARCH_TIMEOUT);
   }
 
@@ -86,28 +95,27 @@ class DLNAService {
       clearTimeout(this.searchTimeout);
       this.searchTimeout = null;
     }
-
     if (this.backoffTimer) {
       clearTimeout(this.backoffTimer);
       this.backoffTimer = null;
     }
-
     this.searchTimers.forEach(t => clearTimeout(t));
     this.searchTimers = [];
 
-    this.stopListenSocket();
+    this.closeSockets();
   }
 
-  private stopListenSocket() {
-    if (this.listenClient) {
-      try {
-        this.listenClient.close();
-      } catch (e) {}
-      this.listenClient = null;
+  private closeSockets() {
+    if (this.recvSocket) {
+      try { this.recvSocket.close(); } catch (_) {}
+      this.recvSocket = null;
+    }
+    if (this.sendSocket) {
+      try { this.sendSocket.close(); } catch (_) {}
+      this.sendSocket = null;
     }
   }
 
-  /** Cling 风格: 按延迟队列发送多次 M-SEARCH */
   private fireMultiSearch() {
     this.SEARCH_INTERVALS.forEach((delay) => {
       const timer = setTimeout(() => {
@@ -119,10 +127,6 @@ class DLNAService {
     });
   }
 
-  /**
-   * 后备重试：如果连续 BACKOFF_TIMEOUT 毫秒没收到响应，重新发送 M-SEARCH
-   * 类似 Cling 的 SearchAndNotifyListener 的 BACKOFF 策略
-   */
   private scheduleBackoffRetry() {
     if (this.backoffTimer) {
       clearTimeout(this.backoffTimer);
@@ -133,144 +137,168 @@ class DLNAService {
     this.backoffTimer = setTimeout(() => {
       if (!this.scanning) return;
       const elapsed = Date.now() - this.lastResponseTime;
-      // 如果距离上次响应或上次发送已经过了 BACKOFF_TIMEOUT，重试
       if (elapsed >= this.BACKOFF_TIMEOUT) {
         logger.info('[DLNA] No responses in ' + elapsed + 'ms, re-sending M-SEARCH (backoff)');
         this.broadcastMSEARCH();
         this.lastResponseTime = Date.now();
-        this.scheduleBackoffRetry(); // 继续检查
+        this.scheduleBackoffRetry();
       } else {
         this.scheduleBackoffRetry();
       }
     }, this.BACKOFF_TIMEOUT);
   }
 
-  private startListenSocket(onReady: () => void) {
+  /**
+   * 接收 socket — 绑定随机端口，加入组播组
+   * 专门用来收 SSDP 响应和 NOTIFY
+   */
+  private startRecvSocket(onReady: () => void) {
     try {
       const socket = TcpSocket.createUdpSocket('udp4');
-      this.listenClient = socket;
+      this.recvSocket = socket;
 
       socket.on('message', (msg: Buffer, rinfo: { address: string; port: number }) => {
-        if (!this.scanning) return;
         if (rinfo.address.startsWith('127.') || rinfo.address === '0.0.0.0') return;
 
         const data = msg.toString();
-        // 更新响应时间（任何消息都算活跃）
         this.lastResponseTime = Date.now();
         this.scheduleBackoffRetry();
 
-        if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY')) {
-          const locationMatch = data.match(/LOCATION:\s*(.+?)[\r\n]/i);
-          const ntsMatch = data.match(/NTS:\s*(.+?)[\r\n]/i);
-
-          if (locationMatch && locationMatch[1]) {
-            const isByeBye = ntsMatch && ntsMatch[1]?.toLowerCase().includes('byebye');
-            if (isByeBye) {
-              const descUrl = locationMatch[1].trim();
-              for (const [key, dev] of this.devices) {
-                if (dev.descriptionUrl === descUrl) {
-                  this.devices.delete(key);
-                  logger.info('[DLNA] Device removed by byebye: ' + dev.name);
-                  break;
-                }
-              }
-              if (this.currentCallback) this.currentCallback(this.getDevices());
-              return;
-            }
-
-            const descriptionUrl = locationMatch[1].trim();
-            const deviceKey = rinfo.address + '|' + descriptionUrl;
-            if (!this.receivedKeys.has(deviceKey)) {
-              this.receivedKeys.add(deviceKey);
-              this.parseDeviceDescription(descriptionUrl, rinfo.address).then(() => {
-                if (this.currentCallback) {
-                  this.currentCallback(this.getDevices());
-                }
-              });
-            }
-          }
+        // 处理 M-SEARCH 响应 (HTTP 200 OK) 和 NOTIFY 广播
+        if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY * HTTP/1.1') || data.includes('NOTIFY')) {
+          this.handleSSDPMessage(data, rinfo.address);
         }
       });
 
       socket.on('error', (err: any) => {
-        logger.warn('DLNA socket error:', err);
-        // 出错时尝试重建 socket
+        logger.warn('[DLNA] recv socket error:', err);
         if (this.scanning) {
-          this.stopListenSocket();
-          this.startListenSocket(onReady);
+          this.closeSockets();
+          this.startRecvSocket(onReady);
         }
       });
 
-      // Cling 风格端口绑定: 尝试 1900，失败则用随机端口
-      try {
-        socket.bind(this.SSDP_PORT, () => {
-          try {
-            socket.addMembership(this.SSDP_ADDR);
-            socket.setBroadcast(true);
-            logger.info('UDP socket bound to port ' + this.SSDP_PORT + ' and joined multicast group');
-          } catch (e: any) {
-            logger.warn('Failed to join multicast:', e);
-            // 不强制要求 multicast 加入，某些设备仍然可以通过广播响应
-          }
-          onReady();
-          // 启动 backoff 重试
-          this.scheduleBackoffRetry();
-        });
-      } catch (e) {
-        logger.warn('Failed to bind to port ' + this.SSDP_PORT + ', trying random port');
-        socket.bind(0, () => {
-          try {
-            socket.addMembership(this.SSDP_ADDR);
-          } catch (e2: any) {
-            logger.warn('Failed to join multicast on random port:', e2);
-          }
-          onReady();
-          this.scheduleBackoffRetry();
-        });
-      }
+      // 绑定随机端口，然后加入组播
+      socket.bind(0, () => {
+        const addr: any = socket.address();
+        this.listenPort = addr?.port || 0;
+        logger.info('[DLNA] Recv socket bound to random port ' + this.listenPort);
+
+        try {
+          socket.addMembership(this.SSDP_ADDR);
+          logger.info('[DLNA] Successfully joined multicast group ' + this.SSDP_ADDR);
+        } catch (e: any) {
+          logger.warn('[DLNA] Failed to join multicast:', e?.message || e);
+        }
+
+        try {
+          socket.setBroadcast(true);
+        } catch (_) {}
+
+        onReady();
+        this.scheduleBackoffRetry();
+      });
     } catch (error) {
-      logger.error('Failed to create listen socket:', error);
-      // 即使 socket 失败，也尝试用纯 HTTP 描述获取（部分设备可能通过广播模式响应）
-      onReady();
+      logger.error('[DLNA] Failed to create recv socket:', error);
+      onReady(); // 即使失败也继续
     }
   }
 
+  /**
+   * 发送 M-SEARCH — 每次都创建独立的发送 socket，发完即关
+   * 避免双工问题
+   */
   private broadcastMSEARCH() {
-    const socketClient = this.listenClient;
-    if (!socketClient) return;
+    if (!this.scanning) return;
 
-    // 参考 Cling: 发送多个 ST，包括 rootdevice 和 MediaRenderer
-    const searchTargets = [
-      'upnp:rootdevice',
-      'ssdp:all',
-      'urn:schemas-upnp-org:device:MediaRenderer:1',
-      'urn:schemas-upnp-org:service:AVTransport:1',
-      'media:all',  // 增加泛搜索
-    ];
+    try {
+      const socket = TcpSocket.createUdpSocket('udp4');
+      this.sendSocket = socket;
 
-    searchTargets.forEach((st) => {
-      const msg =
-        'M-SEARCH * HTTP/1.1\r\n' +
-        'HOST: ' + this.SSDP_ADDR + ':' + this.SSDP_PORT + '\r\n' +
-        'MAN: "ssdp:discover"\r\n' +
-        'MX: 3\r\n' +
-        'ST: ' + st + '\r\n' +
-        'USER-AGENT: Android/10.0 UPnP/1.1 Cling/2.0\r\n' +
-        'CPFN.UPNP.ORG: DLNADevice\r\n' +   // 增加 FriendlyName 请求
-        '\r\n';
+      socket.on('error', (err: any) => {
+        logger.warn('[DLNA] send socket error:', err);
+      });
 
-      try {
-        socketClient.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR, (err?: Error) => {
-          if (err) logger.warn('M-SEARCH send error:', err);
-        });
-      } catch (e) {}
-    });
+      const searchTargets = [
+        'upnp:rootdevice',
+        'ssdp:all',
+        'urn:schemas-upnp-org:device:MediaRenderer:1',
+        'urn:schemas-upnp-org:service:AVTransport:1',
+      ];
+
+      let sentCount = 0;
+      searchTargets.forEach((st) => {
+        const msg =
+          'M-SEARCH * HTTP/1.1\r\n' +
+          'HOST: ' + this.SSDP_ADDR + ':' + this.SSDP_PORT + '\r\n' +
+          'MAN: "ssdp:discover"\r\n' +
+          'MX: 2\r\n' +
+          'ST: ' + st + '\r\n' +
+          'USER-AGENT: Android/10.0 UPnP/1.1\r\n' +
+          '\r\n';
+
+        try {
+          socket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR, (err?: Error) => {
+            if (err) logger.warn('[DLNA] M-SEARCH send error:', err);
+            sentCount++;
+            // 所有 ST 发完后关闭 socket
+            if (sentCount >= searchTargets.length) {
+              try { socket.close(); } catch (_) {}
+            }
+          });
+        } catch (e) {
+          sentCount++;
+        }
+      });
+
+      // 5 秒后强制关闭
+      setTimeout(() => {
+        try { socket.close(); } catch (_) {}
+      }, 5000);
+    } catch (e) {
+      logger.warn('[DLNA] Failed to create send socket:', e);
+    }
+  }
+
+  /**
+   * 处理 SSDP 消息（响应和 NOTIFY）
+   */
+  private handleSSDPMessage(data: string, ip: string) {
+    const locationMatch = data.match(/LOCATION:\s*(.+?)[\r\n]/i);
+    const ntsMatch = data.match(/NTS:\s*(.+?)[\r\n]/i);
+
+    if (!locationMatch || !locationMatch[1]) return;
+
+    const descriptionUrl = locationMatch[1].trim();
+    const isByeBye = ntsMatch && ntsMatch[1]?.toLowerCase().includes('byebye');
+
+    if (isByeBye) {
+      for (const [key, dev] of this.devices) {
+        if (dev.descriptionUrl === descriptionUrl) {
+          this.devices.delete(key);
+          logger.info('[DLNA] Device removed by byebye: ' + dev.name);
+          break;
+        }
+      }
+      if (this.currentCallback) this.currentCallback(this.getDevices());
+      return;
+    }
+
+    const deviceKey = ip + '|' + descriptionUrl;
+    if (!this.receivedKeys.has(deviceKey)) {
+      this.receivedKeys.add(deviceKey);
+      this.parseDeviceDescription(descriptionUrl, ip).then(() => {
+        if (this.currentCallback) {
+          this.currentCallback(this.getDevices());
+        }
+      });
+    }
   }
 
   private async parseDeviceDescription(url: string, ip: string) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timeout);
@@ -278,16 +306,16 @@ class DLNAService {
       const xml = await response.text();
 
       const nameMatch = xml.match(/<friendlyName>(.*?)<\/friendlyName>/i);
-      const friendlyName = nameMatch ? nameMatch[1] : `DLNA Device (${ip})`;
+      const friendlyName = nameMatch ? nameMatch[1].trim() : `DLNA Device (${ip})`;
 
       const avMatch = xml.match(
         /<serviceType>urn:schemas-upnp-org:service:AVTransport:([12])<\/serviceType>[\s\S]*?<controlURL>(.*?)<\/controlURL>/i
       );
-      let controlUrl = avMatch ? avMatch[2] : '';
+      let controlUrl = avMatch ? avMatch[2].trim() : '';
 
       if (!controlUrl) {
         const anyCtrlUrl = xml.match(/<controlURL>(.*?)<\/controlURL>/i);
-        if (anyCtrlUrl) controlUrl = anyCtrlUrl[1];
+        if (anyCtrlUrl) controlUrl = anyCtrlUrl[1].trim();
       }
 
       if (controlUrl && !controlUrl.startsWith('http')) {
@@ -309,10 +337,10 @@ class DLNAService {
           controlUrl,
           descriptionUrl: url,
         });
-        logger.info('Discovered DLNA device:', friendlyName);
+        logger.info('[DLNA] Discovered device: ' + friendlyName + ' at ' + ip);
       }
     } catch (error) {
-      logger.debug('Failed to parse device XML:', error);
+      logger.debug('[DLNA] Failed to parse device XML:', error);
     }
   }
 
@@ -321,7 +349,7 @@ class DLNAService {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/\"/g, '&quot;')
+      .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
   }
 
@@ -342,7 +370,7 @@ class DLNAService {
   }
 
   public async castVideo(device: DLNADevice, videoUrl: string, title: string) {
-    logger.info('Casting to ' + device.name + ': ' + videoUrl);
+    logger.info('[DLNA] Casting to ' + device.name + ': ' + videoUrl);
 
     const metadata = this.buildMetadata(videoUrl, title);
 
@@ -374,7 +402,7 @@ class DLNAService {
     try {
       await this.stopCast(device).catch(() => {});
 
-      await fetch(device.controlUrl, {
+      const setRes = await fetch(device.controlUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset="utf-8"',
@@ -383,7 +411,13 @@ class DLNAService {
         body: setUriBody,
       });
 
-      await fetch(device.controlUrl, {
+      if (!setRes.ok) {
+        const text = await setRes.text();
+        logger.warn('[DLNA] SetAVTransportURI failed: ' + setRes.status + ' ' + text.substring(0, 200));
+        throw new Error('SetAVTransportURI returned ' + setRes.status);
+      }
+
+      const playRes = await fetch(device.controlUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/xml; charset="utf-8"',
@@ -392,9 +426,16 @@ class DLNAService {
         body: playBody,
       });
 
+      if (!playRes.ok) {
+        const text = await playRes.text();
+        logger.warn('[DLNA] Play failed: ' + playRes.status + ' ' + text.substring(0, 200));
+        throw new Error('Play returned ' + playRes.status);
+      }
+
+      logger.info('[DLNA] Cast successful to ' + device.name);
       return true;
     } catch (error) {
-      logger.error('Cast failed:', error);
+      logger.error('[DLNA] Cast failed:', error);
       throw error;
     }
   }
