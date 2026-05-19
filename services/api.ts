@@ -26,6 +26,7 @@ export interface VideoDetail {
   director?: string;
   actor?: string;
   remarks?: string;
+  episodes?: string[];
 }
 
 export interface SearchResult {

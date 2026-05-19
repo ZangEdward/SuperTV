@@ -55,7 +55,7 @@ export default function PlayScreen() {
   const initialEpIndex = parseInt(episodeIndexStr || "0", 10);
   const position = positionStr ? parseInt(positionStr, 10) : undefined;
 
-  const { detail, searchResults, setDetail } = useDetailStore();
+  const { detail, searchResults, setDetail, error: detailError } = useDetailStore();
   const source = sourceStr || detail?.source;
   const id = videoId || detail?.id.toString();
   const title = videoTitle || detail?.title;
@@ -171,6 +171,14 @@ export default function PlayScreen() {
 
   // 本地缓存文件播放：无需 detail 数据
   if (!isLocalFile && !detail) {
+    if (detailError) {
+      return (
+        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: 'white', marginBottom: 20 }}>{detailError}</Text>
+          <StyledButton text="返回" onPress={() => router.back()} />
+        </ThemedView>
+      );
+    }
     return <VideoLoadingAnimation showProgressBar />;
   }
 
@@ -194,8 +202,16 @@ export default function PlayScreen() {
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-          ) : (
+          ) : isLoading ? (
             <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+          ) : (
+            <View style={styles.loadingContainer}>
+              <Text style={{ color: 'white', marginBottom: 12 }}>无法获取播放链接</Text>
+              <StyledButton
+                text="重试"
+                onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
+              />
+            </View>
           )}
           <SeekingBar />
           {currentEpisode?.url && isLoading && (
@@ -262,8 +278,16 @@ export default function PlayScreen() {
       <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
         {currentEpisode?.url ? (
           <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-        ) : (
+        ) : isLoading ? (
           <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+        ) : (
+          <View style={styles.loadingContainer}>
+            <Text style={{ color: 'white', marginBottom: 20, fontSize: 24 }}>无法获取播放链接</Text>
+            <StyledButton
+              text="重试"
+              onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
+            />
+          </View>
         )}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
         <SeekingBar />

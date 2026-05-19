@@ -33,6 +33,11 @@ interface DetailState {
   optimizeSources: () => Promise<void>;
 }
 
+export const episodesSelectorBySource = (source: string) => (state: DetailState) => {
+  const result = state.searchResults.find((r) => r.source === source);
+  return result ? (result.episodes || []) : [];
+};
+
 const useDetailStore = create<DetailState>((set, get) => ({
   q: null,
   searchResults: [],
@@ -71,17 +76,31 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const processAndSetResults = async (results: SearchResult[], latency?: number, merge = false) => {
       const resultsWithResolution = await Promise.all(
         results.map(async (searchResult) => {
+          let episodes = searchResult.episodes || [];
+
+          // 如果搜索结果中没有剧集，尝试获取详情
+          if (episodes.length === 0) {
+            try {
+              const detail = await api.getVideoDetail(searchResult.source, searchResult.id.toString());
+              if (detail && detail.episodes) {
+                episodes = detail.episodes;
+              }
+            } catch (e) {
+              logger.warn(`Failed to fetch episodes for ${searchResult.source_name} during processing`, e);
+            }
+          }
+
           let resolution;
           try {
-            if (searchResult.episodes && searchResult.episodes.length > 0) {
-              resolution = await getResolutionFromM3U8(searchResult.episodes[0], signal);
+            if (episodes.length > 0) {
+              resolution = await getResolutionFromM3U8(episodes[0], signal);
             }
           } catch (e) {
             if ((e as Error).name !== "AbortError") {
               logger.info(`Failed to get resolution for ${searchResult.source_name}`, e);
             }
           }
-          return { ...searchResult, resolution, latency };
+          return { ...searchResult, episodes, resolution, latency };
         })
       );
       
@@ -234,6 +253,23 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   setDetail: async (detail) => {
+    // 如果没有剧集，尝试获取详情并填充
+    if (!detail.episodes || detail.episodes.length === 0) {
+      try {
+        const fullDetail = await api.getVideoDetail(detail.source, detail.id.toString());
+        if (fullDetail && fullDetail.episodes) {
+          detail.episodes = fullDetail.episodes;
+          // 同时更新 searchResults 列表
+          set(state => ({
+            searchResults: state.searchResults.map(r =>
+              (r.id === detail.id && r.source === detail.source) ? { ...r, episodes: fullDetail.episodes } : r
+            )
+          }));
+        }
+      } catch (e) {
+        logger.error(`Failed to fetch episodes for ${detail.source_name} in setDetail`, e);
+      }
+    }
     set({ detail });
     const { source, id } = detail;
     const isFavorited = await FavoriteManager.isFavorited(source, id.toString());
