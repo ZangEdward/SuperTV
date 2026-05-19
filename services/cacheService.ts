@@ -60,7 +60,37 @@ interface ActiveM3U8Task {
 }
 const activeM3U8Tasks = new Map<string, ActiveM3U8Task>();
 
-// ================== 辅助函数 ==================
+"// ================== 临时文件管理（类似Chrome .crdownload / .tmp 机制） ==================
+const TEMP_DIR = `${FileSystem.cacheDirectory}m3u8_temp/`;
+const TMP_EXTENSION = '.supertv.tmp';
+
+/**
+ * 确保临时目录存在
+ */
+async function ensureTempDir(): Promise<void> {
+  await FileSystem.makeDirectoryAsync(TEMP_DIR, { intermediates: true });
+}
+
+/**
+ * 清理临时目录中所有 .supertv.tmp 文件
+ */
+async function cleanTempDir(): Promise<void> {
+  try {
+    const info = await FileSystem.getInfoAsync(TEMP_DIR);
+    if (info.exists) {
+      const files = await FileSystem.readDirectoryAsync(TEMP_DIR);
+      for (const file of files) {
+        if (file.endsWith(TMP_EXTENSION)) {
+          await FileSystem.deleteAsync(`${TEMP_DIR}${file}`, { idempotent: true });
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn('cleanTempDir failed', e);
+  }
+}
+
+// ================== 辅助函数 =================="
 /**
  * 使用 crypto-js 进行 AES-128-CBC 解密
  * @param encryptedBase64 加密数据的 Base64 字符串
@@ -149,37 +179,48 @@ function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer 
 
 export class CacheService {
   /**
-   * 下载单个 TS 片段并返回 Base64 编码
+   * 下载单个 TS 片段
    */
-  private static async downloadSegment(url: string, index: number): Promise<string> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`片段 ${index + 1} 下载失败: HTTP ${response.status}`);
+  private static async downloadSegment(
+    url: string,
+    index: number,
+    encryption?: { key: Uint8Array; iv: Uint8Array } | null
+  ): Promise<string> {
+    try {
+      // 使用 RNFetchBlob 下载到临时文件，减少 JS 堆内存直接压力
+      const res = await RNFetchBlob.config({
+        fileCache: true,
+        appendExt: 'ts',
+        timeout: 30000, // 增加 30s 超时
+      }).fetch('GET', url);
+
+      const status = res.info().status;
+      if (status !== 200) {
+        await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+        throw new Error(`HTTP ${status}`);
+      }
+
+      try {
+        if (encryption) {
+          // 如果有加密，读取并解密
+          const path = res.path();
+          const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
+          const buffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(b64));
+          const decrypted = decryptTSFragment(buffer, encryption.key, encryption.iv);
+          return arrayBufferToBase64(decrypted);
+        } else {
+          // 无加密，直接返回 base64
+          return await res.base64();
+        }
+      } finally {
+        // 清理临时文件
+        await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+      }
+    } catch (err: any) {
+      const errorMsg = err.message || '未知错误';
+      logger.error(`片段 ${index + 1} 下载失败: ${errorMsg} (URL: ${url})`);
+      throw new Error(`片段 ${index + 1} 失败: ${errorMsg}`);
     }
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const CHUNK_SIZE = 8192;
-    for (let i = 0; i < bytes.byteLength; i += CHUNK_SIZE) {
-      const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.byteLength));
-      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-    }
-    if (typeof btoa === 'function') {
-      return btoa(binary);
-    }
-    // 兜底
-    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let res = '';
-    for (let i = 0; i < binary.length; i += 3) {
-      const a = binary.charCodeAt(i);
-      const b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : 0;
-      const c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : 0;
-      res += base64Chars[a >> 2];
-      res += base64Chars[((a & 3) << 4) | (b >> 4)];
-      res += i + 1 < binary.length ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
-      res += i + 2 < binary.length ? base64Chars[c & 63] : '=';
-    }
-    return res;
   }
 
   static async getAll(): Promise<CachedVideoItem[]> {
@@ -581,10 +622,11 @@ export class CacheService {
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一，建议移除
       const normalizedDestPath = Platform.OS === 'android' ? destinationPath.replace('file://', '') : destinationPath;
 
-      logger.info(`[CacheService] Starting download to ${normalizedDestPath}, total segments: ${total}`);
+      // 确保临时目录存在
+      await ensureTempDir();
 
-      // 创建空的目标文件
-      await RNFetchBlob.fs.writeFile(normalizedDestPath, '', 'utf8');
+      // 创建写入流，显著降低大文件合并时的 CPU 和内存开销
+      const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', false);
 
       // 结果缓冲区，按索引存储下载好的片段
       const resultsBuffer: { [index: number]: string } = {};
@@ -598,9 +640,8 @@ export class CacheService {
         try {
           while (resultsBuffer[nextIndexToWrite] !== undefined) {
             const data = resultsBuffer[nextIndexToWrite];
-            // 确保 data 不为空
             if (data) {
-              await RNFetchBlob.fs.appendFile(normalizedDestPath, data, 'base64');
+              await writeStream.write(data);
             }
             delete resultsBuffer[nextIndexToWrite];
             nextIndexToWrite++;
@@ -613,7 +654,7 @@ export class CacheService {
           isWriting = false;
           // 再次检查是否有新数据在写入期间到达
           if (resultsBuffer[nextIndexToWrite] !== undefined) {
-            setTimeout(flushWriter, 50);
+            setTimeout(flushWriter, 10);
           }
         }
       };
@@ -622,7 +663,9 @@ export class CacheService {
       const downloadAndWrite = async (index: number) => {
         try {
           const segUrl = segmentUrls[index];
-          const b64 = await CacheService.downloadSegment(segUrl, index);
+          // 修复：传递加密配置
+          const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
+          const b64 = await CacheService.downloadSegment(segUrl, index, encryption);
           resultsBuffer[index] = b64;
           await flushWriter();
         } catch (err) {
@@ -650,15 +693,19 @@ export class CacheService {
 
       await executePool();
 
-      // 最后确保所有缓冲区都已刷入
+      // 最后确保所有缓冲区都已刷入并关闭流
       let retryCount = 0;
-      while (nextIndexToWrite < total && retryCount < 10) {
+      while (nextIndexToWrite < total && retryCount < 20) {
         await flushWriter();
         if (nextIndexToWrite < total) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 200));
           retryCount++;
         }
       }
+      await writeStream.close();
+
+      // 清理临时目录
+      await cleanTempDir();
 
       // 验证文件完整性
       const fileStat = await RNFetchBlob.fs.stat(normalizedDestPath);
@@ -670,6 +717,15 @@ export class CacheService {
       logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - ${(fileStat.size / (1024*1024)).toFixed(2)}MB saved to ${destinationPath} in ${elapsed}ms`);
 
       return destinationPath;
+    } catch (err: any) {
+      logger.error(`[CacheService] downloadM3U8AsMp4 任务失败: ${err.message || '未知异常'}`, err);
+      // 清理可能产生的残留文件
+      try {
+        if (await RNFetchBlob.fs.exists(destinationPath)) {
+          await RNFetchBlob.fs.unlink(destinationPath);
+        }
+      } catch {}
+      throw err;
     } finally {
       activeM3U8Tasks.delete(taskId);
     }
@@ -734,8 +790,10 @@ export class CacheService {
           throw new Error('下载失败，未获取到文件路径');
         }
         resolve(result.uri);
-      } catch (err) {
-        reject(err);
+      } catch (err: any) {
+        const msg = err.message || '未知错误';
+        logger.error(`[CacheService] downloadFileWithProgress 失败: ${msg} (URL: ${url})`);
+        reject(new Error(`下载失败: ${msg}`));
       }
     });
   }
