@@ -116,9 +116,19 @@ export default function CacheDetailScreen() {
     }
   };
 
-  const handleDownload = (groupId?: string, index?: number) => {
+  const handleDownload = async (groupId?: string, index?: number) => {
     if (groupId !== undefined && index !== undefined) {
-      downloadQueuedEpisode(groupId, index);
+      // 通过 store 直接修改状态并触发队列处理
+      const group = queue.find(g => g.groupId === groupId);
+      if (group) {
+        const ep = group.episodes.find(e => e.index === index);
+        if (ep) {
+          ep.status = 'pending';
+          ep.progress = 0;
+          // @ts-ignore - processQueue is internal
+          useCacheStore.getState().processQueue?.();
+        }
+      }
     }
   };
 

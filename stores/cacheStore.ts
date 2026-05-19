@@ -76,15 +76,24 @@ const useCacheStore = create<CacheState>((set, get) => ({
   },
 
   processQueue: () => {
-    let state = get();
-    while (state.activeCount < state.concurrency) {
+    const state = get();
+    // 重新计算真实的 activeCount 以防泄漏
+    const realActiveCount = state.queue.reduce(
+      (acc, group) => acc + group.episodes.filter(ep => ep.status === 'downloading').length,
+      0
+    );
+
+    set({ activeCount: realActiveCount });
+
+    let currentActive = realActiveCount;
+    while (currentActive < state.concurrency) {
       const next = state.queue
         .flatMap((group) => group.episodes.map((episode) => ({ groupId: group.groupId, episode })))
         .find((item) => item.episode.status === 'queued' || item.episode.status === 'pending');
 
       if (!next) break;
       get().downloadQueuedEpisode(next.groupId, next.episode.index);
-      state = get();
+      currentActive++;
     }
   },
 
@@ -124,6 +133,9 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const ep = group.episodes.find((e) => e.index === episodeIndex);
     if (!ep) return;
 
+    // 如果已经在下载中，不要重复启动
+    if (ep.status === 'downloading') return;
+
     // mark as queued if concurrency full
     if (state.activeCount >= state.concurrency) {
       ep.status = 'queued';
@@ -133,7 +145,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
     // start downloading
     ep.status = 'downloading';
-    ep.progress = ep.progress || 0;
+    // 重试时进度重置
+    ep.progress = 0;
     set((s) => ({ activeCount: s.activeCount + 1, queue: [...s.queue] }));
     const itemId = `${group.source}_${group.id}_${ep.index}`;
     set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
