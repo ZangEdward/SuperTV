@@ -148,6 +148,40 @@ function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer 
 }
 
 export class CacheService {
+  /**
+   * 下载单个 TS 片段并返回 Base64 编码
+   */
+  private static async downloadSegment(url: string, index: number): Promise<string> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`片段 ${index + 1} 下载失败: HTTP ${response.status}`);
+    }
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const CHUNK_SIZE = 8192;
+    for (let i = 0; i < bytes.byteLength; i += CHUNK_SIZE) {
+      const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, bytes.byteLength));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    if (typeof btoa === 'function') {
+      return btoa(binary);
+    }
+    // 兜底
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let res = '';
+    for (let i = 0; i < binary.length; i += 3) {
+      const a = binary.charCodeAt(i);
+      const b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : 0;
+      const c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : 0;
+      res += base64Chars[a >> 2];
+      res += base64Chars[((a & 3) << 4) | (b >> 4)];
+      res += i + 1 < binary.length ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
+      res += i + 2 < binary.length ? base64Chars[c & 63] : '=';
+    }
+    return res;
+  }
+
   static async getAll(): Promise<CachedVideoItem[]> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
@@ -588,7 +622,7 @@ export class CacheService {
       const downloadAndWrite = async (index: number) => {
         try {
           const segUrl = segmentUrls[index];
-          const b64 = await downloadSegment(segUrl, index);
+          const b64 = await CacheService.downloadSegment(segUrl, index);
           resultsBuffer[index] = b64;
           await flushWriter();
         } catch (err) {
