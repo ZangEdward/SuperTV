@@ -76,31 +76,17 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const processAndSetResults = async (results: SearchResult[], latency?: number, merge = false) => {
       const resultsWithResolution = await Promise.all(
         results.map(async (searchResult) => {
-          let episodes = searchResult.episodes || [];
-
-          // 如果搜索结果中没有剧集，尝试获取详情
-          if (episodes.length === 0) {
-            try {
-              const detail = await api.getVideoDetail(searchResult.source, searchResult.id.toString());
-              if (detail && detail.episodes) {
-                episodes = detail.episodes;
-              }
-            } catch (e) {
-              logger.warn(`Failed to fetch episodes for ${searchResult.source_name} during processing`, e);
-            }
-          }
-
           let resolution;
           try {
-            if (episodes.length > 0) {
-              resolution = await getResolutionFromM3U8(episodes[0], signal);
+            if (searchResult.episodes && searchResult.episodes.length > 0) {
+              resolution = await getResolutionFromM3U8(searchResult.episodes[0], signal);
             }
           } catch (e) {
             if ((e as Error).name !== "AbortError") {
               logger.info(`Failed to get resolution for ${searchResult.source_name}`, e);
             }
           }
-          return { ...searchResult, episodes, resolution, latency };
+          return { ...searchResult, resolution, latency };
         })
       );
       
@@ -135,6 +121,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
           detail: state.detail ?? preferredMatch ?? finalResults[0] ?? null,
         };
       });
+
+      // 如果选定的 detail 没有剧集，异步获取一次详情
+      const currentDetail = get().detail;
+      if (currentDetail && (!currentDetail.episodes || currentDetail.episodes.length === 0)) {
+        get().setDetail(currentDetail);
+      }
     };
 
     try {

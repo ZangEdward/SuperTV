@@ -272,7 +272,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       const savedPlaybackRate = playerSettings?.playbackRate || 1.0;
 
       const episodesMappingStart = performance.now();
-      const mappedEpisodes = episodes.map((ep, index) => ({
+      const mappedEpisodes = (episodes || []).map((ep, index) => ({
         url: ep,
         title: `第 ${index + 1} 集`,
       }));

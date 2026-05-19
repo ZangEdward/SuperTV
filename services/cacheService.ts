@@ -108,9 +108,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK_SIZE = 8192;
+
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
   }
+
   // 使用 global.btoa 或兼容方案
   if (typeof btoa === 'function') {
     return btoa(binary);
@@ -551,23 +555,30 @@ export class CacheService {
       let nextIndexToWrite = 0;
       let isWriting = false;
 
-      // 顺序写入锁
-      const tryWriteSequentially = async () => {
+      // 顺序写入锁 (串行化写入)
+      const flushWriter = async () => {
         if (isWriting) return;
         isWriting = true;
         try {
           while (resultsBuffer[nextIndexToWrite] !== undefined) {
             const data = resultsBuffer[nextIndexToWrite];
-            await RNFetchBlob.fs.appendFile(normalizedDestPath, data, 'base64');
+            // 确保 data 不为空
+            if (data) {
+              await RNFetchBlob.fs.appendFile(normalizedDestPath, data, 'base64');
+            }
             delete resultsBuffer[nextIndexToWrite];
             nextIndexToWrite++;
             completedCount++;
             progressCb?.(completedCount / total);
           }
         } catch (err) {
-          logger.warn("Sequentially writing failed", err);
+          logger.error("Sequentially writing failed", err);
         } finally {
           isWriting = false;
+          // 再次检查是否有新数据在写入期间到达
+          if (resultsBuffer[nextIndexToWrite] !== undefined) {
+            setTimeout(flushWriter, 50);
+          }
         }
       };
 
@@ -577,7 +588,7 @@ export class CacheService {
           const segUrl = segmentUrls[index];
           const b64 = await downloadSegment(segUrl, index);
           resultsBuffer[index] = b64;
-          await tryWriteSequentially();
+          await flushWriter();
         } catch (err) {
           logger.warn(`Segment ${index} download failed`, err);
           throw err;
@@ -588,7 +599,8 @@ export class CacheService {
       const indices = Array.from({ length: total }, (_, i) => i);
       const executePool = async () => {
         const workers = [];
-        for (let i = 0; i < Math.min(CONCURRENCY, total); i++) {
+        const poolSize = Math.min(CONCURRENCY, total);
+        for (let i = 0; i < poolSize; i++) {
           workers.push((async () => {
             while (indices.length > 0) {
               const idx = indices.shift();
@@ -601,6 +613,16 @@ export class CacheService {
       };
 
       await executePool();
+
+      // 最后确保所有缓冲区都已刷入
+      let retryCount = 0;
+      while (nextIndexToWrite < total && retryCount < 10) {
+        await flushWriter();
+        if (nextIndexToWrite < total) {
+          await new Promise(r => setTimeout(r, 500));
+          retryCount++;
+        }
+      }
 
       // 验证文件完整性
       const fileStat = await RNFetchBlob.fs.stat(normalizedDestPath);
