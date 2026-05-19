@@ -2,7 +2,7 @@
   "expo": {
     "name": "SuperTV",
     "slug": "supertv",
-    "version": "5.5.22.523",
+    "version": "5.5.23.523",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",

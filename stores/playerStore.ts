@@ -183,19 +183,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
       if (!detail) {
         logger.error(`[ERROR] Detail not found after initialization for "${title}" (source: ${source}, id: ${id})`);
-
-        // 检查DetailStore的错误状态
-        const detailStoreState = useDetailStore.getState();
-        if (detailStoreState.error) {
-          logger.error(`[ERROR] DetailStore error: ${detailStoreState.error}`);
-          set({
-            isLoading: false,
-            // 可以选择在这里设置一个错误状态，但playerStore可能没有error字段
-          });
-        } else {
-          logger.error(`[ERROR] DetailStore init completed but no detail found and no error reported`);
-          set({ isLoading: false });
-        }
+        set({ isLoading: false });
         return;
       }
 

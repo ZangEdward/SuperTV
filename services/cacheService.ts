@@ -110,26 +110,28 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const len = bytes.byteLength;
   const CHUNK_SIZE = 8192;
 
+  // 使用循环分块转换，平衡速度和内存栈限制
   for (let i = 0; i < len; i += CHUNK_SIZE) {
     const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
+    // @ts-ignore - 兼容性转换
+    binary += String.fromCharCode.apply(null, chunk);
   }
 
   // 使用 global.btoa 或兼容方案
   if (typeof btoa === 'function') {
     return btoa(binary);
   } else {
-    // 兜底方案，如果环境没有 btoa
+    // 兜底方案：如果环境完全没有 btoa
     const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
     let res = '';
-    for (let i = 0; i < len; i += 3) {
-      const a = bytes[i];
-      const b = i + 1 < len ? bytes[i + 1] : 0;
-      const c = i + 2 < len ? bytes[i + 2] : 0;
+    for (let i = 0; i < binary.length; i += 3) {
+      const a = binary.charCodeAt(i);
+      const b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : 0;
+      const c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : 0;
       res += base64Chars[a >> 2];
       res += base64Chars[((a & 3) << 4) | (b >> 4)];
-      res += i + 1 < len ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
-      res += i + 2 < len ? base64Chars[c & 63] : '=';
+      res += i + 1 < binary.length ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
+      res += i + 2 < binary.length ? base64Chars[c & 63] : '=';
     }
     return res;
   }

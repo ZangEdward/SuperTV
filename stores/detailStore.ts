@@ -92,40 +92,41 @@ const useDetailStore = create<DetailState>((set, get) => ({
       
       if (signal.aborted) return;
 
-      set((state) => {
-        const existingSources = new Set(state.searchResults.map((r) => r.source));
-        const newResults = resultsWithResolution.filter((r) => !existingSources.has(r.source));
-        const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithResolution;
+      const state = get();
+      const existingSources = new Set(state.searchResults.map((r) => r.source));
+      const newResults = resultsWithResolution.filter((r) => !existingSources.has(r.source));
+      const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithResolution;
 
-        const finalResults = combinedResults.sort((a, b) => {
-          if (b.episodes.length !== a.episodes.length) {
-            return b.episodes.length - a.episodes.length;
-          }
-          return (a.latency || 0) - (b.latency || 0);
-        });
-
-        const preferredId = id?.toString();
-        const preferredMatch = preferredId
-          ? finalResults.find(
-              (result) => result.id.toString() === preferredId && result.source === preferredSource
-            )
-          : null;
-
-        return {
-          searchResults: finalResults,
-          sources: finalResults.map((r) => ({
-            source: r.source,
-            source_name: r.source_name,
-            resolution: r.resolution,
-          })),
-          detail: state.detail ?? preferredMatch ?? finalResults[0] ?? null,
-        };
+      const finalResults = combinedResults.sort((a, b) => {
+        if (b.episodes.length !== a.episodes.length) {
+          return b.episodes.length - a.episodes.length;
+        }
+        return (a.latency || 0) - (b.latency || 0);
       });
 
-      // 如果选定的 detail 没有剧集，异步获取一次详情
-      const currentDetail = get().detail;
-      if (currentDetail && (!currentDetail.episodes || currentDetail.episodes.length === 0)) {
-        get().setDetail(currentDetail);
+      const preferredId = id?.toString();
+      const preferredMatch = preferredId
+        ? finalResults.find(
+            (result) => result.id.toString() === preferredId && result.source === preferredSource
+          )
+        : null;
+
+      const selectedDetail = state.detail ?? preferredMatch ?? finalResults[0] ?? null;
+
+      set({
+        searchResults: finalResults,
+        sources: finalResults.map((r) => ({
+          source: r.source,
+          source_name: r.source_name,
+          resolution: r.resolution,
+        })),
+        detail: selectedDetail,
+      });
+
+      // 如果选定的 detail 没有剧集，必须异步获取一次详情
+      // 在 loadVideo 中会调用此 processAndSetResults，我们需要确保 init 返回时数据是完整的
+      if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
+        await get().setDetail(selectedDetail);
       }
     };
 
