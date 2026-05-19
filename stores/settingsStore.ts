@@ -163,7 +163,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // 🚀 自动测速并选择最快节点（使用 favicon.ico）
   autoSelectFastestApi: async () => {
     const testSpeed = async (baseUrl: string): Promise<number> => {
-      const url = `${baseUrl}/favicon.ico`;
+      const url = `${baseUrl}/favicon.ico?t=${Date.now()}`;
       const start = Date.now();
       try {
         const res = await fetch(url, { method: "HEAD", cache: "no-store" });
