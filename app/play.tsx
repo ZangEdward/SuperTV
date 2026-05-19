@@ -302,7 +302,7 @@ export default function PlayScreen() {
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-          ) : git push origin masterisLoading ? (
+          ) : isLoading ? (
             <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
           ) : (
             <View style={styles.loadingContainer}>
