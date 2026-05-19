@@ -1,35 +1,55 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
 import { StyledButton } from "./StyledButton";
 import usePlayerStore from "@/stores/playerStore";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
+import { tcpHttpServer } from "@/services/tcpHttpServer";
 import { Tv, RefreshCw } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('CastModal');
 
+/**
+ * 将可能的本地 file:// 地址转为 HTTP 可访问地址
+ * 缓存文件需要以 HTTP 方式提供给 DLNA 设备
+ */
+function convertToHttpUrl(url: string): string {
+  if (url.startsWith('file://')) {
+    const httpUrl = tcpHttpServer.getLocalUrl(url);
+    if (httpUrl) {
+      logger.info('[Cast] Converted file:// URL to HTTP: ' + httpUrl);
+      return httpUrl;
+    }
+  }
+  return url;
+}
+
 export const CastModal: React.FC = () => {
   const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, status } = usePlayerStore();
-  const [devices, setDevices] = useState<DLNADevice[]>([]);
+  const [devices, setDevices] = useState<DLNADevice[]>(() => dlnaService.getDevices());
   const [isSearching, setIsSearching] = useState(false);
-  const [searchTimer, setSearchTimer] = useState<any>(null);
+  const searchTimerRef = useRef<any>(null);
 
   const startSearch = useCallback(() => {
-    if (searchTimer) clearTimeout(searchTimer);
+    // 显示之前缓存过的设备（如果有）
+    const cachedDevices = dlnaService.getDevices();
+    if (cachedDevices.length > 0) {
+      setDevices(cachedDevices);
+    }
+
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setIsSearching(true);
-    setDevices([]);
+
     dlnaService.searchDevices((foundDevices) => {
-      if (foundDevices.length > 0) {
-        setDevices(foundDevices);
-        setIsSearching(false);
-      }
+      setDevices(foundDevices);
+      setIsSearching(false);
     });
-    // 15秒后停止加载动画
-    const timer = setTimeout(() => {
+
+    // 15 秒超时保护
+    searchTimerRef.current = setTimeout(() => {
       setIsSearching(false);
     }, 15000);
-    setSearchTimer(timer);
   }, []);
 
   useEffect(() => {
@@ -38,9 +58,9 @@ export const CastModal: React.FC = () => {
     }
     return () => {
       dlnaService.stopSearch();
-      if (searchTimer) clearTimeout(searchTimer);
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [showCastModal]);
+  }, [showCastModal, startSearch]);
 
   const onCast = async (device: DLNADevice) => {
     const currentEpisode = episodes[currentEpisodeIndex];
@@ -49,20 +69,23 @@ export const CastModal: React.FC = () => {
       return;
     }
 
+    // 如果 URL 是本地缓存文件（file://），转为 HTTP 地址
+    const castUrl = convertToHttpUrl(currentEpisode.url);
+
     try {
       Toast.show({ type: 'info', text1: '正在投屏...', text2: `连接到 ${device.name}` });
-      await dlnaService.castVideo(device, currentEpisode.url, currentEpisode.title);
+      await dlnaService.castVideo(device, castUrl, currentEpisode.title);
       Toast.show({ type: 'success', text1: '投屏成功', text2: '请在电视上查看' });
       setShowCastModal(false);
     } catch (error) {
-      logger.warn('Cast failed:', error);
+      logger.warn('[Cast] Failed:', error);
       Toast.show({ type: 'error', text1: '投屏失败', text2: '请检查网络连接并确认电视支持 DLNA' });
     }
   };
 
   const onClose = () => {
     dlnaService.stopSearch();
-    if (searchTimer) clearTimeout(searchTimer);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setShowCastModal(false);
   };
 
