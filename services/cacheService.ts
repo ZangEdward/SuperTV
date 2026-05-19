@@ -8,6 +8,7 @@ import RNFetchBlob from 'react-native-blob-util';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
+const QUEUE_STORAGE_KEY = "mytv_cache_queue";
 
 // 安卓使用 android/data/<package>/files/download/
 const DOWNLOAD_DIR = Platform.OS === 'android'
@@ -238,6 +239,32 @@ export class CacheService {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch (error) {
       logger.warn("Failed to save cached videos:", error);
+    }
+  }
+
+  static async getQueue(): Promise<any[]> {
+    try {
+      const data = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (error) {
+      logger.info("Failed to load cache queue:", error);
+      return [];
+    }
+  }
+
+  static async saveQueue(queue: any[]): Promise<void> {
+    try {
+      // 过滤掉正在下载的状态，转为暂停或等待，避免重启后状态不一致
+      const persistedQueue = queue.map(group => ({
+        ...group,
+        episodes: group.episodes.map((ep: any) => ({
+          ...ep,
+          status: (ep.status === 'downloading' || ep.status === 'queued') ? 'paused' : ep.status
+        }))
+      }));
+      await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(persistedQueue));
+    } catch (error) {
+      logger.warn("Failed to save cache queue:", error);
     }
   }
 
@@ -528,18 +555,19 @@ export class CacheService {
 
   /**
    * 下载 M3U8 并合并为 MP4
-   * 修复：使用 react-native-blob-util.appendFile 直接追加二进制数据，
-   * 避免 base64 拼接损坏导致播放器提示"已取消"
+   * 支持断点续传：通过 options.resumeIndex 指定起始片段索引
    */
   static async downloadM3U8AsMp4(
     url: string,
     destinationPath: string,
     itemId?: string,
     signal?: AbortSignal,
-    progressCb?: (progress: number) => void
+    progressCb?: (progress: number, completedCount: number) => void,
+    options: { resumeIndex?: number } = {}
   ): Promise<string> {
     const start = Date.now();
-    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url}`);
+    let resumeIndex = options.resumeIndex || 0;
+    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url} (resume from ${resumeIndex})`);
 
     const taskId = itemId || `m3u8_${Date.now()}`;
     const activeTask = CacheService.registerM3U8Task(taskId);
@@ -566,7 +594,6 @@ export class CacheService {
       if (mergeSignal.aborted) throw new Error("下载已取消");
 
       // 解析主 playlist
-      logger.info(`[CacheService] Fetching playlist from ${url}`);
       const playlistText = await fetchText(url);
       const parsed = CacheService.parseM3U8Playlist(playlistText);
 
@@ -609,31 +636,39 @@ export class CacheService {
         destinationPath = destinationPath.replace(/\.[^/.]+$/, '') + '.mp4';
       }
 
-      // 确保目录存在并清理旧文件
+      // 确保目录存在
       const destDir = destinationPath.substring(0, destinationPath.lastIndexOf('/'));
       await FileSystem.makeDirectoryAsync(destDir, { intermediates: true });
-      try { await FileSystem.deleteAsync(destinationPath, { idempotent: true }); } catch (e) { }
+
+      // 如果不是续传，则清理旧文件
+      if (resumeIndex === 0) {
+        try { await FileSystem.deleteAsync(destinationPath, { idempotent: true }); } catch (e) { }
+      } else {
+        // 验证文件是否存在，如果不存在则重置 resumeIndex
+        const info = await FileSystem.getInfoAsync(destinationPath);
+        if (!info.exists) {
+          logger.warn(`Resume file not found at ${destinationPath}, starting from 0`);
+          resumeIndex = 0;
+        }
+      }
 
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const CONCURRENCY = 16; // 提高并发数
-      let completedCount = 0;
+      const CONCURRENCY = 16;
+      let completedCount = resumeIndex;
 
-      // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一，建议移除
+      // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
       const normalizedDestPath = Platform.OS === 'android' ? destinationPath.replace('file://', '') : destinationPath;
 
-      // 确保临时目录存在
       await ensureTempDir();
 
-      // 创建写入流，显著降低大文件合并时的 CPU 和内存开销
-      const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', false);
+      // 创建写入流，如果 resumeIndex > 0 则 append: true
+      const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
-      // 结果缓冲区，按索引存储下载好的片段
       const resultsBuffer: { [index: number]: string } = {};
-      let nextIndexToWrite = 0;
+      let nextIndexToWrite = resumeIndex;
       let isWriting = false;
 
-      // 顺序写入锁 (串行化写入)
       const flushWriter = async () => {
         if (isWriting) return;
         isWriting = true;
@@ -646,24 +681,24 @@ export class CacheService {
             delete resultsBuffer[nextIndexToWrite];
             nextIndexToWrite++;
             completedCount++;
-            progressCb?.(completedCount / total);
+            progressCb?.(completedCount / total, completedCount);
           }
         } catch (err) {
           logger.error("Sequentially writing failed", err);
         } finally {
           isWriting = false;
-          // 再次检查是否有新数据在写入期间到达
           if (resultsBuffer[nextIndexToWrite] !== undefined) {
             setTimeout(flushWriter, 10);
           }
         }
       };
 
-      // 下载并立即尝试顺序写入
       const downloadAndWrite = async (index: number) => {
         try {
+          await CacheService.waitIfPaused(taskId);
+          if (mergeSignal.aborted) throw new Error("下载已取消");
+
           const segUrl = segmentUrls[index];
-          // 修复：传递加密配置
           const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
           const b64 = await CacheService.downloadSegment(segUrl, index, encryption);
           resultsBuffer[index] = b64;
@@ -674,14 +709,14 @@ export class CacheService {
         }
       };
 
-      // 任务队列执行
-      const indices = Array.from({ length: total }, (_, i) => i);
+      // 任务队列执行，从 resumeIndex 开始
+      const indices = Array.from({ length: total - resumeIndex }, (_, i) => i + resumeIndex);
       const executePool = async () => {
         const workers = [];
-        const poolSize = Math.min(CONCURRENCY, total);
+        const poolSize = Math.min(CONCURRENCY, indices.length);
         for (let i = 0; i < poolSize; i++) {
           workers.push((async () => {
-            while (indices.length > 0) {
+            while (indices.length > 0 && !mergeSignal.aborted) {
               const idx = indices.shift();
               if (idx === undefined) break;
               await downloadAndWrite(idx);
@@ -693,7 +728,8 @@ export class CacheService {
 
       await executePool();
 
-      // 最后确保所有缓冲区都已刷入并关闭流
+      if (mergeSignal.aborted) throw new Error("下载已取消");
+
       let retryCount = 0;
       while (nextIndexToWrite < total && retryCount < 20) {
         await flushWriter();
@@ -703,28 +739,18 @@ export class CacheService {
         }
       }
       await writeStream.close();
-
-      // 清理临时目录
       await cleanTempDir();
 
-      // 验证文件完整性
       const fileStat = await RNFetchBlob.fs.stat(normalizedDestPath);
       if (!fileStat || fileStat.size === 0) {
         throw new Error("合并后的文件为空，下载失败");
       }
 
-      const elapsed = Date.now() - start;
-      logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - ${(fileStat.size / (1024*1024)).toFixed(2)}MB saved to ${destinationPath} in ${elapsed}ms`);
-
+      logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - ${(fileStat.size / (1024*1024)).toFixed(2)}MB`);
       return destinationPath;
     } catch (err: any) {
-      logger.error(`[CacheService] downloadM3U8AsMp4 任务失败: ${err.message || '未知异常'}`, err);
-      // 清理可能产生的残留文件
-      try {
-        if (await RNFetchBlob.fs.exists(destinationPath)) {
-          await RNFetchBlob.fs.unlink(destinationPath);
-        }
-      } catch {}
+      // 只有在非暂停导致的取消时才清理文件（可选，如果想支持断点续传，不建议清理）
+      // if (!activeTask.isPaused) { ... }
       throw err;
     } finally {
       activeM3U8Tasks.delete(taskId);

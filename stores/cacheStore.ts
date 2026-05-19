@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as FileSystem from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from "react-native-toast-message";
 import { CacheService, CachedVideoItem } from "@/services/cacheService";
 import Logger from "@/utils/Logger";
@@ -48,6 +49,7 @@ export type QueuedEpisode = {
   url: string;
   status: 'pending' | 'queued' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused';
   progress?: number;
+  completedCount?: number; // 新增：已完成的分片数量，用于断点续传
   id?: string; // constructed id string
 };
 
@@ -99,12 +101,20 @@ const useCacheStore = create<CacheState>((set, get) => ({
   },
 
   loadCache: async () => {
+    // 如果已经有正在下载的任务，只更新已完成列表，不更新队列以免干扰进度
+    const hasActiveTasks = get().queue.some(g => g.episodes.some(e => e.status === 'downloading'));
+
     set({ loading: true, error: null });
     try {
-      // 确保下载目录存在（修复 /data/data/com.supertv/files/videos/ 文件夹缺失）
       await CacheService.ensureDownloadDirectory();
       const items = await CacheService.getAll();
-      set({ items, loading: false });
+
+      if (!hasActiveTasks) {
+        const queue = await CacheService.getQueue();
+        set({ items, queue, loading: false });
+      } else {
+        set({ items, loading: false });
+      }
     } catch (error) {
       logger.warn("loadCache failed", error);
       set({ loading: false, error: "加载缓存失败" });
@@ -113,7 +123,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
   enqueueSeries: (series) => {
     const groupId = `${series.source}_${series.id}_${Date.now()}`;
-    const episodes: QueuedEpisode[] = series.episodes.map((ep) => ({ index: ep.index, url: ep.url, status: 'pending' as const, progress: 0, id: `${series.source}_${series.id}_${ep.index}` }));
+    const episodes: QueuedEpisode[] = series.episodes.map((ep) => ({ index: ep.index, url: ep.url, status: 'pending' as const, progress: 0, completedCount: 0, id: `${series.source}_${series.id}_${ep.index}` }));
     const group: GroupedDownload = {
       groupId,
       source: series.source,
@@ -123,6 +133,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
       episodes,
     };
     set((state) => ({ queue: [...state.queue, group] }));
+    CacheService.saveQueue(get().queue);
     (get() as any).processQueue?.();
   },
 
@@ -151,7 +162,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
     // start downloading
     const nextQueue = [...state.queue];
     nextQueue[groupIndex].episodes[epIndex].status = 'downloading';
-    nextQueue[groupIndex].episodes[epIndex].progress = 0;
+    // 保留原有进度，如果是新开始则为0
+    nextQueue[groupIndex].episodes[epIndex].progress = ep.progress || 0;
 
     set((s) => ({
       activeCount: s.activeCount + 1,
@@ -159,7 +171,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }));
 
     const itemId = `${state.queue[groupIndex].source}_${state.queue[groupIndex].id}_${ep.index}`;
-    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
+    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: ep.progress || 0 } });
 
     try {
       await CacheService.ensureDownloadDirectory();
@@ -168,22 +180,25 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
       let downloadUri = fileUri;
       if (ep.url.toLowerCase().includes('.m3u8')) {
-        // 传递 itemId 以支持暂停/继续
+        // 传递 itemId 以支持暂停/继续，并支持断点续传 (completedCount)
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
-        downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p) => {
+        downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
           const q = get().queue;
           const gi = q.findIndex(g => g.groupId === groupId);
           if (gi !== -1) {
             const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
             if (ei !== -1) {
               q[gi].episodes[ei].progress = p;
+              q[gi].episodes[ei].completedCount = cc;
               set({
                 downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
                 queue: [...q]
               });
+              // 周期性保存队列状态
+              if (cc % 10 === 0) CacheService.saveQueue(q);
             }
           }
-        });
+        }, { resumeIndex: ep.completedCount || 0 });
         delete (get() as any)._controllers[itemId];
       } else {
         // create DownloadResumable here so we can cancel later
@@ -243,6 +258,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         downloadProgress: { ...(s.downloadProgress || {}), [itemId]: 1 },
         queue: [...finalQueue]
       }));
+      await CacheService.saveQueue(get().queue);
     } catch (err) {
       logger.warn('downloadQueuedEpisode failed', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -259,6 +275,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         activeCount: Math.max(0, s.activeCount - 1),
         queue: [...errorQueue]
       }));
+      await CacheService.saveQueue(get().queue);
       Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
     }
 
@@ -288,6 +305,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
     ep.status = 'paused';
     set({ queue: [...get().queue] });
+    CacheService.saveQueue(get().queue);
   },
 
   /** 继续下载任务 */
@@ -299,9 +317,16 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const itemId = `${group.source}_${group.id}_${ep.index}`;
 
     if (ep.url.toLowerCase().includes('.m3u8')) {
-      // M3U8 下载 -> 使用 CacheService 继续
-      CacheService.resumeTask(itemId);
-      ep.status = 'downloading';
+      // 如果任务已经在运行中，仅调用 resume
+      if (CacheService.isTaskPaused(itemId)) {
+        CacheService.resumeTask(itemId);
+        ep.status = 'downloading';
+      } else {
+        // 如果任务不在运行中（如重启后），重新启动下载（它会自动根据 completedCount 续传）
+        ep.status = 'pending';
+        set({ queue: [...get().queue] });
+        get().downloadQueuedEpisode(groupId, episodeIndex);
+      }
     } else {
       // MP4 下载 -> 使用 DownloadResumable.resumeAsync（需要重新创建？实际上可以从上次暂停处恢复）
       const controllers = (get() as any)._controllers || {};
@@ -378,6 +403,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }
     ep.status = 'cancelled';
     set((s) => ({ queue: [...s.queue], activeCount: Math.max(0, s.activeCount - 1) }));
+    CacheService.saveQueue(get().queue);
     (get() as any).processQueue?.();
   },
 
@@ -494,6 +520,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         loading: false,
         downloadProgress: dp
       }));
+      await CacheService.saveQueue(nextQueue);
 
       Toast.show({ type: "success", text1: "已删除缓存记录" });
     } catch (error) {
@@ -529,6 +556,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         loading: false,
         downloadProgress: dp
       }));
+      await CacheService.saveQueue(get().queue);
 
       Toast.show({ type: "success", text1: "已删除整部剧集缓存" });
     } catch (error) {
@@ -541,7 +569,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await CacheService.clearAll();
-      set({ items: [], loading: false, downloadProgress: {} });
+      await AsyncStorage.removeItem("mytv_cache_queue");
+      set({ items: [], queue: [], loading: false, downloadProgress: {} });
       Toast.show({ type: "success", text1: "缓存已清除" });
     } catch (error) {
       logger.warn("clearCache failed", error);
