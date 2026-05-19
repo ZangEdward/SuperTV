@@ -245,6 +245,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
       }));
     } catch (err) {
       logger.warn('downloadQueuedEpisode failed', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
       const errorQueue = get().queue;
       const egi = errorQueue.findIndex(g => g.groupId === groupId);
       if (egi !== -1) {
@@ -258,6 +259,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         activeCount: Math.max(0, s.activeCount - 1),
         queue: [...errorQueue]
       }));
+      Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
     }
 
     // process next queued episode(s) if there is now available capacity
@@ -457,8 +459,9 @@ const useCacheStore = create<CacheState>((set, get) => ({
       Toast.show({ type: "success", text1: "下载完成", text2: `${title} ${episodeTitle}` });
     } catch (error) {
       logger.warn("downloadEpisode failed", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       set({ currentDownloadId: null, downloadProgress: { ...(get().downloadProgress || {}) } });
-      Toast.show({ type: "error", text1: "下载失败", text2: `${title} ${episodeTitle}` });
+      Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
     }
   },
 
