@@ -42,6 +42,8 @@ export interface CacheState {
   removeCacheItem: (id: string) => Promise<void>;
   removeSeries: (title: string) => Promise<void>;
   clearCache: () => Promise<void>;
+  pauseAll: () => Promise<void>;
+  resumeAll: () => Promise<void>;
 }
 
 export type QueuedEpisode = {
@@ -577,6 +579,43 @@ const useCacheStore = create<CacheState>((set, get) => ({
       set({ loading: false, error: "清除缓存失败" });
       Toast.show({ type: "error", text1: "清除缓存失败" });
     }
+  },
+  pauseAll: async () => {
+    const { queue, pauseQueuedEpisode } = get();
+    const downloadingEpisodes = queue.flatMap(g =>
+      g.episodes
+        .filter(ep => ep.status === 'downloading')
+        .map(ep => ({ groupId: g.groupId, index: ep.index }))
+    );
+    for (const item of downloadingEpisodes) {
+      await pauseQueuedEpisode(item.groupId, item.index);
+    }
+    // Also mark queued ones as paused
+    const nextQueue = get().queue.map(group => ({
+      ...group,
+      episodes: group.episodes.map(ep => {
+        if (ep.status === 'queued' || ep.status === 'pending') {
+          return { ...ep, status: 'paused' as const };
+        }
+        return ep;
+      })
+    }));
+    set({ queue: nextQueue });
+    await CacheService.saveQueue(nextQueue);
+  },
+  resumeAll: async () => {
+    const nextQueue = get().queue.map(group => ({
+      ...group,
+      episodes: group.episodes.map(ep => {
+        if (ep.status === 'paused') {
+          return { ...ep, status: 'pending' as const };
+        }
+        return ep;
+      })
+    }));
+    set({ queue: nextQueue });
+    await CacheService.saveQueue(nextQueue);
+    (get() as any).processQueue?.();
   },
 }));
 

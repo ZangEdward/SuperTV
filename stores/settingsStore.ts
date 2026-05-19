@@ -78,7 +78,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       api.setBaseUrl(settings.apiBaseUrl);
       await get().fetchServerConfig();
     } else {
-      await get().autoSelectFastestApi();
+      // 取消自动测速，直接使用默认第一个节点
+      const defaultUrl = API_NODES[0];
+      set({ apiBaseUrl: defaultUrl });
+      api.setBaseUrl(defaultUrl);
+      await get().fetchServerConfig();
     }
   },
 

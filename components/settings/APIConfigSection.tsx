@@ -38,18 +38,11 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         <View style={styles.container} onFocus={onFocus} onBlur={onBlur}>
           <View style={styles.headerRow}>
             <ThemedText style={styles.title}>服务器节点</ThemedText>
-            <StyledButton
-              text="优选"
-              onPress={() => useSettingsStore.getState().autoSelectFastestApi()}
-              style={styles.preferButton}
-              textStyle={styles.preferButtonText}
-              variant="ghost"
-            />
           </View>
 
           {!hideDescription && (
             <ThemedText style={styles.subtitle}>
-              手动切换或点击优选自动测速
+              手动切换服务器节点
             </ThemedText>
           )}
 

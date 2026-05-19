@@ -76,6 +76,22 @@ export default function CacheManagementScreen() {
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
+        {/* 操作栏 */}
+        <View style={styles.actionBar}>
+          <StyledButton
+            text="全部暂停"
+            onPress={() => cacheStore.pauseAll()}
+            style={styles.actionButton}
+            variant="default"
+          />
+          <StyledButton
+            text="全部启动"
+            onPress={() => cacheStore.resumeAll()}
+            style={styles.actionButton}
+            variant="primary"
+          />
+        </View>
+
         {/* 并发设置 */}
         <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}> 
           <TouchableOpacity
@@ -147,6 +163,15 @@ export default function CacheManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  actionButton: {
+    flex: 1,
+    minHeight: 44,
   },
   headerRow: {
     flexDirection: 'row',

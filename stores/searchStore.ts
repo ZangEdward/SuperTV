@@ -53,13 +53,20 @@ const useSearchStore = create<SearchState>((set, get) => ({
     const { videoSource } = useSettingsStore.getState();
 
     try {
-      // 1. 获取所有可用资源
-      const allResources = await api.getResources(signal);
+      // 1. 获取可用资源（优先从 settingsStore 获取已缓存的，加快速度）
+      const settingsStore = useSettingsStore.getState();
+      let enabledResources = [];
 
-      // 2. 筛选出已启用的资源
-      const enabledResources = videoSource.enabledAll
-        ? allResources
-        : allResources.filter((r) => videoSource.sources[r.key]);
+      if (settingsStore.allSources && settingsStore.allSources.length > 0) {
+        enabledResources = settingsStore.videoSource.enabledAll
+          ? settingsStore.allSources
+          : settingsStore.allSources.filter((r) => settingsStore.videoSource.sources[r.key]);
+      } else {
+        const allResources = await api.getResources(signal);
+        enabledResources = videoSource.enabledAll
+          ? allResources
+          : allResources.filter((r) => videoSource.sources[r.key]);
+      }
 
       if (enabledResources.length === 0) {
         set({ error: "没有开启的播放源，请在设置中配置", loading: false });
@@ -68,8 +75,9 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       let firstBatchFound = false;
       let totalFound = 0;
+      const seenTitles = new Set<string>();
 
-      // 3. 并行搜索，动态更新
+      // 3. 并行搜索，动态异步刷新结果
       const searchPromises = enabledResources.map(async (resource) => {
         try {
           const { results } = await api.searchVideo(term, resource.key, signal);
@@ -79,13 +87,11 @@ const useSearchStore = create<SearchState>((set, get) => ({
           if (results && results.length > 0) {
             totalFound += results.length;
             set((state) => {
-              // 关键优化：根据 title 全局去重
-              // 用户指出：同一个剧集不同播放源已经在详情页展示了，搜索结果不需要重复出现
-              const existingTitles = new Set(state.results.map(r => r.title.trim().toLowerCase()));
+              // 关键：全局去重（按标题），同剧集只显示一个结果
               const newResults = results.filter(r => {
                 const normalizedTitle = r.title.trim().toLowerCase();
-                if (existingTitles.has(normalizedTitle)) return false;
-                existingTitles.add(normalizedTitle);
+                if (seenTitles.has(normalizedTitle)) return false;
+                seenTitles.add(normalizedTitle);
                 return true;
               });
 
@@ -93,7 +99,7 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
               const updatedResults = [...state.results, ...newResults];
 
-              // 停止初始加载转圈（如果有数据了）
+              // 异步刷新：只要有新结果就立即显示，且如果是第一批结果则关闭 loading
               if (!firstBatchFound) {
                 firstBatchFound = true;
                 return { results: updatedResults, loading: false };

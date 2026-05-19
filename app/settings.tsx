@@ -95,6 +95,10 @@ export default function SettingsScreen() {
   };
 
   const rawSections = [
+    {
+      component: <CacheSection />,
+      key: "cache",
+    },
     deviceType !== "mobile" && {
       component: (
         <RemoteInputSection
@@ -130,10 +134,6 @@ export default function SettingsScreen() {
         />
       ),
       key: "livestream",
-    },
-    {
-      component: <CacheSection />,
-      key: "cache",
     },
     {
       component: (
