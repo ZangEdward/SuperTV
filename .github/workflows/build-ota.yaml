@@ -77,6 +77,40 @@ jobs:
           mkdir -p output
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
+      # -------------------------------
+      # SuperTV 主仓库：删除旧 asset
+      # -------------------------------
+      - name: Delete old asset if exists (SuperTV repo)
+        run: |
+          VERSION="${{ env.VERSION }}"
+          REPO="ZangEdward/SuperTV"
+
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
+            | jq -r '.id')
+
+          if [ "$RELEASE_ID" = "null" ]; then
+            echo "No existing release for v$VERSION"
+            exit 0
+          fi
+
+          echo "Found existing release: $RELEASE_ID"
+
+          ASSET_ID=$(curl -s \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets \
+            | jq -r '.[] | select(.name=="SuperTV-'$VERSION'.apk") | .id')
+
+          if [ -n "$ASSET_ID" ]; then
+            echo "Deleting old asset: $ASSET_ID"
+            curl -X DELETE \
+              -H "Authorization: token ${{ secrets.PAT }}" \
+              https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+          else
+            echo "No old asset found"
+          fi
+
       - name: Upload to GitHub Releases (SuperTV repo)
         uses: softprops/action-gh-release@v2
         with:
@@ -124,6 +158,40 @@ jobs:
 
           APK_SIZE=$(stat -c%s "SuperTV-${{ env.VERSION }}.apk")
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
+
+      # -------------------------------
+      # OTA 仓库：删除旧 asset
+      # -------------------------------
+      - name: Delete old asset if exists (OTA repo)
+        run: |
+          VERSION="${{ env.VERSION }}"
+          REPO="ZangEdward/internal-cache-sync-daemon-log"
+
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
+            | jq -r '.id')
+
+          if [ "$RELEASE_ID" = "null" ]; then
+            echo "No existing release for v$VERSION"
+            exit 0
+          fi
+
+          echo "Found existing release: $RELEASE_ID"
+
+          ASSET_ID=$(curl -s \
+            -H "Authorization: token ${{ secrets.PAT }}" \
+            https://api.github.com/repos/$REPO/releases/$RELEASE_ID/assets \
+            | jq -r '.[] | select(.name=="SuperTV-'$VERSION'.apk") | .id')
+
+          if [ -n "$ASSET_ID" ]; then
+            echo "Deleting old asset: $ASSET_ID"
+            curl -X DELETE \
+              -H "Authorization: token ${{ secrets.PAT }}" \
+              https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+          else
+            echo "No old asset found"
+          fi
 
       - name: Upload APK to log repo release
         uses: softprops/action-gh-release@v2
