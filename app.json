@@ -2,8 +2,8 @@
   "expo": {
     "name": "SuperTV",
     "slug": "supertv",
-    "version": "5.5.20.523",
-    "orientation": "portrait",
+    "version": "5.5.21.523",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
@@ -21,7 +21,6 @@
         "backgroundColor": "#000000"
       },
       "package": "com.supertv.app",
-      "screenOrientation": "portrait",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -37,6 +36,7 @@
       "expo-font",
       "expo-media-library",
       "expo-file-system",
+      "expo-screen-orientation",
       [
         "expo-build-properties",
         {

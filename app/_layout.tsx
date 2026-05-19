@@ -3,6 +3,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from "react";
 import { Platform, View, StyleSheet } from "react-native";
 import Toast from "react-native-toast-message";
@@ -47,6 +48,17 @@ export default function RootLayout() {
   const { checkLoginStatus } = useAuthStore();
   const { checkForUpdate, lastCheckTime } = useUpdateStore();
   const responsiveConfig = useResponsiveLayout();
+
+  useEffect(() => {
+    async function lockOrientation() {
+      if (responsiveConfig.deviceType === 'mobile') {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } else {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      }
+    }
+    lockOrientation();
+  }, [responsiveConfig.deviceType]);
 
   useEffect(() => {
     const initializeApp = async () => {
