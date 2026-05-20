@@ -180,48 +180,83 @@ function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer 
 
 export class CacheService {
   /**
-   * 下载单个 TS 片段
+   * 下载单个 TS 片段，带自动重试和指数退避
    */
   private static async downloadSegment(
     url: string,
     index: number,
-    encryption?: { key: Uint8Array; iv: Uint8Array } | null
+    encryption?: { key: Uint8Array; iv: Uint8Array } | null,
+    retryCount: number = 3
   ): Promise<string> {
-    try {
-      // 使用 RNFetchBlob 下载到临时文件，减少 JS 堆内存直接压力
-      const res = await RNFetchBlob.config({
-        fileCache: true,
-        appendExt: 'ts',
-        timeout: 30000, // 增加 30s 超时
-      }).fetch('GET', url);
+    let lastError: Error | null = null;
 
-      const status = res.info().status;
-      if (status !== 200) {
-        await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
-        throw new Error(`HTTP ${status}`);
-      }
-
+    for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
-        if (encryption) {
-          // 如果有加密，读取并解密
-          const path = res.path();
-          const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
-          const buffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(b64));
-          const decrypted = decryptTSFragment(buffer, encryption.key, encryption.iv);
-          return arrayBufferToBase64(decrypted);
-        } else {
-          // 无加密，直接返回 base64
-          return await res.base64();
+        // 使用 RNFetchBlob 下载到临时文件，减少 JS 堆内存直接压力
+        const res = await RNFetchBlob.config({
+          fileCache: true,
+          appendExt: 'ts',
+          timeout: 60000, // 增加 60s 超时
+        }).fetch('GET', url);
+
+        const status = res.info().status;
+        if (status !== 200) {
+          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+          throw new Error(`HTTP ${status}`);
         }
-      } finally {
-        // 清理临时文件
-        await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+
+        try {
+          if (encryption) {
+            // 如果有加密，分块读取并解密以降低内存峰值
+            const path = res.path();
+            const stat = await RNFetchBlob.fs.stat(path);
+            const fileSize = stat.size;
+
+            // 对于大文件（>50MB），使用流式分块处理
+            if (fileSize > 50 * 1024 * 1024) {
+              const chunkSize = 5 * 1024 * 1024; // 5MB 分块
+              let result = '';
+              let offset = 0;
+
+              while (offset < fileSize) {
+                const end = Math.min(offset + chunkSize, fileSize);
+                const chunkB64 = await RNFetchBlob.fs.readFile(path, 'base64', offset, end - offset);
+                const chunkBuffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(chunkB64));
+                const decryptedChunk = decryptTSFragment(chunkBuffer, encryption.key, encryption.iv);
+                result += arrayBufferToBase64(decryptedChunk);
+                offset = end;
+              }
+              return result;
+            } else {
+              const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
+              const buffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(b64));
+              const decrypted = decryptTSFragment(buffer, encryption.key, encryption.iv);
+              return arrayBufferToBase64(decrypted);
+            }
+          } else {
+            // 无加密，直接返回 base64
+            return await res.base64();
+          }
+        } finally {
+          // 清理临时文件
+          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errorMsg = err.message || '未知错误';
+
+        if (attempt < retryCount) {
+          const delay = 1000 * Math.pow(2, attempt); // 指数退避: 1s, 2s, 4s
+          logger.warn(`片段 ${index + 1} 下载失败 (第${attempt + 1}次), ${delay}ms后重试: ${errorMsg}`);
+          await new Promise(r => setTimeout(r, delay));
+        } else {
+          logger.error(`片段 ${index + 1} 下载失败，已重试${retryCount}次: ${errorMsg} (URL: ${url})`);
+          throw new Error(`片段 ${index + 1} 失败: ${errorMsg}`);
+        }
       }
-    } catch (err: any) {
-      const errorMsg = err.message || '未知错误';
-      logger.error(`片段 ${index + 1} 下载失败: ${errorMsg} (URL: ${url})`);
-      throw new Error(`片段 ${index + 1} 失败: ${errorMsg}`);
     }
+
+    throw lastError || new Error(`片段 ${index + 1} 未知错误`);
   }
 
   static async getAll(): Promise<CachedVideoItem[]> {
@@ -654,7 +689,7 @@ export class CacheService {
 
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const CONCURRENCY = 16;
+      const CONCURRENCY = 4; // 降低并发数到4，减少内存压力
       let completedCount = resumeIndex;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
@@ -666,14 +701,16 @@ export class CacheService {
       const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
       const resultsBuffer: { [index: number]: string } = {};
+      const BUFFER_LIMIT = 6; // 限制缓冲中最大未写入片段数
       let nextIndexToWrite = resumeIndex;
       let isWriting = false;
+      let writeError: Error | null = null;
 
       const flushWriter = async () => {
-        if (isWriting) return;
+        if (isWriting || writeError) return;
         isWriting = true;
         try {
-          while (resultsBuffer[nextIndexToWrite] !== undefined) {
+          while (resultsBuffer[nextIndexToWrite] !== undefined && !writeError) {
             const data = resultsBuffer[nextIndexToWrite];
             if (data) {
               await writeStream.write(data);
@@ -685,9 +722,10 @@ export class CacheService {
           }
         } catch (err) {
           logger.error("Sequentially writing failed", err);
+          writeError = err as Error;
         } finally {
           isWriting = false;
-          if (resultsBuffer[nextIndexToWrite] !== undefined) {
+          if (resultsBuffer[nextIndexToWrite] !== undefined && !writeError) {
             setTimeout(flushWriter, 10);
           }
         }
@@ -697,14 +735,30 @@ export class CacheService {
         try {
           await CacheService.waitIfPaused(taskId);
           if (mergeSignal.aborted) throw new Error("下载已取消");
+          if (writeError) throw writeError;
 
           const segUrl = segmentUrls[index];
           const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
-          const b64 = await CacheService.downloadSegment(segUrl, index, encryption);
+
+          // 传参 retryCount=2（尝试3次），减少总等待时间
+          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 2);
           resultsBuffer[index] = b64;
+
+          // 触发顺序写入
           await flushWriter();
+
+          // 如果缓冲区堆积超出限制，等待写入完成
+          while (Object.keys(resultsBuffer).length > BUFFER_LIMIT && !writeError && !mergeSignal.aborted) {
+            await new Promise(r => setTimeout(r, 100));
+            await flushWriter();
+          }
         } catch (err) {
-          logger.warn(`Segment ${index} download failed`, err);
+          // 如果是写入错误，提前终止整个下载
+          if (!writeError) {
+            writeError = err as Error;
+            logger.error(`片段 ${index} 下载/写入失败，终止下载:`, err);
+            activeTask.controller.abort();
+          }
           throw err;
         }
       };

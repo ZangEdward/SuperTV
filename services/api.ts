@@ -1,4 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Logger from "@/utils/Logger";
+
+const logger = Logger.withTag('API');
 
 // region: --- Interface Definitions ---
 export interface DoubanItem {
@@ -222,7 +225,8 @@ export class API {
     const url = `/api/search/one?q=${encodeURIComponent(query)}&resourceId=${encodeURIComponent(resourceId)}`;
     const response = await this._fetch(url, { signal });
     const data = await response.json();
-    const results = data.results || [];
+    // 兼容不同API返回格式
+    const results = data.results || data.data || [];
 
     // 确保每个结果都有正确的 source
     const keyword = query.toLowerCase();
@@ -231,16 +235,36 @@ export class API {
       source: item.source || resourceId
     }));
 
-    // 使用宽松匹配：标题包含搜索词（不区分大小写）
-    const filtered = mappedResults.filter((item: any) =>
+    // 分步匹配策略：先尝试精确包含匹配
+    const strictFiltered = mappedResults.filter((item: any) =>
       item.title && item.title.toLowerCase().includes(keyword)
     );
 
-    // 如果过滤后为空，返回原始结果的前20条作为兜底
-    if (filtered.length === 0 && mappedResults.length > 0) {
+    // 有严格匹配则直接返回
+    if (strictFiltered.length > 0) {
+      return { results: strictFiltered };
+    }
+
+    // 严格匹配无结果时，尝试逐词宽松匹配
+    const keywords = keyword.split(/[\s,，]+/).filter(k => k.length > 1);
+    if (keywords.length > 0) {
+      const looseFiltered = mappedResults.filter((item: any) => {
+        if (!item.title) return false;
+        const titleLower = item.title.toLowerCase();
+        return keywords.some(k => titleLower.includes(k));
+      });
+      if (looseFiltered.length > 0) {
+        return { results: looseFiltered };
+      }
+    }
+
+    // 最终兜底：返回原始结果的前20条（API服务端可能已做好了匹配）
+    if (mappedResults.length > 0) {
+      logger.info(`[searchVideo] No strict matches for "${query}" in source "${resourceId}", returning first ${Math.min(mappedResults.length, 20)} results`);
       return { results: mappedResults.slice(0, 20) };
     }
-    return { results: filtered };
+
+    return { results: [] };
   }
 
   async getResources(signal?: AbortSignal): Promise<ApiSite[]> {
