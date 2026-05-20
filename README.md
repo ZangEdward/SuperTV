@@ -1,4 +1,6 @@
-﻿加速功能，# SuperTV 📺代码源自  originTV
+﻿加速功能，# SuperTV 📺代码源自  
+
+zimplexing/oriontv
 
 一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。以下内容均为AI修改
 
