@@ -1,8 +1,8 @@
 {
-  "expo": {
+  节点恢复优选按钮，点击后进行测试服务器延迟，选择速度最快的，。关闭自动测试切换功能必须按按钮才优选切换。  "expo": {
     "name": "SuperTV",
     "slug": "supertv",
-    "version": "5.5.25.523",
+    "version": "5.5.26.523",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",

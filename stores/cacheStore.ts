@@ -430,9 +430,22 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const eIdx = queue[gIdx].episodes.findIndex(e => e.index === episodeIndex);
     if (eIdx === -1) return;
 
+    const ep = queue[gIdx].episodes[eIdx];
+
+    // 从已完成的片段数继续，不从头开始
+    // completedCount 记录了已成功下载的 TS 片段数，用于断点续传
+    const resumeCompletedCount = ep.completedCount || 0;
+
     const nextQueue = [...queue];
     nextQueue[gIdx].episodes[eIdx].status = 'pending';
-    nextQueue[gIdx].episodes[eIdx].progress = 0;
+    // 保留已完成的片段数，使 downloadQueuedEpisode 能从断点继续
+    // progress 保持现有值以显示进度百分比
+    nextQueue[gIdx].episodes[eIdx].progress = resumeCompletedCount > 0
+      ? resumeCompletedCount / (nextQueue[gIdx].episodes.length || 1)
+      : 0;
+    nextQueue[gIdx].episodes[eIdx].completedCount = resumeCompletedCount;
+
+    logger.info(`[retryDownload] 从断点继续: groupId=${groupId}, episodeIndex=${episodeIndex}, completedCount=${resumeCompletedCount}`);
 
     set({ queue: nextQueue });
     get().processQueue?.();
