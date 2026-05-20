@@ -106,6 +106,10 @@ export default function SettingsScreen() {
       ),
       key: "remote",
     },
+    deviceType !== "tv" && {
+      component: <CacheSection />,
+      key: "cache",
+    },
     {
       component: (
         <APIConfigSection

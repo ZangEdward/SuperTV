@@ -101,7 +101,7 @@ export const useVideoHandlers = ({
 
   // 优化的Video组件props
   const videoProps = useMemo(() => ({
-    source: { uri: currentEpisode?.url || '' },
+    source: currentEpisode?.url ? { uri: currentEpisode.url } : undefined,
     posterSource: { uri: detail?.poster ?? "" },
     resizeMode: ResizeMode.CONTAIN,
     rate: playbackRate,
