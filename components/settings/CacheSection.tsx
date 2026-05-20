@@ -140,6 +140,7 @@ export function CacheSection() {
     </SettingsSection>
   );
 }
+// End of CacheSection
 
 const styles = StyleSheet.create({
   container: {
@@ -155,7 +156,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: 'rgba(255,255,255,0.03)', // 为每一行添加微弱背景
+    backgroundColor: 'rgba(255,255,255,0.03)',
     padding: 10,
     borderRadius: 8,
   },
