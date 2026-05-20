@@ -117,7 +117,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   testSourceSpeeds: async () => {
     const { allSources, videoSource } = get();
     const latencies: Record<string, number> = {};
-    const newSources = { ...videoSource.sources };
 
     const testSpeed = async (sourceKey: string): Promise<number> => {
       const start = Date.now();
@@ -138,16 +137,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     results.forEach(r => {
       latencies[r.key] = r.time;
-      if (r.time > 3000) {
-        newSources[r.key] = false;
-      } else {
-        newSources[r.key] = true;
-      }
+      // 仅记录延迟，不再自动切换开启/关闭状态
     });
 
     set({
       sourceLatencies: latencies,
-      videoSource: { ...videoSource, sources: newSources }
     });
 
     await get().saveSettings();

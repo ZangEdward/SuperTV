@@ -1,61 +1,23 @@
-import React from "react";
-import { View, Text, StyleSheet, Modal, FlatList, TouchableOpacity } from "react-native";
+import React, { useEffect } from "react";
+import { View, Text, StyleSheet, Modal, FlatList } from "react-native";
 import { StyledButton } from "./StyledButton";
 import useDetailStore from "@/stores/detailStore";
 import usePlayerStore from "@/stores/playerStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SourceSelectionModal");
 
-// 自动切换到下一个最快源（播放失败时调用）
+// 自动切换到下一个最快源（播放失败时调用）已禁用
 export const autoSwitchToNextSource = () => {
-  const { searchResults, detail, setDetail } = useDetailStore.getState();
-  const { loadVideo, currentEpisodeIndex, status } = usePlayerStore.getState();
-
-  const sorted = [...searchResults].sort(
-    (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
-  );
-
-  const currentIndex = sorted.findIndex((s) => s.source === detail?.source);
-  const next = sorted[currentIndex + 1];
-
-  if (!next) {
-    console.warn("没有更多源可切换");
-    return;
-  }
-
-  setDetail(next);
-
-  const currentPosition = status?.isLoaded ? status.positionMillis : undefined;
-
-  loadVideo({
-    source: next.source,
-    id: next.id.toString(),
-    episodeIndex: currentEpisodeIndex,
-    title: next.title,
-    position: currentPosition,
-  });
+  logger.info("autoSwitchToNextSource called but feature is disabled");
 };
 
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();
   const { searchResults, detail, setDetail } = useDetailStore();
-
-  // 手动测速：由外部触发，不在 Modal 打开时自动测速
-
-  // 自动选择最快源（打开详情页时）
-  useEffect(() => {
-    if (!searchResults || searchResults.length === 0) return;
-
-    const sorted = [...searchResults].sort(
-      (a, b) => (a.latency ?? 99999) - (b.latency ?? 99999)
-    );
-
-    if (sorted[0] && sorted[0].source !== detail?.source) {
-      setDetail(sorted[0]);
-    }
-  }, [searchResults]);
+  const { sourceLatencies } = useSettingsStore();
 
   const onSelectSource = (index: number) => {
     const selected = searchResults[index];
@@ -81,11 +43,11 @@ export const SourceSelectionModal: React.FC = () => {
     setShowSourceModal(false);
   };
 
-  const getLatencyText = (source: string) => {
-    const ms = latencies[source];
-    if (ms === undefined) return "测速中...";
-    if (ms === Infinity) return "超时";
-    return `${ms} ms`;
+  const getLatencyText = (item: any) => {
+    const ms = item.latency ?? sourceLatencies[item.source];
+    if (ms === undefined) return "";
+    if (ms === Infinity) return "（超时）";
+    return `（${Math.round(ms)}ms）`;
   };
 
   return (
@@ -96,12 +58,12 @@ export const SourceSelectionModal: React.FC = () => {
 
           <FlatList
             data={searchResults}
-            numColumns={3}
+            numColumns={2}
             contentContainerStyle={styles.sourceList}
             keyExtractor={(item, index) => `source-${item.source}-${index}`}
             renderItem={({ item, index }) => (
               <StyledButton
-                text={`${item.source_name} (${getLatencyText(item.source)})`}
+                text={`${item.source_name}${getLatencyText(item)}`}
                 onPress={() => onSelectSource(index)}
                 isSelected={detail?.source === item.source}
                 hasTVPreferredFocus={detail?.source === item.source}

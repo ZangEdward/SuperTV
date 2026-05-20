@@ -261,7 +261,7 @@ export default function PlayScreen() {
         </ThemedView>
       );
     }
-    if (!detailLoading) {
+    if (!detailLoading && isInitFailed) {
       return (
         <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
           <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
@@ -274,7 +274,15 @@ export default function PlayScreen() {
         </ThemedView>
       );
     }
-    return <VideoLoadingAnimation showProgressBar />;
+    return (
+      <ThemedView style={[styles.tvContainer, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+        <VideoLoadingAnimation showProgressBar />
+        {/* TV端需要一个焦点元素防止切换页面时崩溃 */}
+        {deviceType === 'tv' && (
+           <TouchableOpacity focusable={true} style={{ position: 'absolute', opacity: 0 }} />
+        )}
+      </ThemedView>
+    );
   }
 
   const renderMobileLayout = () => (

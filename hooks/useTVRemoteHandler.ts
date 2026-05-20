@@ -14,6 +14,17 @@ const CONTROLS_TIMEOUT = 5000;
 export const useTVRemoteHandler = () => {
   const { showControls, setShowControls, showEpisodeModal, togglePlayPause, seek } = usePlayerStore();
 
+  const showControlsRef = useRef(showControls);
+  const showEpisodeModalRef = useRef(showEpisodeModal);
+
+  useEffect(() => {
+    showControlsRef.current = showControls;
+  }, [showControls]);
+
+  useEffect(() => {
+    showEpisodeModalRef.current = showEpisodeModal;
+  }, [showEpisodeModal]);
+
   const controlsTimer = useRef<NodeJS.Timeout | null>(null);
   const fastForwardIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -60,7 +71,7 @@ export const useTVRemoteHandler = () => {
   // 处理遥控器事件
   const handleTVEvent = useCallback(
     (event: HWEvent) => {
-      if (showEpisodeModal) {
+      if (showEpisodeModalRef.current) {
         return;
       }
 
@@ -75,7 +86,7 @@ export const useTVRemoteHandler = () => {
 
       resetTimer();
 
-      if (showControls) {
+      if (showControlsRef.current) {
         // 如果控制条已显示，则不处理后台的快进/快退等操作
         // 避免与控制条上的按钮焦点冲突
         return;
@@ -87,7 +98,7 @@ export const useTVRemoteHandler = () => {
           setShowControls(true);
           break;
         case "left":
-          seek(-SEEK_STEP); // 快退15秒
+          seek(-SEEK_STEP); // 快退
           break;
         case "longLeft":
           if (!fastForwardIntervalRef.current && event.eventKeyAction === 0) {
@@ -112,7 +123,7 @@ export const useTVRemoteHandler = () => {
           break;
       }
     },
-    [showControls, showEpisodeModal, setShowControls, resetTimer, togglePlayPause, seek]
+    [setShowControls, resetTimer, togglePlayPause, seek]
   );
 
   useTVEventHandler(handleTVEvent);

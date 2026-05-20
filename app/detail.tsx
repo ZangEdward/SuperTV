@@ -91,7 +91,14 @@ export default function DetailScreen() {
   }, [detail, isReverse]);
 
   if (loading && !detail) {
-    return <VideoLoadingAnimation showProgressBar={false} />;
+    return (
+      <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#000' }]}>
+        <VideoLoadingAnimation showProgressBar={false} />
+        {deviceType === 'tv' && (
+          <TouchableOpacity focusable={true} style={{ position: 'absolute', opacity: 0 }} />
+        )}
+      </ThemedView>
+    );
   }
 
   if (error && !detail) {
