@@ -54,7 +54,7 @@ export default function SourceManagementScreen() {
         showBackButton
         rightElement={
           <StyledButton
-            text={isTesting ? "优化中..." : "一键优化"}
+            text={isTesting ? "测速中..." : "节点优选"}
             onPress={handlePrefer}
             disabled={isTesting}
             style={styles.preferButton}

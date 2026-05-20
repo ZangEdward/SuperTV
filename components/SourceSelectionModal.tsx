@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { View, Text, StyleSheet, Modal, FlatList, TouchableOpacity } from "react-native";
 import { StyledButton } from "./StyledButton";
 import useDetailStore from "@/stores/detailStore";
@@ -6,18 +6,6 @@ import usePlayerStore from "@/stores/playerStore";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SourceSelectionModal");
-
-// 测速函数（HEAD 请求）
-const testSourceSpeed = async (url: string): Promise<number> => {
-  const start = Date.now();
-  try {
-    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
-    if (!res.ok) throw new Error("Bad response");
-    return Date.now() - start;
-  } catch {
-    return Infinity;
-  }
-};
 
 // 自动切换到下一个最快源（播放失败时调用）
 export const autoSwitchToNextSource = () => {
@@ -54,28 +42,7 @@ export const SourceSelectionModal: React.FC = () => {
     usePlayerStore();
   const { searchResults, detail, setDetail } = useDetailStore();
 
-  const [latencies, setLatencies] = useState<Record<string, number>>({});
-
-  // Modal 打开时自动测速所有源
-  useEffect(() => {
-    if (!showSourceModal) return;
-
-    const runSpeedTest = async () => {
-      const result: Record<string, number> = {};
-
-      for (const item of searchResults) {
-        const url = item.play_url || item.url || item.source_url || item.source;
-        if (!url) continue;
-
-        const ms = await testSourceSpeed(url);
-        result[item.source] = ms;
-      }
-
-      setLatencies(result);
-    };
-
-    runSpeedTest();
-  }, [showSourceModal]);
+  // 手动测速：由外部触发，不在 Modal 打开时自动测速
 
   // 自动选择最快源（打开详情页时）
   useEffect(() => {
