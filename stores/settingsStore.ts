@@ -2,17 +2,14 @@ import { create } from "zustand";
 import { SettingsManager } from "@/services/storage";
 import { api, ServerConfig } from "@/services/api";
 import { storageConfig } from "@/services/storageConfig";
+import { API_NODES as GLOBAL_NODES } from "@/services/apiNodes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SettingsStore");
 
-const API_NODES = [
-  "https://ltv.955598.xyz",
-  "https://atv.955598.xyz",
-  "https://ctv.955598.xyz",
-  "https://ltv.lzsb.edu.eu.org",
-];
+// 从 API_NODES 提取 URL 数组
+const API_NODES = GLOBAL_NODES.map(node => node.url);
 
 interface SettingsState {
   apiBaseUrl: string;

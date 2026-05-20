@@ -18,6 +18,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
     outputs:
       VERSION: ${{ steps.get_version.outputs.VERSION }}
 

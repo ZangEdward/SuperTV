@@ -119,13 +119,10 @@ export default function RootLayout() {
               <Stack screenOptions={({ route }) => {
                 const params = route.params as any;
                 const noAnim = params?.noAnim === 'true';
-                const dir = params?.dir;
 
-                let animation: any = 'slide_from_right';
+                let animation: any = 'fade';
                 if (noAnim) {
                   animation = 'none';
-                } else if (dir === 'back') {
-                  animation = 'slide_from_left';
                 }
 
                 return {

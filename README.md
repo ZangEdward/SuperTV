@@ -1,6 +1,6 @@
-﻿加速功能，# SuperTV 📺代码源自  
+﻿加速功能，# SuperTV 📺代码源自  zimplexing/oriontv
 
-zimplexing/oriontv
+不建议个人使用，因代码已被定制化。
 
 一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。以下内容均为AI修改
 
@@ -13,13 +13,43 @@ zimplexing/oriontv
 - **缓存下载**: 支持 M3U8/MP4 视频离线缓存，多线程加速下载。
 - **优选节点**: 智能测速并选择最佳 API 节点。
 
+## 🚀 部署与开发配置
+
+### 1. 服务器节点配置 (Secrets)
+为了保护后端地址不被泄露，项目已移除硬编码的服务器 URL。请在部署或运行前进行以下配置：
+
+#### 线上环境 (GitHub Actions)
+在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions` 中添加以下 Secret：
+- **Name**: `API_NODES_JSON`
+- **Value**: JSON 格式的节点数组。
+  ```json
+  [
+    { "key": "node1", "label": "服务器A", "url": "https://api.example.com" },
+    { "key": "node2", "label": "服务器B", "url": "https://api.backup.com" }
+  ]
+  ```
+
+#### 本地开发环境
+在项目根目录创建 `.env.local` 文件（已加入 .gitignore），内容如下：
+```env
+EXPO_PUBLIC_API_NODES_JSON='[{"key":"local","label":"测试节点","url":"https://your-dev-api.com"}]'
+```
+
+### 2. 构建与运行
+直接运行对应的 `yarn` 脚本即可开始构建。
+
+---
+
 📝 版本更新历史 (Changelog)
 
-📱 v5.5.26.523 (Latest)
+📱 v5.5.27.523 (Latest)
 - ⚙️ **编译修复**：修复了在某些环境下由于正则表达式转义问题导致的 `Task :app:createBundleReleaseJsAndAssets FAILED` 错误。
 - ⬇️ **断点续传增强**：深度优化 M3U8 下载逻辑，支持从网络断开点精准续传，且失败的 TS 片段支持独立自动重试，大幅减少无效流量损耗。
 - 🚀 **节点优选策略优化**：进入设置页面仅进行静默测速（仅显示延迟），不再自动切换节点。仅在手动点击“节点优选”按钮时，才会自动切换至延迟最低的服务器。
-- 🗑️ **存储管理中心化**：将“清理已下载缓存”与“清理播放历史”功能模块从设置页整体迁移至“缓存管理”页面底部，实现存储空间的一站式管理。
+- 🛡️ **源代码安全增强**：敏感 API 节点数据改为通过 GitHub Actions Secrets 在编译时动态注入，防止服务器 URL 在公共源码库中直接泄露。
+- 🗑️ **存储管理中心化**：将“清理已下载缓存”与“清理播放历史”功能模块从设置页整体迁移至“缓存管理”页面的底部，实现存储空间的一站式管理。
+
+📱 v5.5.26.523
 
 📱 v5.5.25.523
 

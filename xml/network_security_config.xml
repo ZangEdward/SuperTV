@@ -5,9 +5,5 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">lzsb.edu.eu.org</domain>
-        <domain includeSubdomains="true">955598.xyz</domain>
-        <domain includeSubdomains="true">ghfast.top</domain>
-    </domain-config>
+    <!-- 若有特定域名的不安全连接需求，可在此添加 domain-config -->
 </network-security-config>

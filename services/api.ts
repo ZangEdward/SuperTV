@@ -281,4 +281,4 @@ export class API {
 }
 
 // 默认实例
-export let api = new API("https://ltv.lzsb.edu.eu.org/");
+export let api = new API();
