@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Text } from "react-native";
 import { useRouter } from "expo-router";
 import useCacheStore from "@/stores/cacheStore";
 import { CacheService } from "@/services/cacheService";
@@ -12,493 +12,553 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import Toast from "react-native-toast-message";
+import { Ionicons } from "@expo/vector-icons";
+
+// 海报占位组件：当海报 url 无效时显示剧名首字符
+function PosterPlaceholder({ title, size }: { title: string; size: number }) {
+  const initial = title ? title.charAt(0).toUpperCase() : "?";
+  const colors = ["#4A90D9", "#7B68EE", "#E91E63", "#FF9800", "#4CAF50", "#00BCD4"];
+  const colorIndex =
+    title
+      .split("")
+      .reduce((acc, c) => acc + c.charCodeAt(0), 0) %
+    colors.length;
+  return (
+    <View
+      style={[
+        {
+          width: size,
+          height: size * 1.5,
+          borderRadius: 8,
+          backgroundColor: colors[colorIndex],
+          justifyContent: "center",
+          alignItems: "center",
+        },
+      ]}
+    >
+      <Text style={{ color: "#fff", fontSize: size * 0.4, fontWeight: "bold" }}>{initial}</Text>
+    </View>
+  );
+}
 
 export default function CacheManagementScreen() {
   const router = useRouter();
   const cacheStore = useCacheStore();
-  const { items, loadCache, concurrency, setConcurrency, removeSeries, clearCache } = cacheStore;
-  const { queue } = cacheStore;
-  const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
+  const {
+    items,
+    loadCache,
+    concurrency,
+    setConcurrency,
+    removeSeries,
+    clearCache,
+    queue,
+    loading,
+    error,
+  } = cacheStore;
+  const [concurrencyOpen, setConcurrencyOpen] = useState(false);
   const responsiveConfig = useResponsiveLayout();
   const { deviceType, spacing } = responsiveConfig;
-  const isMobile = deviceType === 'mobile';
+  const isMobile = deviceType === "mobile";
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const [cacheSize, setCacheSize] = useState<string>("0 MB");
   const [clearing, setClearing] = useState(false);
 
-  const calculateCacheSize = async () => {
+  const calculateCacheSize = useCallback(async () => {
     try {
       const totalSize = await CacheService.calculateCacheSize();
       setCacheSize(CacheService.formatBytes(totalSize));
     } catch (e) {
       console.warn("计算缓存大小失败:", e);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    calculateCacheSize();
-  }, [items]);
-
+  // 初始加载及轮询
   useEffect(() => {
     loadCache();
-    // 增加轮询：每5秒加载一次缓存列表以更新最新状态
+    calculateCacheSize();
     const timer = setInterval(() => {
       loadCache();
+      calculateCacheSize();
     }, 5000);
     return () => clearInterval(timer);
-  }, [loadCache]);
+  }, [loadCache, calculateCacheSize]);
 
+  // 合并队列和已下载项去重，仅过滤掉title完全为空的情况
   const combinedCollections = useMemo(() => {
     const map = new Map<string, { title: string; poster: string }>();
     queue.forEach((g) => {
-      if (!map.has(g.title)) map.set(g.title, { title: g.title, poster: g.poster });
+      if (g.title && g.title.trim() !== "" && !map.has(g.title)) {
+        map.set(g.title, { title: g.title, poster: g.poster || "" });
+      }
     });
     items.forEach((it) => {
-      if (!map.has(it.title)) map.set(it.title, { title: it.title, poster: it.poster });
+      if (it.title && it.title.trim() !== "" && !map.has(it.title)) {
+        map.set(it.title, { title: it.title, poster: it.poster || "" });
+      }
     });
     return Array.from(map.values());
   }, [items, queue]);
+
+  // 统计计数
+  const queuedCount = useMemo(
+    () =>
+      queue.reduce(
+        (count, group) =>
+          count +
+          group.episodes.filter(
+            (ep) =>
+              ep.status === "queued" || ep.status === "pending" || ep.status === "downloading"
+          ).length,
+        0
+      ),
+    [queue]
+  );
+  const completedCount = useMemo(() => items.length, [items]);
 
   const openCollectionDetail = (title?: string) => {
     if (!title) return;
     router.push({
       pathname: "/cache-detail",
-      params: { title }
+      params: { title },
     });
   };
 
   const handleLongPressDeleteSeries = (title: string) => {
-    Alert.alert(
-      '删除整部剧集',
-      `确定要删除「${title}」的所有缓存文件吗？此操作不可恢复。`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除全部',
-          style: 'destructive',
-          onPress: async () => {
-            await removeSeries(title);
-            await loadCache();
+    Alert.alert("删除整部剧集", `确定要删除「${title}」的所有缓存文件吗？此操作不可恢复。`, [
+      { text: "取消", style: "cancel" },
+      {
+        text: "删除全部",
+        style: "destructive",
+        onPress: async () => {
+          await removeSeries(title);
+          await loadCache();
+          await calculateCacheSize();
+        },
+      },
+    ]);
+  };
+
+  const handleClearCache = () => {
+    Alert.alert("清除缓存", "确定要清除已下载的缓存视频吗？此操作不可撤销。", [
+      { text: "取消", style: "cancel" },
+      {
+        text: "确定",
+        onPress: async () => {
+          setClearing(true);
+          try {
+            await clearCache();
             await calculateCacheSize();
-          },
+          } catch (e) {
+            Alert.alert("错误", "清理缓存失败");
+          } finally {
+            setClearing(false);
+          }
         },
-      ]
+      },
+    ]);
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert("清除播放记录", "确定要清除所有播放历史吗？此操作不可撤销。", [
+      { text: "取消", style: "cancel" },
+      {
+        text: "确定",
+        onPress: async () => {
+          setClearing(true);
+          try {
+            await PlayRecordManager.clearAll();
+            Toast.show({ type: "success", text1: "播放历史已清除" });
+          } catch (e) {
+            Alert.alert("错误", "清理失败");
+          } finally {
+            setClearing(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  // 渲染海报网格项
+  const renderPosterCard = (c: { title: string; poster: string }) => {
+    const posterSize = isMobile ? 110 : 140;
+    const hasValidPoster = c.poster && c.poster.startsWith("http");
+    return (
+      <TouchableOpacity
+        key={c.title}
+        style={[styles.posterCard, { width: posterSize }]}
+        onPress={() => openCollectionDetail(c.title)}
+        onLongPress={() => handleLongPressDeleteSeries(c.title)}
+        delayLongPress={600}
+        activeOpacity={0.7}
+      >
+        {hasValidPoster ? (
+          <Image
+            source={{ uri: c.poster }}
+            style={[
+              styles.posterImage,
+              { width: posterSize, height: posterSize * 1.5 },
+            ]}
+          />
+        ) : (
+          <PosterPlaceholder title={c.title} size={posterSize} />
+        )}
+        <ThemedText style={styles.posterTitle} numberOfLines={2}>
+          {c.title}
+        </ThemedText>
+      </TouchableOpacity>
     );
   };
 
-  const handleClearCache = async () => {
-    Alert.alert(
-      "清除缓存",
-      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "确定",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearCache();
-              await calculateCacheSize();
-            } catch (e) {
-              Alert.alert("错误", "清理缓存失败");
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
+  // 主体渲染
+  const renderContent = () => {
+    // 加载中
+    if (loading && items.length === 0 && queue.length === 0) {
+      return (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color="#888" />
+          <ThemedText style={{ marginTop: 12, color: "#888" }}>加载缓存数据...</ThemedText>
+        </View>
+      );
+    }
+
+    // 错误状态
+    if (error && items.length === 0 && queue.length === 0) {
+      return (
+        <View style={styles.centerBox}>
+          <ThemedText style={{ color: "#ff4d4f", marginBottom: 12 }}>加载失败：{error}</ThemedText>
+          <StyledButton text="重试" onPress={loadCache} />
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+        {/* —— 操作栏：全部暂停 + 全部启动（图标） —— */}
+        <View style={styles.actionBar}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => cacheStore.pauseAll()}
+          >
+            <Ionicons name="pause-circle" size={28} color="#ffaa00" />
+            <ThemedText style={styles.actionText}>全部暂停</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => cacheStore.resumeAll()}
+          >
+            <Ionicons name="play-circle" size={28} color="#4CAF50" />
+            <ThemedText style={styles.actionText}>全部启动</ThemedText>
+          </TouchableOpacity>
+        </View>
+
+        {/* —— 并发下载数下拉选择 —— */}
+        <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}>
+          <ThemedText style={styles.concurrencyLabel}>并发下载数：</ThemedText>
+          <TouchableOpacity
+            style={styles.concurrencyPicker}
+            onPress={() => setConcurrencyOpen((prev) => !prev)}
+          >
+            <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
+            <Ionicons
+              name={concurrencyOpen ? "chevron-up" : "chevron-down"}
+              size={20}
+              color="#aaa"
+            />
+          </TouchableOpacity>
+          {concurrencyOpen && (
+            <View style={styles.concurrencyDropdown}>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[
+                    styles.dropdownItem,
+                    val === concurrency && styles.dropdownItemActive,
+                  ]}
+                  onPress={() => {
+                    setConcurrency(val);
+                    setConcurrencyOpen(false);
+                  }}
+                >
+                  <ThemedText
+                    style={[
+                      styles.dropdownItemText,
+                      val === concurrency && styles.dropdownItemTextActive,
+                    ]}
+                  >
+                    {val}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* —— 下载列表标题 + 计数 —— */}
+        <View style={styles.listHeader}>
+          <ThemedText style={styles.listTitle}>下载列表</ThemedText>
+          <ThemedText style={styles.listCount}>
+            队列中 {queuedCount} 集，已完成 {completedCount} 集
+          </ThemedText>
+        </View>
+
+        {/* —— 海报网格 —— */}
+        {combinedCollections.length === 0 ? (
+          <View style={styles.centerBox}>
+            <ThemedText type="subtitle">暂无缓存内容</ThemedText>
+            <ThemedText style={{ color: "#666", marginTop: 8 }}>
+              去详情页选择剧集进行缓存
+            </ThemedText>
+          </View>
+        ) : (
+          <View style={styles.gridContainer}>
+            {combinedCollections.map((c) => renderPosterCard(c))}
+          </View>
+        )}
+
+        {/* —— 底部：存储管理 —— */}
+        <View style={styles.footerSection}>
+          <ThemedText style={styles.sectionTitle}>存储管理</ThemedText>
+
+          <View style={styles.storageRow}>
+            <View style={styles.storageInfo}>
+              <ThemedText style={styles.storageLabel}>已下载视频占用</ThemedText>
+              <ThemedText style={styles.storageValue}>{cacheSize}</ThemedText>
+            </View>
+            <StyledButton
+              onPress={handleClearCache}
+              disabled={clearing}
+              variant="ghost"
+              style={styles.clearButton}
+            >
+              {clearing ? (
+                <ActivityIndicator size="small" color="#ff4d4f" />
+              ) : (
+                <ThemedText style={{ color: "#ff4d4f", fontWeight: "bold" }}>
+                  清除
+                </ThemedText>
+              )}
+            </StyledButton>
+          </View>
+
+          <View style={[styles.storageRow, { marginTop: 12 }]}>
+            <View style={styles.storageInfo}>
+              <ThemedText style={styles.storageLabel}>播放历史记录</ThemedText>
+              <ThemedText style={styles.storageSubtitle}>
+                清除所有视频的观看进度
+              </ThemedText>
+            </View>
+            <StyledButton
+              onPress={handleClearHistory}
+              disabled={clearing}
+              variant="ghost"
+              style={styles.clearButton}
+            >
+              <ThemedText style={{ color: "#ff4d4f", fontWeight: "bold" }}>
+                清除
+              </ThemedText>
+            </StyledButton>
+          </View>
+        </View>
+      </ScrollView>
     );
   };
-
-  const handleClearHistory = async () => {
-    Alert.alert(
-      "清除播放记录",
-      "确定要清除所有播放历史吗？此操作不可撤销。",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "确定",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await PlayRecordManager.clearAll();
-              Toast.show({
-                type: "success",
-                text1: "播放历史已清除",
-              });
-            } catch (e) {
-              Alert.alert("错误", "清理失败");
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const queuedCount = React.useMemo(
-    () => queue.reduce((count, group) => count + group.episodes.filter((ep) => ep.status === 'queued' || ep.status === 'pending' || ep.status === 'downloading').length, 0),
-    [queue]
-  );
 
   return (
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
-      <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {/* 操作栏 */}
-          <View style={styles.actionBar}>
-            <StyledButton
-              text="全部暂停"
-              onPress={() => cacheStore.pauseAll()}
-              style={styles.actionButton}
-              variant="default"
-            />
-            <StyledButton
-              text="全部启动"
-              onPress={() => cacheStore.resumeAll()}
-              style={styles.actionButton}
-              variant="primary"
-            />
-          </View>
-
-          {/* 并发设置 */}
-          <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}>
-            <TouchableOpacity
-              style={styles.concurrencySelector}
-              onPress={() => setConcurrencyOpen((open) => !open)}
-            >
-              <ThemedText style={styles.concurrencyLabel}>并发下载：当前最大并行任务数</ThemedText>
-              <View style={styles.selectorValueWrap}>
-                <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
-                <ThemedText style={styles.concurrencyArrow}>{concurrencyOpen ? '▲' : '▼'}</ThemedText>
-              </View>
-            </TouchableOpacity>
-            {concurrencyOpen && (
-              <View style={styles.concurrencyOptions}>
-                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
-                  <StyledButton
-                    key={value}
-                    text={`${value}`}
-                    onPress={() => {
-                      setConcurrency(value);
-                      setConcurrencyOpen(false);
-                    }}
-                    isSelected={value === concurrency}
-                    variant={value === concurrency ? 'primary' : 'default'}
-                    style={styles.optionButton}
-                    textStyle={styles.optionText}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-
-          {/* 下载列表 */}
-          <View style={{ marginBottom: spacing }}>
-            <View style={styles.headerRow}>
-              <ThemedText style={styles.title}>下载列表</ThemedText>
-              <ThemedText style={styles.headerCount}>
-                队列中 {queuedCount} 集，已完成 {items.length} 集
-              </ThemedText>
-            </View>
-
-            {combinedCollections.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <ThemedText type="subtitle">暂无缓存内容</ThemedText>
-              </View>
-            ) : (
-              <View style={styles.grid}>
-                {combinedCollections.map((c) => (
-                  <View key={c.title} style={styles.posterCard}>
-                    <TouchableOpacity
-                      onPress={() => openCollectionDetail(c.title)}
-                      onLongPress={() => handleLongPressDeleteSeries(c.title)}
-                      delayLongPress={600}
-                    >
-                      <Image source={{ uri: c.poster }} style={styles.posterLarge} />
-                      <ThemedText style={styles.posterTitle} numberOfLines={2}>{c.title}</ThemedText>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {/* 底部清理模块 */}
-          <View style={styles.footerSection}>
-             <ThemedText style={styles.sectionTitle}>存储管理</ThemedText>
-
-             <View style={styles.storageRow}>
-               <View style={styles.storageInfo}>
-                 <ThemedText style={styles.storageLabel}>已下载视频占用</ThemedText>
-                 <ThemedText style={styles.storageValue}>{cacheSize}</ThemedText>
-               </View>
-               <StyledButton
-                 onPress={handleClearCache}
-                 disabled={clearing}
-                 style={styles.clearButton}
-                 variant="ghost"
-               >
-                 {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={{ color: '#ff4d4f', fontWeight: 'bold' }}>清除视频</ThemedText>}
-               </StyledButton>
-             </View>
-
-             <View style={[styles.storageRow, { marginTop: 12 }]}>
-               <View style={styles.storageInfo}>
-                 <ThemedText style={styles.storageLabel}>播放历史记录</ThemedText>
-                 <ThemedText style={styles.storageSubtitle}>清除所有视频的观看进度</ThemedText>
-               </View>
-               <StyledButton
-                 onPress={handleClearHistory}
-                 disabled={clearing}
-                 style={styles.clearButton}
-                 variant="ghost"
-               >
-                 <ThemedText style={{ color: '#ff4d4f', fontWeight: 'bold' }}>清除历史</ThemedText>
-               </StyledButton>
-             </View>
-          </View>
-        </ScrollView>
+      <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}>
+        {renderContent()}
       </ThemedView>
     </ResponsiveNavigation>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  centerBox: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 80,
+  },
+  // ---- 操作栏 ----
   actionBar: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    flexDirection: "row",
+    marginBottom: 20,
+    gap: 16,
   },
   actionButton: {
     flex: 1,
-    minHeight: 44,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerCount: {
-    color: '#aaa',
-    fontSize: 14,
-  },
-  emptyBox: {
-    paddingTop: 60,
-    alignItems: "center",
-  },
-  card: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    backgroundColor: "#1f1f1f",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderRadius: 12,
-    overflow: "hidden",
+    paddingVertical: 12,
+    gap: 8,
   },
-  poster: {
-    width: 120,
-    height: 170,
+  actionText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#eee",
   },
-  progressWrap: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  progressBarBackground: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#333',
-    borderRadius: 6,
-    overflow: 'hidden',
-    marginRight: 8,
-  },
-  progressBarFill: {
-    height: 8,
-    backgroundColor: '#00bb5e',
-  },
-  progressPercentage: {
-    marginTop: 4,
-    color: '#ccc',
-    fontSize: 12,
-    textAlign: 'right',
-  },
-  progressText: {
-    color: '#ddd',
-    fontSize: 12,
-    minWidth: 36,
-    textAlign: 'right',
-  },
-  currentStatusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#141414',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
-  },
-  currentStatusLabel: {
-    color: '#aaa',
-    fontSize: 13,
-  },
-  currentStatusValue: {
-    color: '#fff',
-    fontSize: 13,
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
-    marginLeft: 12,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    padding: 10,
-  },
-  groupPoster: {
-    width: 80,
-    height: 100,
-    borderRadius: 6,
-    marginRight: 12,
-    marginBottom: 8,
-  },
-  groupMeta: {
-    flex: 1,
-    minWidth: 140,
-    marginBottom: 8,
-  },
-  groupActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    minWidth: 120,
-  },
-  groupActionButton: {
-    minWidth: 68,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  episodeActionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    minWidth: 120,
-  },
-  episodeActionButton: {
-    minWidth: 64,
-    marginBottom: 4,
-  },
-  content: {
-    flex: 1,
-    padding: 14,
-    justifyContent: "space-between",
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 8,
-  },
-  meta: {
-    color: "#bbb",
-    marginBottom: 6,
-  },
-  actions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  actionButton: {
-    marginRight: 10,
-  },
+  // ---- 并发选择器 ----
   concurrencyContainer: {
-    backgroundColor: '#1d1d1d',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1d1d1d",
     borderRadius: 12,
-    padding: 14,
-  },
-  concurrencySelector: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3a3a3c',
     paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: 12,
+    position: "relative",
+    zIndex: 10,
   },
   concurrencyLabel: {
-    color: '#bbb',
-    fontSize: 14,
+    fontSize: 15,
+    color: "#ccc",
+    marginRight: 12,
   },
-  selectorValueWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  concurrencyPicker: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2a2a2a",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  concurrencyValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#fff",
+    minWidth: 20,
+    textAlign: "center",
+  },
+  concurrencyDropdown: {
+    position: "absolute",
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: "#2a2a2a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#3a3a3c",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 8,
     gap: 6,
+    zIndex: 100,
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  concurrencyArrow: {
-    color: '#ccc',
+  dropdownItem: {
+    width: "18%",
+    aspectRatio: 1.5,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  dropdownItemActive: {
+    backgroundColor: "#4A90D9",
+  },
+  dropdownItemText: {
     fontSize: 14,
+    color: "#ccc",
+    fontWeight: "500",
   },
-  concurrencyOptions: {
-    marginTop: 10,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'space-between',
+  dropdownItemTextActive: {
+    color: "#fff",
+    fontWeight: "bold",
   },
-  optionButton: {
-    minWidth: 52,
-    marginBottom: 10,
+  // ---- 列表标题 ----
+  listHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
-  optionText: {
-    textAlign: 'center',
+  listTitle: {
+    fontSize: 17,
+    fontWeight: "bold",
+    color: "#fff",
   },
+  listCount: {
+    fontSize: 13,
+    color: "#aaa",
+  },
+  // ---- 海报网格 ----
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    gap: 12,
+  },
+  posterCard: {
+    alignItems: "center",
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  posterImage: {
+    borderRadius: 8,
+    backgroundColor: "#1a1a1a",
+  },
+  posterTitle: {
+    fontSize: 12,
+    color: "#ddd",
+    marginTop: 4,
+    textAlign: "center",
+    width: "100%",
+  },
+  // ---- 存储管理 ----
   footerSection: {
-    marginTop: 24,
+    marginTop: 32,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: "rgba(255,255,255,0.08)",
     marginBottom: 40,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 16,
-    color: '#fff',
+    color: "#fff",
   },
   storageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 12,
-    borderRadius: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    padding: 14,
+    borderRadius: 10,
   },
   storageInfo: {
     flex: 1,
   },
   storageLabel: {
     fontSize: 15,
-    fontWeight: '500',
-    color: '#eee',
+    fontWeight: "500",
+    color: "#eee",
   },
   storageValue: {
     fontSize: 13,
-    color: '#888',
+    color: "#888",
     marginTop: 2,
   },
   storageSubtitle: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
     marginTop: 2,
   },
   clearButton: {
     minWidth: 80,
-    height: 36,
+    height: 38,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
