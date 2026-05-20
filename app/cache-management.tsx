@@ -14,7 +14,6 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 
-// 海报占位组件：当海报 url 无效时显示剧名首字符
 function PosterPlaceholder({ title, size }: { title: string; size: number }) {
   const initial = title ? title.charAt(0).toUpperCase() : "?";
   const colors = ["#4A90D9", "#7B68EE", "#E91E63", "#FF9800", "#4CAF50", "#00BCD4"];
@@ -62,6 +61,7 @@ export default function CacheManagementScreen() {
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const [cacheSize, setCacheSize] = useState<string>("0 MB");
   const [clearing, setClearing] = useState(false);
+  const [deletingTitle, setDeletingTitle] = useState<string | null>(null);
 
   const calculateCacheSize = useCallback(async () => {
     try {
@@ -130,9 +130,14 @@ export default function CacheManagementScreen() {
         text: "删除全部",
         style: "destructive",
         onPress: async () => {
-          await removeSeries(title);
-          await loadCache();
-          await calculateCacheSize();
+          setDeletingTitle(title);
+          try {
+            await removeSeries(title);
+            await loadCache();
+            await calculateCacheSize();
+          } finally {
+            setDeletingTitle(null);
+          }
         },
       },
     ]);
@@ -178,10 +183,10 @@ export default function CacheManagementScreen() {
     ]);
   };
 
-  // 渲染海报网格项
   const renderPosterCard = (c: { title: string; poster: string }) => {
     const posterSize = isMobile ? 110 : 140;
     const hasValidPoster = c.poster && c.poster.startsWith("http");
+    const isDeleting = deletingTitle === c.title;
     return (
       <TouchableOpacity
         key={c.title}
@@ -190,8 +195,18 @@ export default function CacheManagementScreen() {
         onLongPress={() => handleLongPressDeleteSeries(c.title)}
         delayLongPress={600}
         activeOpacity={0.7}
+        disabled={isDeleting}
       >
-        {hasValidPoster ? (
+        {isDeleting ? (
+          <View
+            style={[
+              styles.posterImage,
+              { width: posterSize, height: posterSize * 1.5, justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' },
+            ]}
+          >
+            <ActivityIndicator size="large" color="#00bb5e" />
+          </View>
+        ) : hasValidPoster ? (
           <Image
             source={{ uri: c.poster }}
             style={[
@@ -233,64 +248,62 @@ export default function CacheManagementScreen() {
 
     return (
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {/* —— 操作栏：全部暂停 + 全部启动（图标） —— */}
+        {/* —— 操作栏：全部暂停（图标）+ 全部启动（图标）+ 并发下载 —— */}
         <View style={styles.actionBar}>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => cacheStore.pauseAll()}
           >
-            <Ionicons name="pause-circle" size={28} color="#ffaa00" />
-            <ThemedText style={styles.actionText}>全部暂停</ThemedText>
+            <Ionicons name="pause-circle" size={32} color="#ffaa00" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => cacheStore.resumeAll()}
           >
-            <Ionicons name="play-circle" size={28} color="#4CAF50" />
-            <ThemedText style={styles.actionText}>全部启动</ThemedText>
+            <Ionicons name="play-circle" size={32} color="#4CAF50" />
           </TouchableOpacity>
-        </View>
 
-        {/* —— 并发下载数下拉选择 —— */}
-        <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}>
-          <ThemedText style={styles.concurrencyLabel}>并发下载数：</ThemedText>
-          <TouchableOpacity
-            style={styles.concurrencyPicker}
-            onPress={() => setConcurrencyOpen((prev) => !prev)}
-          >
-            <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
-            <Ionicons
-              name={concurrencyOpen ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#aaa"
-            />
-          </TouchableOpacity>
-          {concurrencyOpen && (
-            <View style={styles.concurrencyDropdown}>
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
-                <TouchableOpacity
-                  key={val}
-                  style={[
-                    styles.dropdownItem,
-                    val === concurrency && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    setConcurrency(val);
-                    setConcurrencyOpen(false);
-                  }}
-                >
-                  <ThemedText
+          {/* 并发下载数 - 放在同一排 */}
+          <View style={styles.concurrencyContainer}>
+            <ThemedText style={styles.concurrencyLabel}>并发：</ThemedText>
+            <TouchableOpacity
+              style={styles.concurrencyPicker}
+              onPress={() => setConcurrencyOpen((prev) => !prev)}
+            >
+              <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
+              <Ionicons
+                name={concurrencyOpen ? "chevron-up" : "chevron-down"}
+                size={16}
+                color="#aaa"
+              />
+            </TouchableOpacity>
+            {concurrencyOpen && (
+              <View style={styles.concurrencyDropdown}>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
+                  <TouchableOpacity
+                    key={val}
                     style={[
-                      styles.dropdownItemText,
-                      val === concurrency && styles.dropdownItemTextActive,
+                      styles.dropdownItem,
+                      val === concurrency && styles.dropdownItemActive,
                     ]}
+                    onPress={() => {
+                      setConcurrency(val);
+                      setConcurrencyOpen(false);
+                    }}
                   >
-                    {val}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+                    <ThemedText
+                      style={[
+                        styles.dropdownItemText,
+                        val === concurrency && styles.dropdownItemTextActive,
+                      ]}
+                    >
+                      {val}
+                    </ThemedText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
 
         {/* —— 下载列表标题 + 计数 —— */}
@@ -386,59 +399,55 @@ const styles = StyleSheet.create({
   // ---- 操作栏 ----
   actionBar: {
     flexDirection: "row",
-    marginBottom: 20,
-    gap: 16,
+    marginBottom: 16,
+    gap: 8,
+    alignItems: "center",
   },
   actionButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    paddingVertical: 12,
-    gap: 8,
+    alignItems: "center",
   },
-  actionText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#eee",
-  },
-  // ---- 并发选择器 ----
+  // ---- 并发选择器（内嵌在操作栏中） ----
   concurrencyContainer: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1d1d1d",
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     position: "relative",
     zIndex: 10,
+    height: 52,
   },
   concurrencyLabel: {
-    fontSize: 15,
+    fontSize: 13,
     color: "#ccc",
-    marginRight: 12,
+    marginRight: 4,
   },
   concurrencyPicker: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#2a2a2a",
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 4,
   },
   concurrencyValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "bold",
     color: "#fff",
-    minWidth: 20,
+    minWidth: 18,
     textAlign: "center",
   },
   concurrencyDropdown: {
     position: "absolute",
-    top: 52,
+    top: 56,
     left: 0,
     right: 0,
     backgroundColor: "#2a2a2a",
