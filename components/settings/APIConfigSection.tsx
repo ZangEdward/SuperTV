@@ -20,7 +20,7 @@ export interface APIConfigSectionRef {
 
 export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSectionProps>(
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
-    const { setApiBaseUrl } = useSettingsStore();
+    const { setApiBaseUrl, autoSelectFastestApi } = useSettingsStore();
 
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {
@@ -28,6 +28,10 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         onChanged();
       },
     }));
+
+    const handleOptimize = async () => {
+      await autoSelectFastestApi();
+    };
 
     return (
       <SettingsSection
@@ -38,11 +42,18 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
         <View style={styles.container} onFocus={onFocus} onBlur={onBlur}>
           <View style={styles.headerRow}>
             <ThemedText style={styles.title}>服务器节点</ThemedText>
+            <StyledButton
+              onPress={handleOptimize}
+              onFocus={onFocus}
+              style={styles.preferButton}
+            >
+              <ThemedText style={styles.preferButtonText}>节点优选</ThemedText>
+            </StyledButton>
           </View>
 
           {!hideDescription && (
             <ThemedText style={styles.subtitle}>
-              手动切换服务器节点
+              手动切换服务器节点，点击【节点优选】自动测试并切换到最快节点
             </ThemedText>
           )}
 
