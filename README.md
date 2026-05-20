@@ -94,6 +94,17 @@ EXPO_PUBLIC_API_NODES_JSON='[{"key":"local","label":"测试节点","url":"https:
 └── ...
 ```
 
+## 🙏 致谢
+
+本项目深受以下优秀开源项目的启发或基于其代码构建：
+
+- [zimplexing/oriontv](https://github.com/zimplexing/oriontv) - 基础框架与核心逻辑来源
+- [MoonTechLab/LunaTV](https://github.com/MoonTechLab/LunaTV)  - 优秀的电视端 UI 设计参考
+- [4thline/cling](https://github.com/4thline/cling) - 经典的 UPnP/DLNA 协议栈参考
+- [react-native-tvos/react-native-tvos](https://github.com/react-native-tvos/react-native-tvos) - 优秀的 TV 适配框架
+- [expo/expo](https://github.com/expo/expo) - 强大的 React Native 开发工具链
+- [lucide-icons/lucide](https://github.com/lucide-icons/lucide) - 优美的图标库
+
 ## 📜 License
 
 本项目采用 MIT 许可证。
