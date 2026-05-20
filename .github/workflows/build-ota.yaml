@@ -1,6 +1,8 @@
 name: Build and Deploy OTA
 
 on:
+  push:
+    branches: [ "main", "master" ]
   workflow_dispatch:
     inputs:
       job_type:
@@ -120,7 +122,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT }}
 
       - name: Upload APK artifact (for OTA job)
-        if: ${{ github.event.inputs.job_type == 'ota' }}
+        if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
@@ -129,7 +131,7 @@ jobs:
   ota:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.job_type == 'ota' }}
+    if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
 
     steps:
       - name: Checkout

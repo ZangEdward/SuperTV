@@ -1,9 +1,8 @@
 ﻿加速功能，# SuperTV 📺代码源自  zimplexing/oriontv
 
-不建议个人使用，因代码已被定制化。
-
 一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。以下内容均为AI修改
 
+请不要使用我编译好的版本，因为私人站点不开放注册，需要ota的请自行修改[UpdateConfig.ts](constants/UpdateConfig.ts)相关url
 ## ✨ 功能特性
 
 - **框架跨平台支持**: 同时支持构建 Apple TV 和 Android TV。
@@ -16,7 +15,6 @@
 ## 🚀 部署与开发配置
 
 ### 1. 服务器节点配置 (Secrets)
-为了保护后端地址不被泄露，项目已移除硬编码的服务器 URL。请在部署或运行前进行以下配置：
 
 #### 线上环境 (GitHub Actions)
 在 GitHub 仓库的 `Settings -> Secrets and variables -> Actions` 中添加以下 Secret：
@@ -36,8 +34,8 @@ EXPO_PUBLIC_API_NODES_JSON='[{"key":"local","label":"测试节点","url":"https:
 ```
 
 ### 2. 构建与运行
-直接运行对应的 `yarn` 脚本即可开始构建。
-
+参考zimplexing/oriontv项目文件，直接运行对应的 `yarn` 脚本即可开始构建。
+（建议还是使用action进行编译）
 ---
 
 📝 版本更新历史 (Changelog)
