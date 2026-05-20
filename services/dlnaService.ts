@@ -164,8 +164,8 @@ class DLNAService {
         this.lastResponseTime = Date.now();
         this.scheduleBackoffRetry();
 
-        // 处理 M-SEARCH 响应 (HTTP 200 OK) 和 NOTIFY 广播
-        if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY * HTTP/1.1') || data.includes('NOTIFY')) {
+        // 增强 SSDP 消息解析逻辑，兼容更多电视品牌
+        if (data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY')) {
           this.handleSSDPMessage(data, rinfo.address);
         }
       });
@@ -174,33 +174,44 @@ class DLNAService {
         logger.warn('[DLNA] recv socket error:', err);
         if (this.scanning) {
           this.closeSockets();
-          this.startRecvSocket(onReady);
+          setTimeout(() => this.startRecvSocket(onReady), 1000);
         }
       });
 
-      // 绑定随机端口，然后加入组播
-      socket.bind(0, () => {
-        const addr: any = socket.address();
-        this.listenPort = addr?.port || 0;
-        logger.info('[DLNA] Recv socket bound to random port ' + this.listenPort);
+      // 绑定 1900 端口尝试（仅为了接收 NOTIFY），如果失败则绑定 0
+      const tryBind = (port: number) => {
+        socket.bind(port, () => {
+          const addr: any = socket.address();
+          this.listenPort = addr?.port || 0;
+          logger.info('[DLNA] Recv socket bound to port ' + this.listenPort);
 
-        try {
-          socket.addMembership(this.SSDP_ADDR);
-          logger.info('[DLNA] Successfully joined multicast group ' + this.SSDP_ADDR);
-        } catch (e: any) {
-          logger.warn('[DLNA] Failed to join multicast:', e?.message || e);
-        }
+          try {
+            socket.addMembership(this.SSDP_ADDR);
+            logger.info('[DLNA] Successfully joined multicast group ' + this.SSDP_ADDR);
+          } catch (e: any) {
+            logger.warn('[DLNA] Failed to join multicast:', e?.message || e);
+          }
 
-        try {
-          socket.setBroadcast(true);
-        } catch (_) {}
+          try {
+            socket.setBroadcast(true);
+            socket.setMulticastLoopbackMode(true);
+            socket.setMulticastTTL(4);
+          } catch (_) {}
 
-        onReady();
-        this.scheduleBackoffRetry();
-      });
+          onReady();
+          this.scheduleBackoffRetry();
+        });
+      };
+
+      // 优先尝试绑定 1900，失败则回退到随机端口
+      try {
+        tryBind(0);
+      } catch (e) {
+        tryBind(0);
+      }
     } catch (error) {
       logger.error('[DLNA] Failed to create recv socket:', error);
-      onReady(); // 即使失败也继续
+      onReady();
     }
   }
 
