@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import useDetailStore, { SearchResultWithResolution } from "@/stores/detailStore";
-import useCacheStore from "@/stores/cacheStore";
+import useCacheStore, { GroupedDownload } from "@/stores/cacheStore";
 import { Alert } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -16,7 +16,7 @@ export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
   const router = useRouter();
   const { detail, searchResults, loading, error, init, setDetail } = useDetailStore();
-  const { downloadEpisode, currentDownloadId, enqueueSeries } = useCacheStore();
+  const { downloadEpisode, currentDownloadId, enqueueSeries, items, queue } = useCacheStore();
   const [showAllSources, setShowAllSources] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResultWithResolution | null>(null);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -196,14 +196,30 @@ export default function CacheScreen() {
               {selectedSource?.episodes.map((episode, index) => {
                 const buttonId = `${selectedSource.source}_${selectedSource.id}_${index}`;
                 const isSelected = selectedEpisodes.includes(index);
+                const isCached = items.some(it => it.episodeIndex === index && it.title === selectedSource?.title);
+                const isDownloading = queue.some(g =>
+                  g.title === selectedSource?.title &&
+                  g.episodes.some(ep => ep.index === index && (ep.status === 'downloading' || ep.status === 'queued' || ep.status === 'pending' || ep.status === 'paused'))
+                );
+                const isDisabled = isCached || isDownloading;
                 return (
                   <StyledButton
                     key={buttonId}
-                    onPress={() => toggleEpisodeSelection(index)}
-                    variant={isSelected ? "primary" : "default"}
-                    style={dynamicStyles.episodeButton}
-                    text={`第 ${index + 1} 集`}
-                    textStyle={isSelected ? dynamicStyles.selectedEpisodeText : undefined}
+                    onPress={() => !isDisabled && toggleEpisodeSelection(index)}
+                    variant={isSelected ? "primary" : isCached ? "default" : isDownloading ? "default" : "default"}
+                    style={[
+                      dynamicStyles.episodeButton,
+                      isCached && { backgroundColor: 'rgba(33, 150, 243, 0.2)', borderColor: '#2196F3' },
+                      isDownloading && { backgroundColor: 'rgba(244, 67, 54, 0.2)', borderColor: '#F44336' },
+                      isDisabled && { opacity: 0.6 },
+                    ]}
+                    text={`第 ${index + 1} 集${isCached ? ' ✓已缓存' : isDownloading ? ' ⏳缓存中' : ''}`}
+                    textStyle={[
+                      isSelected ? dynamicStyles.selectedEpisodeText : undefined,
+                      isCached && { color: '#2196F3' },
+                      isDownloading && { color: '#F44336' },
+                    ]}
+                    disabled={isDisabled}
                   />
                 );
               })}

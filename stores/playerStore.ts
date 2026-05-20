@@ -146,7 +146,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
       set({
         isLoading: false,
-        currentEpisodeIndex: 0,
+        currentEpisodeIndex: episodeIndex,
         initialPosition: position || 0,
         playbackRate: 1.0,
         episodes: [{ url: fileUri, title: title || '离线视频' }],

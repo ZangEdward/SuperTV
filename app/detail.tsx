@@ -14,6 +14,7 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowUpDown, Zap, Info, List, Server, Cpu } from "lucide-react-native";
 import { Colors } from "@/constants/Colors";
+import useCacheStore from "@/stores/cacheStore";
 
 export default function DetailScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
@@ -63,6 +64,28 @@ export default function DetailScreen() {
         episodeIndex: episodeIndex.toString(),
       },
     });
+  };
+  // 获取某集的缓存状态
+  const getEpisodeCacheStatus = (episodeIndex: number) => {
+    if (!detail) return { isCached: false, isDownloading: false };
+    const isCached = items.some(it => it.episodeIndex === episodeIndex && it.title === detail.title);
+    const isDownloading = queue.some(g =>
+      g.title === detail.title &&
+      g.episodes.some(ep => ep.index === episodeIndex && ep.status !== 'completed')
+    );
+    return { isCached, isDownloading };
+  };
+
+
+  // 获取某集的缓存状态
+  const getEpisodeCacheStatus = (episodeIndex: number) => {
+    if (!detail) return { isCached: false, isDownloading: false };
+    const isCached = items.some(it => it.episodeIndex === episodeIndex && it.title === detail.title);
+    const isDownloading = queue.some(g =>
+      g.title === detail.title &&
+      g.episodes.some(ep => ep.index === episodeIndex && ep.status !== 'completed')
+    );
+    return { isCached, isDownloading };
   };
 
   const handleOpenCache = () => {
@@ -151,26 +174,38 @@ export default function DetailScreen() {
             <View style={styles.sectionHeaderRow}>
               <ThemedText style={styles.tvSectionTitle}>播放源 ({searchResults.length})</ThemedText>
               <StyledButton
-                onPress={handleOptimize}
-                disabled={isOptimizing}
-                variant="ghost"
-                style={styles.optimizeBtn}
-              >
-                <Cpu size={16} color={Colors.dark.primary} />
-                <Text style={styles.optimizeText}>{isOptimizing ? "优化中..." : "线路优化"}</Text>
-              </StyledButton>
+              {detail.episodes.map((_, index) => {
+                                            const { isCached, isDownloading } = getEpisodeCacheStatus(index);
+                                            let btnStyle = styles.tvEpisodeBtn;
+                                            if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.2)' };
+                                            else if (isCached) btnStyle = { ...btnStyle, backgroundColor: 'rgba(33,150,243,0.2)' };
+                                            return (
+                                              <StyledButton
+                                                key={index}
+                                                onPress={() => handlePlay(index)}
+                                                style={btnStyle}
+                                                text={`第 ${index + 1} 集`}
+                                              />
+                                            );
+                                          })}
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tvSourceList}>
               {searchResults.map((item, index) => (
                 <StyledButton
-                  key={index}
-                  onPress={() => setDetail(item)}
-                  isSelected={detail.source === item.source}
-                  style={styles.tvSourceBtn}
-                >
-                  <Text style={styles.tvSourceBtnText}>{item.source_name}</Text>
-                </StyledButton>
-              ))}
+              {detail.episodes.map((_, index) => {
+                                            const { isCached, isDownloading } = getEpisodeCacheStatus(index);
+                                            let btnStyle = styles.tvEpisodeBtn;
+                                            if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.2)' };
+                                            else if (isCached) btnStyle = { ...btnStyle, backgroundColor: 'rgba(33,150,243,0.2)' };
+                                            return (
+                                              <StyledButton
+                                                key={index}
+                                                onPress={() => handlePlay(index)}
+                                                style={btnStyle}
+                                                text={`第 ${index + 1} 集`}
+                                              />
+                                            );
+                                          })}
             </ScrollView>
             <ThemedText style={styles.tvSectionTitle}>选集</ThemedText>
             <View style={styles.tvEpisodeGrid}>
@@ -343,6 +378,32 @@ const styles = StyleSheet.create({
   paneHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   paneTitle: { color: '#888', fontSize: 13 },
   mobileOptimizeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0, 187, 94, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  episodeBoxCached: {
+    borderColor: '#2196F3',
+    backgroundColor: 'rgba(33, 150, 243, 0.1)',
+  },
+  episodeBoxDownloading: {
+    borderColor: '#F44336',
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+  },
+  badgeDownloading: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F44336',
+  },
+  badgeCached: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2196F3',
+  },
   mobileOptimizeText: { color: Colors.dark.primary, fontSize: 11, fontWeight: 'bold' },
   episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
   episodeBtn: { width: '20%', aspectRatio: 1, padding: 4 },
