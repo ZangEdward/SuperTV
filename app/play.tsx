@@ -106,7 +106,7 @@ export default function PlayScreen() {
       loadVideo({
         source: source || 'local',
         id: id || 'local',
-        episodeIndex: 0,
+        episodeIndex: initialEpIndex,
         position,
         title: title || '离线播放',
         fileUri

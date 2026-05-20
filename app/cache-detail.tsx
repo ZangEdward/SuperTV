@@ -81,14 +81,15 @@ export default function CacheDetailScreen() {
     return list.sort((a, b) => a.index - b.index);
   }, [items, queue, title, downloadProgress]);
 
-  const handlePlay = (fileUri: string, epTitle: string) => {
+  const handlePlay = (fileUri: string, epTitle: string, episodeIndex: number = 0) => {
     const playTitle = `${movieInfo.title} ${epTitle}`;
     router.push({
       pathname: "/play",
       params: {
         title: playTitle,
         fileUri: fileUri,
-        q: movieInfo.title
+        q: movieInfo.title,
+        episodeIndex: episodeIndex.toString()
       }
     });
   };
@@ -202,7 +203,7 @@ export default function CacheDetailScreen() {
             <>
               <StyledButton
                 variant="primary"
-                onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle)}
+                onPress={() => item.fileUri && handlePlay(item.fileUri, epTitle, item.index)}
                 text="▶ 播放"
               />
               <StyledButton
