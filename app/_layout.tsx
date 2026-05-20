@@ -119,9 +119,10 @@ export default function RootLayout() {
               <Stack screenOptions={({ route }) => {
                 const params = route.params as any;
                 const noAnim = params?.noAnim === 'true';
+                const isMobile = responsiveConfig.deviceType === 'mobile';
 
                 let animation: any = 'fade';
-                if (noAnim) {
+                if (noAnim && !isMobile) {
                   animation = 'none';
                 }
 
@@ -129,7 +130,9 @@ export default function RootLayout() {
                   headerShown: false,
                   contentStyle: { backgroundColor: Colors.dark.background },
                   animation: animation,
-                  gestureEnabled: false,
+                  animationDuration: isMobile ? 300 : 200,
+                  gestureEnabled: isMobile,
+                  fullScreenGestureEnabled: isMobile,
                 };
               }}>
                 <Stack.Screen name="index" options={{ gestureEnabled: false }} />
