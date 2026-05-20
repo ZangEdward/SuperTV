@@ -136,7 +136,9 @@ export function CacheSection() {
             <ThemedText style={[styles.buttonText, { color: '#ff4d4f' }]}>清除历史</ThemedText>
           </StyledButton>
         </View>
+        {/* End of row */}
       </View>
+      {/* End of container */}
     </SettingsSection>
   );
 }
