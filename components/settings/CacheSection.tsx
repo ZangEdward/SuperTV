@@ -17,48 +17,7 @@ export function CacheSection() {
 
   const { clearCache } = useCacheStore();
   const [clearing, setClearing] = useState(false);
-  const [cacheSize, setCacheSize] = useState<string>("0 MB");
 
-  useEffect(() => {
-    if (isMobile) calculateCacheSize();
-  }, [isMobile]);
-
-  const calculateCacheSize = async () => {
-    try {
-      const totalSize = await CacheService.calculateCacheSize();
-      setCacheSize((totalSize / (1024 * 1024)).toFixed(2) + " MB");
-    } catch (e) {
-      console.warn("计算缓存大小失败:", e);
-    }
-  };
-
-  const handleClearCache = async () => {
-    Alert.alert(
-      "清除缓存",
-      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "确定",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearCache();
-              await calculateCacheSize();
-              Toast.show({
-                type: "success",
-                text1: "缓存已清除",
-              });
-            } catch (e) {
-              Alert.alert("错误", "清理缓存失败");
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   const handleClearHistory = async () => {
       Alert.alert(
@@ -106,21 +65,7 @@ export function CacheSection() {
           </View>
         )}
 
-        {isMobile && (
-          <View style={[styles.row, { marginTop: 16 }]}>
-            <View style={styles.info}>
-              <ThemedText style={styles.label}>已下载缓存</ThemedText>
-              <ThemedText style={styles.value}>{cacheSize}</ThemedText>
-            </View>
-            <StyledButton
-              onPress={handleClearCache}
-              disabled={clearing}
-              style={styles.actionButton}
-            >
-              {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
-            </StyledButton>
-          </View>
-        )}
+
 
         <View style={[styles.row, { marginTop: isMobile ? 16 : 0 }]}>
           <View style={styles.info}>

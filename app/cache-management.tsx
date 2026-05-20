@@ -19,6 +19,21 @@ export default function CacheManagementScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { spacing } = responsiveConfig;
+  const [cacheSize, setCacheSize] = useState<string>("0 MB");
+
+  useEffect(() => {
+    if (isMobile) calculateCacheSize();
+  }, [isMobile]);
+
+  const calculateCacheSize = async () => {
+    try {
+      const totalSize = await CacheService.calculateCacheSize();
+      setCacheSize((totalSize / (1024 * 1024)).toFixed(2) + " MB");
+    } catch (e) {
+      console.warn("计算缓存大小失败:", e);
+    }
+  };
+
 
   useEffect(() => {
     loadCache();
@@ -123,6 +138,21 @@ export default function CacheManagementScreen() {
             </View>
           )}
         </View>
+                {isMobile && (
+                  <View style={[styles.row, { marginTop: 16 }]}>
+                    <View style={styles.info}>
+                      <ThemedText style={styles.label}>已下载缓存</ThemedText>
+                      <ThemedText style={styles.value}>{cacheSize}</ThemedText>
+                    </View>
+                    <StyledButton
+                      onPress={handleClearCache}
+                      disabled={clearing}
+                      style={styles.actionButton}
+                    >
+                      {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
+                    </StyledButton>
+                  </View>
+                )}
         {/* 下载列表 */}
         <View style={{ marginBottom: spacing }}>
           <View style={styles.headerRow}>
@@ -159,7 +189,33 @@ export default function CacheManagementScreen() {
     </ResponsiveNavigation>
   );
 }
-
+  const handleClearCache = async () => {
+    Alert.alert(
+      "清除缓存",
+      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "确定",
+          onPress: async () => {
+            setClearing(true);
+            try {
+              await clearCache();
+              await calculateCacheSize();
+              Toast.show({
+                type: "success",
+                text1: "缓存已清除",
+              });
+            } catch (e) {
+              Alert.alert("错误", "清理缓存失败");
+            } finally {
+              setClearing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 const styles = StyleSheet.create({
   container: {
     flex: 1,
