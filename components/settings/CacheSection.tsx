@@ -13,7 +13,7 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 export function CacheSection() {
   const router = useRouter();
   const { deviceType } = useResponsiveLayout();
-  const isMobile = deviceType === 'mobile';
+  const isNotTV = deviceType !== 'tv';
 
   const { clearCache } = useCacheStore();
   const [clearing, setClearing] = useState(false);
@@ -51,7 +51,7 @@ export function CacheSection() {
       <View style={styles.container}>
         <ThemedText style={styles.title}>存储管理</ThemedText>
 
-        {isMobile && (
+        {isNotTV && (
           <View style={styles.row}>
             <View style={styles.info}>
               <ThemedText style={styles.label}>缓存管理</ThemedText>
@@ -67,7 +67,7 @@ export function CacheSection() {
 
 
 
-        <View style={[styles.row, { marginTop: isMobile ? 16 : 0 }]}>
+        <View style={[styles.row, { marginTop: isNotTV ? 16 : 0 }]}>
           <View style={styles.info}>
             <ThemedText style={styles.label}>播放历史记录</ThemedText>
             <ThemedText style={styles.subtitle}>清除所有视频的观看进度</ThemedText>

@@ -202,23 +202,35 @@ export default function CacheScreen() {
                   g.episodes.some(ep => ep.index === index && (ep.status === 'downloading' || ep.status === 'queued' || ep.status === 'pending' || ep.status === 'paused'))
                 );
                 const isDisabled = isCached || isDownloading;
+
+                let btnStyle: any = [dynamicStyles.episodeButton];
+                let textStyle: any = [isSelected ? dynamicStyles.selectedEpisodeText : undefined];
+                let btnText = `第 ${index + 1} 集`;
+
+                if (isCached) {
+                  btnStyle.push({ backgroundColor: 'rgba(33, 150, 243, 0.2)', borderColor: '#2196F3' });
+                  textStyle.push({ color: '#2196F3' });
+                  btnText += ' ✓已缓存';
+                } else if (isDownloading) {
+                  btnStyle.push({ backgroundColor: 'rgba(244, 67, 54, 0.2)', borderColor: '#F44336' });
+                  textStyle.push({ color: '#F44336' });
+                  btnText += ' ⏳缓存中';
+                } else if (isSelected) {
+                  btnStyle.push({ backgroundColor: Colors.dark.primary, borderColor: Colors.dark.primary });
+                  textStyle.push({ color: '#fff' });
+                }
+
+                if (isDisabled) {
+                  btnStyle.push({ opacity: 0.8 });
+                }
+
                 return (
                   <StyledButton
                     key={buttonId}
                     onPress={() => !isDisabled && toggleEpisodeSelection(index)}
-                    variant={isSelected ? "primary" : isCached ? "default" : isDownloading ? "default" : "default"}
-                    style={[
-                      dynamicStyles.episodeButton,
-                      isCached && { backgroundColor: 'rgba(33, 150, 243, 0.2)', borderColor: '#2196F3' },
-                      isDownloading && { backgroundColor: 'rgba(244, 67, 54, 0.2)', borderColor: '#F44336' },
-                      isDisabled && { opacity: 0.6 },
-                    ]}
-                    text={`第 ${index + 1} 集${isCached ? ' ✓已缓存' : isDownloading ? ' ⏳缓存中' : ''}`}
-                    textStyle={[
-                      isSelected ? dynamicStyles.selectedEpisodeText : undefined,
-                      isCached && { color: '#2196F3' },
-                      isDownloading && { color: '#F44336' },
-                    ]}
+                    style={btnStyle}
+                    text={btnText}
+                    textStyle={textStyle}
                     disabled={isDisabled}
                   />
                 );

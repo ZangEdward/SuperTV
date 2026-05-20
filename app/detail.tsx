@@ -23,9 +23,10 @@ export default function DetailScreen() {
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
-  const isMobile = deviceType === 'mobile';
+  const isTV = deviceType === 'tv';
 
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources'>('episodes');
+
   const [isReverse, setIsReverse] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -43,6 +44,8 @@ export default function DetailScreen() {
     optimizeSources,
   } = useDetailStore();
 
+  const { items, queue } = useCacheStore();
+
   useEffect(() => {
     if (q) {
       init(q, source, id);
@@ -54,6 +57,11 @@ export default function DetailScreen() {
 
   const handlePlay = (episodeIndex: number) => {
     if (!detail) return;
+
+    // 检查是否已有缓存
+    const { isCached } = getEpCacheStatus(episodeIndex);
+    const cachedItem = isCached ? items.find(it => it.episodeIndex === episodeIndex && it.title === detail.title) : null;
+
     abort();
     router.push({
       pathname: "/play",
@@ -62,28 +70,19 @@ export default function DetailScreen() {
         source: detail.source,
         id: detail.id.toString(),
         episodeIndex: episodeIndex.toString(),
+        title: detail.title,
+        fileUri: cachedItem?.fileUri || "", // 如果有缓存则传 fileUri
       },
     });
   };
+
   // 获取某集的缓存状态
-  const getEpisodeCacheStatus = (episodeIndex: number) => {
+  const getEpCacheStatus = (episodeIndex: number) => {
     if (!detail) return { isCached: false, isDownloading: false };
     const isCached = items.some(it => it.episodeIndex === episodeIndex && it.title === detail.title);
     const isDownloading = queue.some(g =>
       g.title === detail.title &&
-      g.episodes.some(ep => ep.index === episodeIndex && ep.status !== 'completed')
-    );
-    return { isCached, isDownloading };
-  };
-
-
-  // 获取某集的缓存状态
-  const getEpisodeCacheStatus = (episodeIndex: number) => {
-    if (!detail) return { isCached: false, isDownloading: false };
-    const isCached = items.some(it => it.episodeIndex === episodeIndex && it.title === detail.title);
-    const isDownloading = queue.some(g =>
-      g.title === detail.title &&
-      g.episodes.some(ep => ep.index === episodeIndex && ep.status !== 'completed')
+      g.episodes.some(ep => ep.index === episodeIndex && ep.status !== 'completed' && ep.status !== 'failed' && ep.status !== 'cancelled')
     );
     return { isCached, isDownloading };
   };
@@ -151,194 +150,215 @@ export default function DetailScreen() {
     );
   }
 
-  if (!isMobile) {
+  if (!isTV) {
     return (
-      <ThemedView style={[commonStyles.container, { paddingTop: 40 }]}>
-        <ScrollView style={styles.tvScrollContainer}>
-          <View style={styles.tvTopContainer}>
-            <Image source={{ uri: detail.poster }} style={styles.tvPoster} />
-            <View style={styles.tvInfoContainer}>
-              <View style={styles.tvTitleRow}>
-                <ThemedText style={styles.tvTitle}>{detail.title}</ThemedText>
-                <StyledButton onPress={toggleFavorite} variant="ghost">
-                  <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={24} color={isFavorited ? "#feff5f" : "#ccc"} />
-                </StyledButton>
+      <ResponsiveNavigation>
+        <ResponsiveHeader
+          title={detail.title}
+          showBackButton
+          rightElement={
+            <TouchableOpacity onPress={toggleFavorite}>
+              <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={20} color={isFavorited ? Colors.dark.primary : "#888"} />
+            </TouchableOpacity>
+          }
+        />
+        <ThemedView style={styles.container}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <View style={styles.posterWrapper}>
+              <Image source={{ uri: detail.poster }} style={styles.mainPoster} resizeMode="cover" />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.8)']}
+                style={styles.posterGradient}
+              />
+              {!isTV && (
+                <TouchableOpacity style={styles.cacheAction} onPress={handleOpenCache}>
+                  <Info size={18} color="white" />
+                  <Text style={styles.cacheText}>下载管理</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.tabSection}>
+              <View style={styles.tabBar}>
+                <TouchableOpacity
+                  style={[styles.tabItem, activeTab === 'episodes' && styles.tabItemActive]}
+                  onPress={() => setActiveTab('episodes')}
+                >
+                  <List size={18} color={activeTab === 'episodes' ? Colors.dark.primary : '#888'} />
+                  <Text style={[styles.tabLabel, activeTab === 'episodes' && styles.tabLabelActive]}>选集</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabItem, activeTab === 'sources' && styles.tabItemActive]}
+                  onPress={() => setActiveTab('sources')}
+                >
+                  <Server size={18} color={activeTab === 'sources' ? Colors.dark.primary : '#888'} />
+                  <Text style={[styles.tabLabel, activeTab === 'sources' && styles.tabLabelActive]}>播放源</Text>
+                </TouchableOpacity>
               </View>
-              <ThemedText style={styles.tvMeta}>{detail.year} · {detail.type_name}</ThemedText>
-              <ScrollView style={{ height: 120, marginTop: 10 }}>
-                <ThemedText style={styles.tvDesc}>{detail.desc}</ThemedText>
-              </ScrollView>
+
+              {activeTab === 'episodes' ? (
+                <View style={styles.tabPane}>
+                  <View style={styles.paneHeader}>
+                    <Text style={styles.paneTitle}>共 {detail.episodes.length} 集</Text>
+                    <TouchableOpacity onPress={() => setIsReverse(!isReverse)}>
+                      <ArrowUpDown size={18} color={isReverse ? Colors.dark.primary : "#888"} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.episodeGrid}>
+                    {episodes.map((ep) => {
+                      const { isCached, isDownloading } = !isTV ? getEpCacheStatus(ep.index) : { isCached: false, isDownloading: false };
+                      return (
+                        <TouchableOpacity
+                          key={ep.index}
+                          style={styles.episodeBtn}
+                          onPress={() => handlePlay(ep.index)}
+                        >
+                          <View style={[
+                            styles.episodeBox,
+                            isCached && styles.episodeBoxCached,
+                            isDownloading && styles.episodeBoxDownloading
+                          ]}>
+                            <Text style={[
+                              styles.episodeText,
+                              (isCached || isDownloading) && { color: 'white' }
+                            ]}>
+                              {(ep.index + 1).toString().padStart(2, '0')}
+                            </Text>
+                            {!isTV && isDownloading && <View style={styles.badgeDownloading} />}
+                            {!isTV && isCached && <View style={styles.badgeCached} />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.tabPane}>
+                  <View style={styles.paneHeader}>
+                    <Text style={styles.paneTitle}>可用源 ({searchResults.length})</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      {!allSourcesLoaded && <ActivityIndicator size="small" color={Colors.dark.primary} />}
+                      <TouchableOpacity
+                        onPress={handleOptimize}
+                        disabled={isOptimizing}
+                        style={styles.mobileOptimizeBtn}
+                      >
+                        <Cpu size={14} color={Colors.dark.primary} />
+                        <Text style={styles.mobileOptimizeText}>{isOptimizing ? "优化中" : "一键优化"}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={styles.sourceGrid}>
+                    {searchResults.map((item, idx) => {
+                      const isSelected = detail.source === item.source;
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          style={[styles.sourceCard, isSelected && styles.sourceCardActive]}
+                          onPress={() => setDetail(item)}
+                        >
+                          <View style={styles.sourceInfo}>
+                            <Text style={[styles.sourceName, isSelected && styles.sourceNameActive]} numberOfLines={1}>{item.source_name}</Text>
+                            <Text style={styles.sourceMeta}>
+                              {item.episodes.length} 集 · {item.resolution || '自动'}
+                              {item.latency !== undefined && item.latency !== Infinity ? ` · ${Math.round(item.latency)}ms` : ''}
+                            </Text>
+                          </View>
+                          {isSelected && <Zap size={14} color={Colors.dark.primary} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
             </View>
-          </View>
-          <View style={styles.tvBottomContainer}>
-            <View style={styles.sectionHeaderRow}>
-              <ThemedText style={styles.tvSectionTitle}>播放源 ({searchResults.length})</ThemedText>
-              <StyledButton
-              {detail.episodes.map((_, index) => {
-                                            const { isCached, isDownloading } = getEpisodeCacheStatus(index);
-                                            let btnStyle = styles.tvEpisodeBtn;
-                                            if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.2)' };
-                                            else if (isCached) btnStyle = { ...btnStyle, backgroundColor: 'rgba(33,150,243,0.2)' };
-                                            return (
-                                              <StyledButton
-                                                key={index}
-                                                onPress={() => handlePlay(index)}
-                                                style={btnStyle}
-                                                text={`第 ${index + 1} 集`}
-                                              />
-                                            );
-                                          })}
+
+            <View style={styles.descSection}>
+              <Text style={styles.descTitle}>剧情简介</Text>
+              <Text style={styles.descText}>{detail.desc || '暂无简介'}</Text>
+              <View style={styles.metaInfo}>
+                <Text style={styles.metaItem}>{detail.year}</Text>
+                <Text style={styles.metaDivider}>·</Text>
+                <Text style={styles.metaItem}>{detail.type_name}</Text>
+              </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tvSourceList}>
-              {searchResults.map((item, index) => (
-                <StyledButton
-              {detail.episodes.map((_, index) => {
-                                            const { isCached, isDownloading } = getEpisodeCacheStatus(index);
-                                            let btnStyle = styles.tvEpisodeBtn;
-                                            if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.2)' };
-                                            else if (isCached) btnStyle = { ...btnStyle, backgroundColor: 'rgba(33,150,243,0.2)' };
-                                            return (
-                                              <StyledButton
-                                                key={index}
-                                                onPress={() => handlePlay(index)}
-                                                style={btnStyle}
-                                                text={`第 ${index + 1} 集`}
-                                              />
-                                            );
-                                          })}
-            </ScrollView>
-            <ThemedText style={styles.tvSectionTitle}>选集</ThemedText>
-            <View style={styles.tvEpisodeGrid}>
-              {detail.episodes.map((_, index) => (
-                <StyledButton
-                  key={index}
-                  onPress={() => handlePlay(index)}
-                  style={styles.tvEpisodeBtn}
-                  text={`第 ${index + 1} 集`}
-                />
-              ))}
-            </View>
-          </View>
-        </ScrollView>
-      </ThemedView>
+          </ScrollView>
+        </ThemedView>
+      </ResponsiveNavigation>
     );
   }
 
   return (
-    <ResponsiveNavigation>
-      <ResponsiveHeader
-        title={detail.title}
-        showBackButton
-        rightElement={
-          <TouchableOpacity onPress={toggleFavorite}>
-            <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={20} color={isFavorited ? Colors.dark.primary : "#888"} />
-          </TouchableOpacity>
-        }
-      />
-      <ThemedView style={styles.container}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={styles.posterWrapper}>
-            <Image source={{ uri: detail.poster }} style={styles.mainPoster} resizeMode="cover" />
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.8)']}
-              style={styles.posterGradient}
-            />
-            <TouchableOpacity style={styles.cacheAction} onPress={handleOpenCache}>
-              <Info size={18} color="white" />
-              <Text style={styles.cacheText}>下载管理</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.tabSection}>
-            <View style={styles.tabBar}>
-              <TouchableOpacity
-                style={[styles.tabItem, activeTab === 'episodes' && styles.tabItemActive]}
-                onPress={() => setActiveTab('episodes')}
-              >
-                <List size={18} color={activeTab === 'episodes' ? Colors.dark.primary : '#888'} />
-                <Text style={[styles.tabLabel, activeTab === 'episodes' && styles.tabLabelActive]}>选集</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tabItem, activeTab === 'sources' && styles.tabItemActive]}
-                onPress={() => setActiveTab('sources')}
-              >
-                <Server size={18} color={activeTab === 'sources' ? Colors.dark.primary : '#888'} />
-                <Text style={[styles.tabLabel, activeTab === 'sources' && styles.tabLabelActive]}>播放源</Text>
-              </TouchableOpacity>
+    <ThemedView style={[commonStyles.container, { paddingTop: 40 }]}>
+      <ScrollView style={styles.tvScrollContainer}>
+        <View style={styles.tvTopContainer}>
+          <Image source={{ uri: detail.poster }} style={styles.tvPoster} />
+          <View style={styles.tvInfoContainer}>
+            <View style={styles.tvTitleRow}>
+              <ThemedText style={styles.tvTitle}>{detail.title}</ThemedText>
+              <StyledButton onPress={toggleFavorite} variant="ghost">
+                <FontAwesome name={isFavorited ? "heart" : "heart-o"} size={24} color={isFavorited ? "#feff5f" : "#ccc"} />
+              </StyledButton>
             </View>
+            <ThemedText style={styles.tvMeta}>{detail.year} · {detail.type_name}</ThemedText>
+            <ScrollView style={{ height: 120, marginTop: 10 }}>
+              <ThemedText style={styles.tvDesc}>{detail.desc}</ThemedText>
+            </ScrollView>
+          </View>
+        </View>
+        <View style={styles.tvBottomContainer}>
+          <View style={styles.sectionHeaderRow}>
+            <ThemedText style={styles.tvSectionTitle}>播放源 ({searchResults.length})</ThemedText>
+            <StyledButton
+              onPress={handleOptimize}
+              disabled={isOptimizing}
+              variant="ghost"
+              style={styles.optimizeBtn}
+            >
+              <Cpu size={16} color={Colors.dark.primary} />
+              <Text style={styles.optimizeText}>{isOptimizing ? "优化中..." : "线路优化"}</Text>
+            </StyledButton>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tvSourceList}>
+            {searchResults.map((item, index) => (
+              <StyledButton
+                key={index}
+                onPress={() => setDetail(item)}
+                isSelected={detail.source === item.source}
+                style={styles.tvSourceBtn}
+              >
+                <Text style={styles.tvSourceBtnText}>{item.source_name}</Text>
+              </StyledButton>
+            ))}
+          </ScrollView>
+          <ThemedText style={styles.tvSectionTitle}>选集</ThemedText>
+          <View style={styles.tvEpisodeGrid}>
+            {detail.episodes.map((_, index) => {
+              const { isCached, isDownloading } = !isTV ? getEpCacheStatus(index) : { isCached: false, isDownloading: false };
+              let btnStyle = styles.tvEpisodeBtn;
+              if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.3)' };
+              else if (isCached) btnStyle = { ...btnStyle, backgroundColor: 'rgba(33,150,243,0.3)' };
 
-            {activeTab === 'episodes' ? (
-              <View style={styles.tabPane}>
-                <View style={styles.paneHeader}>
-                  <Text style={styles.paneTitle}>共 {detail.episodes.length} 集</Text>
-                  <TouchableOpacity onPress={() => setIsReverse(!isReverse)}>
-                    <ArrowUpDown size={18} color={isReverse ? Colors.dark.primary : "#888"} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.episodeGrid}>
-                  {episodes.map((ep) => (
-                    <TouchableOpacity key={ep.index} style={styles.episodeBtn} onPress={() => handlePlay(ep.index)}>
-                      <View style={styles.episodeBox}>
-                        <Text style={styles.episodeText}>{(ep.index + 1).toString().padStart(2, '0')}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <View style={styles.tabPane}>
-                <View style={styles.paneHeader}>
-                  <Text style={styles.paneTitle}>可用源 ({searchResults.length})</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    {!allSourcesLoaded && <ActivityIndicator size="small" color={Colors.dark.primary} />}
-                    <TouchableOpacity
-                      onPress={handleOptimize}
-                      disabled={isOptimizing}
-                      style={styles.mobileOptimizeBtn}
-                    >
-                      <Cpu size={14} color={Colors.dark.primary} />
-                      <Text style={styles.mobileOptimizeText}>{isOptimizing ? "优化中" : "一键优化"}</Text>
-                    </TouchableOpacity>
+              return (
+                <StyledButton
+                  key={index}
+                  onPress={() => handlePlay(index)}
+                  style={btnStyle}
+                >
+                  <View style={{ position: 'relative' }}>
+                    <Text style={styles.tvSourceBtnText}>{`第 ${index + 1} 集`}</Text>
+                    {!isTV && isDownloading && <View style={styles.badgeDownloading} />}
+                    {!isTV && isCached && <View style={styles.badgeCached} />}
                   </View>
-                </View>
-                <View style={styles.sourceGrid}>
-                  {searchResults.map((item, idx) => {
-                    const isSelected = detail.source === item.source;
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        style={[styles.sourceCard, isSelected && styles.sourceCardActive]}
-                        onPress={() => setDetail(item)}
-                      >
-                        <View style={styles.sourceInfo}>
-                          <Text style={[styles.sourceName, isSelected && styles.sourceNameActive]} numberOfLines={1}>{item.source_name}</Text>
-                          <Text style={styles.sourceMeta}>
-                            {item.episodes.length} 集 · {item.resolution || '自动'}
-                            {item.latency !== undefined && item.latency !== Infinity ? ` · ${Math.round(item.latency)}ms` : ''}
-                          </Text>
-                        </View>
-                        {isSelected && <Zap size={14} color={Colors.dark.primary} />}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
+                </StyledButton>
+              );
+            })}
           </View>
-
-          <View style={styles.descSection}>
-            <Text style={styles.descTitle}>剧情简介</Text>
-            <Text style={styles.descText}>{detail.desc || '暂无简介'}</Text>
-            <View style={styles.metaInfo}>
-              <Text style={styles.metaItem}>{detail.year}</Text>
-              <Text style={styles.metaDivider}>·</Text>
-              <Text style={styles.metaItem}>{detail.type_name}</Text>
-            </View>
-          </View>
-        </ScrollView>
-      </ThemedView>
-    </ResponsiveNavigation>
+        </View>
+      </ScrollView>
+    </ThemedView>
   );
+
 }
 
 const styles = StyleSheet.create({

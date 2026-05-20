@@ -144,12 +144,18 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         }
       }
 
+      // 创建一个包含到当前集数为止的列表，以确保 UI 显示正确的集数
+      const mappedEpisodes = Array(episodeIndex + 1).fill(null).map((_, i) => ({
+        url: i === episodeIndex ? fileUri : '',
+        title: `第 ${i + 1} 集${i === episodeIndex ? ' (已缓存)' : ''}`,
+      }));
+
       set({
         isLoading: false,
         currentEpisodeIndex: episodeIndex,
         initialPosition: position || 0,
         playbackRate: 1.0,
-        episodes: [{ url: fileUri, title: title || '离线视频' }],
+        episodes: mappedEpisodes,
       });
       return;
     }

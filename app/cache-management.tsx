@@ -208,7 +208,7 @@ export default function CacheManagementScreen() {
           </View>
         ) : hasValidPoster ? (
           <Image
-            source={{ uri: c.poster }}
+            source={{ uri: api.getImageProxyUrl(c.poster) }}
             style={[
               styles.posterImage,
               { width: posterSize, height: posterSize * 1.5 },

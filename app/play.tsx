@@ -408,11 +408,11 @@ export default function PlayScreen() {
 
   return (
     <ThemedView style={{ flex: 1, backgroundColor: 'black' }}>
-      {isMobile ? renderMobileLayout() : renderTVLayout()}
+      {deviceType === 'tv' ? renderTVLayout() : renderMobileLayout()}
       <EpisodeSelectionModal />
       <SourceSelectionModal />
       <SpeedSelectionModal />
-      {isMobile && <CastModal />}
+      {deviceType !== 'tv' && <CastModal />}
     </ThemedView>
   );
 }
