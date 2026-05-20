@@ -78,10 +78,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       api.setBaseUrl(settings.apiBaseUrl);
       await get().fetchServerConfig();
     } else {
-      // 取消自动测速，直接使用默认第一个节点
+      // 首次启动：直接使用默认第一个节点，并保存到存储（避免每次启动重复设置）
       const defaultUrl = API_NODES[0];
       set({ apiBaseUrl: defaultUrl });
       api.setBaseUrl(defaultUrl);
+      await SettingsManager.save({
+        ...settings,
+        apiBaseUrl: defaultUrl,
+      });
       await get().fetchServerConfig();
     }
   },
