@@ -239,7 +239,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       processedApiBaseUrl = processedApiBaseUrl.slice(0, -1);
     }
 
-    if (!/^https?:///i.test(processedApiBaseUrl)) {
+    if (!processedApiBaseUrl.toLowerCase().startsWith("http://") && !processedApiBaseUrl.toLowerCase().startsWith("https://")) {
       processedApiBaseUrl = "https://" + processedApiBaseUrl;
     }
 

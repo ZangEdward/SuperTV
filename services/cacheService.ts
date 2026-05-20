@@ -429,7 +429,7 @@ export class CacheService {
     try {
       return new URL(url, baseUrl).href;
     } catch {
-      if (/^https?:\/\//i.test(url)) return url;
+      if (url.toLowerCase().startsWith("http://") || url.toLowerCase().startsWith("https://")) return url;
       const prefix = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
       return `${prefix}${url}`;
     }
@@ -753,13 +753,13 @@ export class CacheService {
             await flushWriter();
           }
         } catch (err) {
-          // 如果是写入错误，提前终止整个下载
-          if (!writeError) {
-            writeError = err as Error;
-            logger.error(`片段 ${index} 下载/写入失败，终止下载:`, err);
-            activeTask.controller.abort();
-          }
-          throw err;
+          // 单个片段下载失败：记录失败的片段，不终止整个下载
+          // 后续会单独重试失败的片段
+          logger.warn(`片段 ${index + 1} 下载失败，标记待重试 (第${failedSegments.size + 1}个失败片段):`, err);
+          failedSegments.set(index, err as Error);
+          // 在缓冲区中留一个空占位，保持后续片段能继续写入
+          resultsBuffer[index] = '';
+          await flushWriter();
         }
       };
 
@@ -783,6 +783,39 @@ export class CacheService {
       await executePool();
 
       if (mergeSignal.aborted) throw new Error("下载已取消");
+
+      // ====== 单独重试失败的 TS 片段 ======
+      // 对每个失败的片段进行单独重试，不中断其他片段
+      if (failedSegments.size > 0) {
+        logger.info(`[断点续传] 开始重试 ${failedSegments.size} 个失败片段...`);
+        for (const [failedIndex, _] of failedSegments) {
+          for (let retry = 0; retry < MAX_SEGMENT_RETRIES; retry++) {
+            try {
+              await CacheService.waitIfPaused(taskId);
+              if (mergeSignal.aborted) break;
+
+              const segUrl = segmentUrls[failedIndex];
+              const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
+              logger.info(`[断点续传] 重试失败片段 ${failedIndex + 1}/${total} (第${retry + 1}次)`);
+
+              const b64 = await CacheService.downloadSegment(segUrl, failedIndex, encryption, 2);
+              // 重试成功，覆写占位
+              resultsBuffer[failedIndex] = b64;
+              failedSegments.delete(failedIndex);
+              logger.info(`[断点续传] 片段 ${failedIndex + 1} 重试成功`);
+              break;
+            } catch (retryErr) {
+              logger.warn(`[断点续传] 片段 ${failedIndex + 1} 重试第${retry + 1}次失败`);
+              if (retry >= MAX_SEGMENT_RETRIES - 1) {
+                logger.error(`[断点续传] 片段 ${failedIndex + 1} 重试${MAX_SEGMENT_RETRIES}次全部失败，跳过该片段`);
+              }
+            }
+          }
+        }
+      }
+
+      // 重试后刷新写入
+      await flushWriter();
 
       let retryCount = 0;
       while (nextIndexToWrite < total && retryCount < 20) {
