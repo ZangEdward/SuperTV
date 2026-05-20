@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       job_type:
-        description: '选择构建类型 (build-only 或 ota)'
+        description: '选择构建类型 (build-only �?ota)'
         required: true
         default: 'ota'
         type: choice
@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPO_PUBLIC_API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
+      EXPO_PUBLIC_SYNC_REPO: ${{ secrets.SYNC_REPO }}
     outputs:
       VERSION: ${{ steps.get_version.outputs.VERSION }}
 
@@ -82,12 +83,12 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
       # -------------------------------
-      # 强更新：如果 SuperTV 仓库有同版本 Release，直接整单摧毁删除
+      # 强更新：如果 SuperTV 仓库有同版本 Release，直接整单摧毁删�?
       # -------------------------------
       - name: Force delete old Release if conflicts (SuperTV repo)
         run: |
           VERSION="${{ env.VERSION }}"
-          REPO="ZangEdward/SuperTV"
+          REPO="${{ secrets.SOURCE_REPO }}"
 
           # 1. 获取已存在的 Release ID
           RELEASE_ID=$(curl -s \
@@ -102,13 +103,13 @@ jobs:
               -H "Authorization: token ${{ secrets.PAT }}" \
               https://api.github.com/repos/$REPO/releases/$RELEASE_ID
           
-            # 3. 同时强行删除对应的 Git Tag，确保留水线重新推 Tag 时不报错
+            # 3. 同时强行删除对应�?Git Tag，确保留水线重新�?Tag 时不报错
             echo "正在清理远程 Tag: v$VERSION"
             curl -X DELETE \
               -H "Authorization: token ${{ secrets.PAT }}" \
               https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
           else
-            echo "未发现冲突版本，准备进行全新创建。"
+            echo "未发现冲突版本，准备进行全新创建�?
           fi
 
       - name: Create or update Release
@@ -150,7 +151,7 @@ jobs:
 
       - name: Clone log repository
         run: |
-          git clone https://x-access-token:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git sync-repo
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
 
       - name: Update metadata files
         run: |
@@ -173,7 +174,7 @@ jobs:
       - name: Force delete old Release if conflicts (OTA repo)
         run: |
           VERSION="${{ env.VERSION }}"
-          REPO="ZangEdward/internal-cache-sync-daemon-log"
+          REPO="${{ secrets.SYNC_REPO }}"
 
           # 1. 获取现有 Release ID
           RELEASE_ID=$(curl -s \
@@ -181,9 +182,9 @@ jobs:
             https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
             | jq -r '.id')
 
-          # 2. 如果存在，直接毁灭整个 Release
+          # 2. 如果存在，直接毁灭整�?Release
           if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
-            echo "发现 OTA 仓库版本冲突！正在彻底删除原有 v$VERSION Release (ID: $RELEASE_ID)..."
+            echo "发现 OTA 仓库版本冲突！正在彻底删除原�?v$VERSION Release (ID: $RELEASE_ID)..."
             curl -X DELETE \
               -H "Authorization: token ${{ secrets.PAT }}" \
               https://api.github.com/repos/$REPO/releases/$RELEASE_ID
@@ -194,13 +195,13 @@ jobs:
               -H "Authorization: token ${{ secrets.PAT }}" \
               https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
           else
-            echo "OTA 仓库未发现冲突版本，正常推进。"
+            echo "OTA 仓库未发现冲突版本，正常推进�?
           fi
 
       - name: Upload APK to log repo release
         uses: softprops/action-gh-release@v1
         with:
-          repository: ZangEdward/internal-cache-sync-daemon-log
+          repository: ${{ secrets.SYNC_REPO }}
           tag_name: v${{ env.VERSION }}
           name: "SuperTV v${{ env.VERSION }}"
           files: SuperTV-${{ env.VERSION }}.apk
@@ -249,4 +250,5 @@ jobs:
           git commit -m "Update v${{ env.VERSION }} - Sync metadata to log/vision" || true
           
           git pull origin main --rebase || git pull origin master --rebase
-          git push https://ZangEdward:${{ secrets.PAT }}@github.com/ZangEdward/internal-cache-sync-daemon-log.git
+          git push https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git
+

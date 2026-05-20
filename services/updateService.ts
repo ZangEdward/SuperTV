@@ -49,7 +49,7 @@ class UpdateService {
       throw new Error('Update configuration is missing');
     }
     const maxRetries = 3;
-    let pkgUrl = UPDATE_CONFIG.GITHUB_RAW_URL;
+    let pkgUrl = UPDATE_CONFIG.getGithubRawUrl();
     let sizeUrl = pkgUrl.replace('package.json', 'apksize.json');
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

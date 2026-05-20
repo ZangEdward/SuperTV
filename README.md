@@ -2,7 +2,7 @@
 
 一个基于 React Native TVOS 和 Expo 构建的播放器，旨在提供流畅的视频观看体验。以下内容均为AI修改
 
-请不要使用我编译好的版本，因为私人站点不开放注册，需要ota的请自行修改[UpdateConfig.ts](constants/UpdateConfig.ts)相关url
+请不要使用我编译好的版本，因为私人站点不开放注册。
 ## ✨ 功能特性
 
 - **框架跨平台支持**: 同时支持构建 Apple TV 和 Android TV。
@@ -36,7 +36,60 @@ EXPO_PUBLIC_API_NODES_JSON='[{"key":"local","label":"测试节点","url":"https:
 ### 2. 构建与运行
 参考zimplexing/oriontv项目文件，直接运行对应的 `yarn` 脚本即可开始构建。
 （建议还是使用action进行编译）
----
+
+
+### 3. OTA 异库同步设置
+
+如果你需要自己搭建 OTA 更新链路（即构建仓库与版本分发仓库分离），请按以下步骤操作：
+
+#### 3.1 创建同步仓库
+1. 在 GitHub 上**新建一个空仓库**（建议设为私有），例如 `my-ota-sync`。
+2. 记录仓库名，格式为 `你的用户名/my-ota-sync`。
+
+#### 3.2 设置 Repository Secrets
+在你的主仓库（即 SuperTV 仓库）的 `Settings -> Secrets and variables -> Actions` 中添加：
+
+| Secret 名称 | 说明 | 示例值 |
+|---|---|---|
+| `SOURCE_REPO` | 主仓库名（用于 Release 创建） | `你的用户名/SuperTV` |
+| `SYNC_REPO` | OTA 同步仓库名（存放版本元数据和 APK 分发） | `你的用户名/my-ota-sync` |
+| `PAT` | 个人访问令牌，需具有 `repo` 和 `workflow` 权限 | `ghp_xxxxxxxxxxxxxxxxxxxx` |
+
+> **`SYNC_REPO` 是 OTA 更新的核心仓库**，构建后会自动将版本号（`package.json`）、APK 大小（`apksize.json`）以及 APK 文件（通过 Release 分发）同步到这个仓库，供客户端检查更新。
+
+#### 3.3 运行 Workflow
+- 每次代码 push 到 `main`/`master` 分支，或手动触发 `build-ota.yaml` 时，构建完成后会自动：
+  1. 将 `package.json` 和 `apksize.json` 推送到 `my-ota-sync/log/vision/` 目录。
+  2. 在 `my-ota-sync` 仓库下创建一个对应版本的 Release，并将 APK 文件上传作为附件。
+  3. 生成一个随机外星风格日志文件，记录构建时间戳和版本。
+
+#### 3.4 客户端版本检查流程
+应用内检查更新时会：
+1. 读取 `https://raw.githubusercontent.com/{SYNC_REPO}/refs/heads/main/log/vision/package.json` 获取远程版本号。
+2. 对比当前本地版本，如果远程版本更新则弹出更新弹窗。
+3. 用户点击更新时，从 `https://github.com/{SYNC_REPO}/releases/download/v{version}/SuperTV-{version}.apk` 下载 APK。
+4. 下载完成后调用系统安装器安装。
+
+#### 3.5 自定义更新行为
+在 `constants/UpdateConfig.ts` 中可调整以下参数：
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `AUTO_CHECK` | `true` | 是否自动检查更新 |
+| `CHECK_INTERVAL` | `12 * 60 * 60 * 1000` (12小时) | 检查间隔（毫秒） |
+| `ALLOW_SKIP_VERSION` | `true` | 是否允许用户跳过某个版本 |
+| `AUTO_DOWNLOAD_ON_WIFI` | `false` | 是否在 WIFI 下自动下载 |
+| `DOWNLOAD_TIMEOUT` | `10 * 60 * 1000` (10分钟) | 下载超时时间 |
+
+#### 3.6 本地开发调试
+在项目根目录创建 `.env.local` 文件（已加入 .gitignore）：
+```env
+EXPO_PUBLIC_API_NODES_JSON='[{"key":"local","label":"测试节点","url":"https://your-dev-api.com"}]'
+EXPO_PUBLIC_SYNC_REPO='你的用户名/my-ota-sync'
+```
+
+> ⚠️ **安全提示**：所有 GitHub 仓库名均通过 Secrets 注入构建环境变量 `EXPO_PUBLIC_SYNC_REPO`，源码中不包含任何仓库明文地址。如果环境变量为空，URL 将生成无效地址，确保不会意外泄露。
+------
 
 📝 版本更新历史 (Changelog)
 
