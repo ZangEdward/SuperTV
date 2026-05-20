@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { View, StyleSheet, Image, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import useCacheStore from "@/stores/cacheStore";
+import { CacheService } from "@/services/cacheService";
+import { PlayRecordManager } from "@/services/storage";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import { StyledButton } from "@/components/StyledButton";
@@ -9,31 +11,33 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
+import Toast from "react-native-toast-message";
 
 export default function CacheManagementScreen() {
   const router = useRouter();
   const cacheStore = useCacheStore();
-  const { items, loadCache, concurrency, setConcurrency, removeSeries, cancelQueuedEpisode } = cacheStore;
-  const { queue, downloadProgress, currentDownloadId } = cacheStore;
+  const { items, loadCache, concurrency, setConcurrency, removeSeries, clearCache } = cacheStore;
+  const { queue } = cacheStore;
   const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const responsiveConfig = useResponsiveLayout();
+  const { deviceType, spacing } = responsiveConfig;
+  const isMobile = deviceType === 'mobile';
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
-  const { spacing } = responsiveConfig;
   const [cacheSize, setCacheSize] = useState<string>("0 MB");
-
-  useEffect(() => {
-    if (isMobile) calculateCacheSize();
-  }, [isMobile]);
+  const [clearing, setClearing] = useState(false);
 
   const calculateCacheSize = async () => {
     try {
       const totalSize = await CacheService.calculateCacheSize();
-      setCacheSize((totalSize / (1024 * 1024)).toFixed(2) + " MB");
+      setCacheSize(CacheService.formatBytes(totalSize));
     } catch (e) {
       console.warn("计算缓存大小失败:", e);
     }
   };
 
+  useEffect(() => {
+    calculateCacheSize();
+  }, [items]);
 
   useEffect(() => {
     loadCache();
@@ -63,7 +67,6 @@ export default function CacheManagementScreen() {
     });
   };
 
-  /** 长按删除整部剧集的所有缓存文件 */
   const handleLongPressDeleteSeries = (title: string) => {
     Alert.alert(
       '删除整部剧集',
@@ -76,6 +79,58 @@ export default function CacheManagementScreen() {
           onPress: async () => {
             await removeSeries(title);
             await loadCache();
+            await calculateCacheSize();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearCache = async () => {
+    Alert.alert(
+      "清除缓存",
+      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "确定",
+          onPress: async () => {
+            setClearing(true);
+            try {
+              await clearCache();
+              await calculateCacheSize();
+            } catch (e) {
+              Alert.alert("错误", "清理缓存失败");
+            } finally {
+              setClearing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearHistory = async () => {
+    Alert.alert(
+      "清除播放记录",
+      "确定要清除所有播放历史吗？此操作不可撤销。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "确定",
+          onPress: async () => {
+            setClearing(true);
+            try {
+              await PlayRecordManager.clearAll();
+              Toast.show({
+                type: "success",
+                text1: "播放历史已清除",
+              });
+            } catch (e) {
+              Alert.alert("错误", "清理失败");
+            } finally {
+              setClearing(false);
+            }
           },
         },
       ]
@@ -91,78 +146,64 @@ export default function CacheManagementScreen() {
     <ResponsiveNavigation>
       <ResponsiveHeader title="缓存管理" showBackButton />
       <ThemedView style={[commonStyles.container, styles.container, { padding: spacing }]}> 
-        {/* 操作栏 */}
-        <View style={styles.actionBar}>
-          <StyledButton
-            text="全部暂停"
-            onPress={() => cacheStore.pauseAll()}
-            style={styles.actionButton}
-            variant="default"
-          />
-          <StyledButton
-            text="全部启动"
-            onPress={() => cacheStore.resumeAll()}
-            style={styles.actionButton}
-            variant="primary"
-          />
-        </View>
-
-        {/* 并发设置 */}
-        <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}> 
-          <TouchableOpacity
-            style={styles.concurrencySelector}
-            onPress={() => setConcurrencyOpen((open) => !open)}
-          >
-            <ThemedText style={styles.concurrencyLabel}>并发下载：当前并发下载数</ThemedText>
-            <View style={styles.selectorValueWrap}>
-              <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
-              <ThemedText style={styles.concurrencyArrow}>{concurrencyOpen ? '▲' : '▼'}</ThemedText>
-            </View>
-          </TouchableOpacity>
-          {concurrencyOpen && (
-            <View style={styles.concurrencyOptions}>
-              {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
-                <StyledButton
-                  key={value}
-                  text={`${value}`}
-                  onPress={() => {
-                    setConcurrency(value);
-                    setConcurrencyOpen(false);
-                  }}
-                  isSelected={value === concurrency}
-                  variant={value === concurrency ? 'primary' : 'default'}
-                  style={styles.optionButton}
-                  textStyle={styles.optionText}
-                />
-              ))}
-            </View>
-          )}
-        </View>
-                {isMobile && (
-                  <View style={[styles.row, { marginTop: 16 }]}>
-                    <View style={styles.info}>
-                      <ThemedText style={styles.label}>已下载缓存</ThemedText>
-                      <ThemedText style={styles.value}>{cacheSize}</ThemedText>
-                    </View>
-                    <StyledButton
-                      onPress={handleClearCache}
-                      disabled={clearing}
-                      style={styles.actionButton}
-                    >
-                      {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={styles.buttonText}>清除</ThemedText>}
-                    </StyledButton>
-                  </View>
-                )}
-        {/* 下载列表 */}
-        <View style={{ marginBottom: spacing }}>
-          <View style={styles.headerRow}>
-            <ThemedText style={styles.title}>下载列表</ThemedText>
-            <ThemedText style={styles.headerCount}>
-              队列中 {queuedCount} 集，已完成 {items.length} 集
-            </ThemedText>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          {/* 操作栏 */}
+          <View style={styles.actionBar}>
+            <StyledButton
+              text="全部暂停"
+              onPress={() => cacheStore.pauseAll()}
+              style={styles.actionButton}
+              variant="default"
+            />
+            <StyledButton
+              text="全部启动"
+              onPress={() => cacheStore.resumeAll()}
+              style={styles.actionButton}
+              variant="primary"
+            />
           </View>
 
-          <ScrollView>
+          {/* 并发设置 */}
+          <View style={[styles.concurrencyContainer, { marginBottom: spacing }]}>
+            <TouchableOpacity
+              style={styles.concurrencySelector}
+              onPress={() => setConcurrencyOpen((open) => !open)}
+            >
+              <ThemedText style={styles.concurrencyLabel}>并发下载：当前最大并行任务数</ThemedText>
+              <View style={styles.selectorValueWrap}>
+                <ThemedText style={styles.concurrencyValue}>{concurrency}</ThemedText>
+                <ThemedText style={styles.concurrencyArrow}>{concurrencyOpen ? '▲' : '▼'}</ThemedText>
+              </View>
+            </TouchableOpacity>
+            {concurrencyOpen && (
+              <View style={styles.concurrencyOptions}>
+                {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                  <StyledButton
+                    key={value}
+                    text={`${value}`}
+                    onPress={() => {
+                      setConcurrency(value);
+                      setConcurrencyOpen(false);
+                    }}
+                    isSelected={value === concurrency}
+                    variant={value === concurrency ? 'primary' : 'default'}
+                    style={styles.optionButton}
+                    textStyle={styles.optionText}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* 下载列表 */}
+          <View style={{ marginBottom: spacing }}>
+            <View style={styles.headerRow}>
+              <ThemedText style={styles.title}>下载列表</ThemedText>
+              <ThemedText style={styles.headerCount}>
+                队列中 {queuedCount} 集，已完成 {items.length} 集
+              </ThemedText>
+            </View>
+
             {combinedCollections.length === 0 ? (
               <View style={styles.emptyBox}>
                 <ThemedText type="subtitle">暂无缓存内容</ThemedText>
@@ -183,39 +224,47 @@ export default function CacheManagementScreen() {
                 ))}
               </View>
             )}
-          </ScrollView>
-        </View>
+          </View>
+
+          {/* 底部清理模块 */}
+          <View style={styles.footerSection}>
+             <ThemedText style={styles.sectionTitle}>存储管理</ThemedText>
+
+             <View style={styles.storageRow}>
+               <View style={styles.storageInfo}>
+                 <ThemedText style={styles.storageLabel}>已下载视频占用</ThemedText>
+                 <ThemedText style={styles.storageValue}>{cacheSize}</ThemedText>
+               </View>
+               <StyledButton
+                 onPress={handleClearCache}
+                 disabled={clearing}
+                 style={styles.clearButton}
+                 variant="ghost"
+               >
+                 {clearing ? <ActivityIndicator size="small" color="#fff" /> : <ThemedText style={{ color: '#ff4d4f', fontWeight: 'bold' }}>清除视频</ThemedText>}
+               </StyledButton>
+             </View>
+
+             <View style={[styles.storageRow, { marginTop: 12 }]}>
+               <View style={styles.storageInfo}>
+                 <ThemedText style={styles.storageLabel}>播放历史记录</ThemedText>
+                 <ThemedText style={styles.storageSubtitle}>清除所有视频的观看进度</ThemedText>
+               </View>
+               <StyledButton
+                 onPress={handleClearHistory}
+                 disabled={clearing}
+                 style={styles.clearButton}
+                 variant="ghost"
+               >
+                 <ThemedText style={{ color: '#ff4d4f', fontWeight: 'bold' }}>清除历史</ThemedText>
+               </StyledButton>
+             </View>
+          </View>
+        </ScrollView>
       </ThemedView>
     </ResponsiveNavigation>
   );
 }
-  const handleClearCache = async () => {
-    Alert.alert(
-      "清除缓存",
-      "确定要清除已下载的缓存视频吗？此操作不可撤销。",
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "确定",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearCache();
-              await calculateCacheSize();
-              Toast.show({
-                type: "success",
-                text1: "缓存已清除",
-              });
-            } catch (e) {
-              Alert.alert("错误", "清理缓存失败");
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -409,49 +458,47 @@ const styles = StyleSheet.create({
   optionText: {
     textAlign: 'center',
   },
-  concurrencyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+  footerSection: {
+    marginTop: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 40,
   },
-  concurrencyButton: {
-    minWidth: 52,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  concurrencyValue: {
-    color: '#fff',
+  sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    minWidth: 32,
-    textAlign: 'center',
-  },
-  concurrencyHint: {
-    color: '#aaa',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-    gap: 12,
-  },
-  posterCard: {
-    width: 140,
-    marginRight: 12,
+    fontWeight: 'bold',
     marginBottom: 16,
-  },
-  posterLarge: {
-    width: 140,
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: '#111',
-  },
-  posterTitle: {
     color: '#fff',
-    marginTop: 8,
+  },
+  storageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 12,
+    borderRadius: 8,
+  },
+  storageInfo: {
+    flex: 1,
+  },
+  storageLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#eee',
+  },
+  storageValue: {
     fontSize: 13,
+    color: '#888',
+    marginTop: 2,
+  },
+  storageSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  clearButton: {
+    minWidth: 80,
+    height: 36,
   },
 });

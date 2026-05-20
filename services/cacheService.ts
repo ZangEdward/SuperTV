@@ -186,7 +186,7 @@ export class CacheService {
     url: string,
     index: number,
     encryption?: { key: Uint8Array; iv: Uint8Array } | null,
-    retryCount: number = 3
+    retryCount: number = 5
   ): Promise<string> {
     let lastError: Error | null = null;
 
@@ -196,7 +196,7 @@ export class CacheService {
         const res = await RNFetchBlob.config({
           fileCache: true,
           appendExt: 'ts',
-          timeout: 60000, // 增加 60s 超时
+          timeout: 30000, // 30s 超时
         }).fetch('GET', url);
 
         const status = res.info().status;
@@ -740,8 +740,8 @@ export class CacheService {
           const segUrl = segmentUrls[index];
           const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
 
-          // 传参 retryCount=2（尝试3次），减少总等待时间
-          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 2);
+          // 传参 retryCount=5，减少总等待时间
+          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 5);
           resultsBuffer[index] = b64;
 
           // 触发顺序写入
@@ -753,13 +753,13 @@ export class CacheService {
             await flushWriter();
           }
         } catch (err) {
-          // 单个片段下载失败：记录失败的片段，不终止整个下载
-          // 后续会单独重试失败的片段
-          logger.warn(`片段 ${index + 1} 下载失败，标记待重试 (第${failedSegments.size + 1}个失败片段):`, err);
-          failedSegments.set(index, err as Error);
-          // 在缓冲区中留一个空占位，保持后续片段能继续写入
-          resultsBuffer[index] = '';
-          await flushWriter();
+          // 如果是写入错误或下载最终失败，提前终止整个下载
+          if (!writeError) {
+            writeError = err as Error;
+            logger.error(`片段 ${index} 下载/写入失败，终止下载并等待后续断点续传:`, err);
+            activeTask.controller.abort();
+          }
+          throw err;
         }
       };
 
@@ -784,39 +784,6 @@ export class CacheService {
 
       if (mergeSignal.aborted) throw new Error("下载已取消");
 
-      // ====== 单独重试失败的 TS 片段 ======
-      // 对每个失败的片段进行单独重试，不中断其他片段
-      if (failedSegments.size > 0) {
-        logger.info(`[断点续传] 开始重试 ${failedSegments.size} 个失败片段...`);
-        for (const [failedIndex, _] of failedSegments) {
-          for (let retry = 0; retry < MAX_SEGMENT_RETRIES; retry++) {
-            try {
-              await CacheService.waitIfPaused(taskId);
-              if (mergeSignal.aborted) break;
-
-              const segUrl = segmentUrls[failedIndex];
-              const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
-              logger.info(`[断点续传] 重试失败片段 ${failedIndex + 1}/${total} (第${retry + 1}次)`);
-
-              const b64 = await CacheService.downloadSegment(segUrl, failedIndex, encryption, 2);
-              // 重试成功，覆写占位
-              resultsBuffer[failedIndex] = b64;
-              failedSegments.delete(failedIndex);
-              logger.info(`[断点续传] 片段 ${failedIndex + 1} 重试成功`);
-              break;
-            } catch (retryErr) {
-              logger.warn(`[断点续传] 片段 ${failedIndex + 1} 重试第${retry + 1}次失败`);
-              if (retry >= MAX_SEGMENT_RETRIES - 1) {
-                logger.error(`[断点续传] 片段 ${failedIndex + 1} 重试${MAX_SEGMENT_RETRIES}次全部失败，跳过该片段`);
-              }
-            }
-          }
-        }
-      }
-
-      // 重试后刷新写入
-      await flushWriter();
-
       let retryCount = 0;
       while (nextIndexToWrite < total && retryCount < 20) {
         await flushWriter();
@@ -836,8 +803,6 @@ export class CacheService {
       logger.info(`[CacheService] downloadM3U8AsMp4 COMPLETE - ${(fileStat.size / (1024*1024)).toFixed(2)}MB`);
       return destinationPath;
     } catch (err: any) {
-      // 只有在非暂停导致的取消时才清理文件（可选，如果想支持断点续传，不建议清理）
-      // if (!activeTask.isPaused) { ... }
       throw err;
     } finally {
       activeM3U8Tasks.delete(taskId);

@@ -20,7 +20,12 @@ export interface APIConfigSectionRef {
 
 export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSectionProps>(
   ({ onChanged, onFocus, onBlur, onPress, hideDescription = false }, ref) => {
-    const { setApiBaseUrl, autoSelectFastestApi } = useSettingsStore();
+    const { setApiBaseUrl, autoSelectFastestApi, testNodeSpeeds } = useSettingsStore();
+
+    React.useEffect(() => {
+      // 进入页面自动开始静默测速，不自动切换
+      testNodeSpeeds();
+    }, []);
 
     useImperativeHandle(ref, () => ({
       setInputValue: (value: string) => {

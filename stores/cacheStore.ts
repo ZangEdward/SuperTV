@@ -197,8 +197,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
                 downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
                 queue: [...q]
               });
-              // 周期性保存队列状态
-              if (cc % 10 === 0) CacheService.saveQueue(q);
+              // 提高保存频率：每5个片段保存一次进度
+              if (cc % 5 === 0) CacheService.saveQueue(q);
             }
           }
         }, { resumeIndex: ep.completedCount || 0 });

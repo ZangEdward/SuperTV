@@ -41,6 +41,7 @@ interface SettingsState {
   hideModal: () => void;
 
   autoSelectFastestApi: () => Promise<void>;
+  testNodeSpeeds: () => Promise<void>;
   fetchAllSources: () => Promise<void>;
   testSourceSpeeds: () => Promise<void>;
   toggleSource: (key: string, enabled: boolean) => void;
@@ -161,7 +162,33 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ videoSource: { ...videoSource, sources: newSources } });
   },
 
-  // 仅在按钮点击解锁后执行测速切换
+  // 仅更新节点延迟数据，不改变当前选择
+  testNodeSpeeds: async () => {
+    const testSpeed = async (baseUrl: string): Promise<number> => {
+      const url = `${baseUrl}/icons/icon-512x512.png?t=${Date.now()}`;
+      const start = Date.now();
+      try {
+        const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+        if (!res.ok) throw new Error("Bad response");
+        return Date.now() - start;
+      } catch {
+        return Infinity;
+      }
+    };
+
+    const results = await Promise.all(
+      API_NODES.map(async (url) => ({
+        url,
+        time: await testSpeed(url),
+      }))
+    );
+
+    const latencyMap: Record<string, number> = {};
+    results.forEach(r => latencyMap[r.url] = r.time);
+    set({ nodeLatencies: latencyMap });
+  },
+
+  // 仅在按钮点击解锁后执行测速并切换到最快节点
   autoSelectFastestApi: async () => {
     if (!_allowNodeTest) {
       logger.warn("[autoSelectFastestApi] 忽略非按钮触发的测速调用");
