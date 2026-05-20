@@ -7,7 +7,6 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SettingsStore");
 
-// 🚀 预设节点（不带 n.json）
 const API_NODES = [
   "https://ltv.955598.xyz",
   "https://atv.955598.xyz",
@@ -47,6 +46,10 @@ interface SettingsState {
   toggleSource: (key: string, enabled: boolean) => void;
 }
 
+// 安全锁：仅允许按钮触发的节点测速
+let _allowNodeTest = false;
+export function __allowNodeTestOnce() { _allowNodeTest = true; }
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   apiBaseUrl: "",
   nodeLatencies: {},
@@ -63,7 +66,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   allSources: [],
   isLoadingSources: false,
 
-  // 🚀 APP 启动时加载设置 + 自动测速
   loadSettings: async () => {
     const settings = await SettingsManager.get();
 
@@ -78,7 +80,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       api.setBaseUrl(settings.apiBaseUrl);
       await get().fetchServerConfig();
     } else {
-      // 首次启动：直接使用默认第一个节点，并保存到存储（避免每次启动重复设置）
+      // 首次启动：使用默认节点，保存到存储，绝不测速
       const defaultUrl = API_NODES[0];
       set({ apiBaseUrl: defaultUrl });
       api.setBaseUrl(defaultUrl);
@@ -95,7 +97,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const sources = await api.getResources();
       set({ allSources: sources });
-      // Initialize sources config if not exists
       const { videoSource } = get();
       const newSources = { ...videoSource.sources };
       let changed = false;
@@ -120,15 +121,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const latencies: Record<string, number> = {};
     const newSources = { ...videoSource.sources };
 
-    // We test speed using the API endpoint for searching one (with a dummy query)
-    // or just checking if the API base is reachable.
-    // Since sites are just keys, we depend on the node to proxy.
-    // A better way is to test the actual search/one endpoint with a minimal query.
-
     const testSpeed = async (sourceKey: string): Promise<number> => {
       const start = Date.now();
       try {
-        // Use a dummy search to test site availability through the node
         const res = await api.searchVideo("1", sourceKey);
         return Date.now() - start;
       } catch {
@@ -136,7 +131,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       }
     };
 
-    // Parallel testing with a concurrency limit if needed, but let's try Promise.all first
     const results = await Promise.all(
       allSources.map(async (s) => ({
         key: s.key,
@@ -158,7 +152,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       videoSource: { ...videoSource, sources: newSources }
     });
 
-    // Save updated source config
     await get().saveSettings();
   },
 
@@ -168,8 +161,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ videoSource: { ...videoSource, sources: newSources } });
   },
 
-  // 🚀 自动测速并选择最快节点（使用 icon-512x512.png）
+  // 仅在按钮点击解锁后执行测速切换
   autoSelectFastestApi: async () => {
+    if (!_allowNodeTest) {
+      logger.warn("[autoSelectFastestApi] 忽略非按钮触发的测速调用");
+      return;
+    }
+    _allowNodeTest = false;
+
     const testSpeed = async (baseUrl: string): Promise<number> => {
       const url = `${baseUrl}/icons/icon-512x512.png?t=${Date.now()}`;
       const start = Date.now();
@@ -189,7 +188,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       }))
     );
 
-    // 保存延迟信息
     const latencyMap: Record<string, number> = {};
     results.forEach(r => latencyMap[r.url] = r.time);
     set({ nodeLatencies: latencyMap });
@@ -241,7 +239,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       processedApiBaseUrl = processedApiBaseUrl.slice(0, -1);
     }
 
-    if (!/^https?:\/\//i.test(processedApiBaseUrl)) {
+    if (!/^https?:///i.test(processedApiBaseUrl)) {
       processedApiBaseUrl = "https://" + processedApiBaseUrl;
     }
 

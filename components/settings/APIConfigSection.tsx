@@ -4,7 +4,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { SettingsSection } from "@/components/settings/SettingsSection";
 import { StyledButton } from "@/components/StyledButton";
 import { ApiNodeSelectorUI } from "@/components/ApiNodeSelectorUI";
-import { useSettingsStore } from "@/stores/settingsStore";
+import { useSettingsStore, __allowNodeTestOnce } from "@/stores/settingsStore";
 
 interface APIConfigSectionProps {
   onChanged: () => void;
@@ -30,6 +30,7 @@ export const APIConfigSection = forwardRef<APIConfigSectionRef, APIConfigSection
     }));
 
     const handleOptimize = async () => {
+      __allowNodeTestOnce(); // 解锁，允许本次测速
       await autoSelectFastestApi();
     };
 
