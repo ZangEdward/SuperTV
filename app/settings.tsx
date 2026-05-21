@@ -53,8 +53,13 @@ export default function SettingsScreen() {
   const apiSectionRef = useRef<any>(null);
   const liveStreamSectionRef = useRef<any>(null);
 
+  // 设置页只读取已有状态，不重复加载全部设置
+  // _layout.tsx 已在应用启动时统一调用 loadSettings()
+  // 避免因 useEffect 重执行导致 store 状态被覆盖（引发节点/线路不必要切换）
   useEffect(() => {
-    loadSettings();
+    if (!useSettingsStore.getState().apiBaseUrl) {
+      loadSettings();
+    }
   }, [loadSettings]);
 
   useEffect(() => {
