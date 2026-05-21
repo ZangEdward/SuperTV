@@ -337,20 +337,17 @@ export default function CacheManagementScreen() {
               <ThemedText style={styles.storageLabel}>已下载视频占用</ThemedText>
               <ThemedText style={styles.storageValue}>{cacheSize}</ThemedText>
             </View>
-            <StyledButton
+                        <TouchableOpacity
               onPress={handleClearCache}
               disabled={clearing}
-              variant="ghost"
-              style={styles.clearButton}
+              style={styles.iconButtonSmall}
             >
               {clearing ? (
                 <ActivityIndicator size="small" color="#ff4d4f" />
               ) : (
-                <ThemedText style={{ color: "#ff4d4f", fontWeight: "bold" }}>
-                  清除
-                </ThemedText>
+                <Ionicons name="trash-outline" size={22} color="#ff4444" />
               )}
-            </StyledButton>
+            </TouchableOpacity>
           </View>
 
           <View style={[styles.storageRow, { marginTop: 12 }]}>
@@ -360,16 +357,13 @@ export default function CacheManagementScreen() {
                 清除所有视频的观看进度
               </ThemedText>
             </View>
-            <StyledButton
+                        <TouchableOpacity
               onPress={handleClearHistory}
               disabled={clearing}
-              variant="ghost"
-              style={styles.clearButton}
+              style={styles.iconButtonSmall}
             >
-              <ThemedText style={{ color: "#ff4d4f", fontWeight: "bold" }}>
-                清除
-              </ThemedText>
-            </StyledButton>
+              <Ionicons name="trash-outline" size={22} color="#ff4444" />
+            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -564,9 +558,17 @@ const styles = StyleSheet.create({
     color: "#666",
     marginTop: 2,
   },
-  clearButton: {
+    clearButton: {
     minWidth: 80,
     height: 38,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  iconButtonSmall: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255, 68, 68, 0.12)",
     justifyContent: "center",
     alignItems: "center",
   },

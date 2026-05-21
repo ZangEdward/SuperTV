@@ -189,8 +189,12 @@ export default function PlayScreen() {
   };
 
   const handleDownloadCurrent = () => {
-    if (!currentEpisode || !currentEpisode.url || !source || !id || !title) return;
+    if (!currentEpisode || !currentEpisode.url || !source || !id || !title) {
+      Toast.show({ type: "error", text1: "下载失败", text2: "缺少必要参数，无法下载" });
+      return;
+    }
     const episodeTitle = `第 ${currentEpisodeIndex + 1} 集`;
+    Toast.show({ type: "info", text1: "添加下载", text2: `${title} ${episodeTitle} 已加入下载队列` });
     downloadEpisode({
       source,
       source_name: detail?.source_name || source,
