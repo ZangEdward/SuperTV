@@ -10,6 +10,12 @@ const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
 const QUEUE_STORAGE_KEY = "mytv_cache_queue";
 
+const DEFAULT_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': '*/*',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+};
+
 // 安卓使用 android/data/<package>/files/download/
 const DOWNLOAD_DIR = Platform.OS === 'android'
   ? `${FileSystem.documentDirectory}download/`
@@ -124,10 +130,19 @@ function aes128CbcDecrypt(encryptedBase64: string, key: CryptoJS.lib.WordArray, 
  */
 function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array): ArrayBuffer {
   try {
-    const keyWordArray = CryptoJS.lib.WordArray.create(key);
-    const ivWordArray = CryptoJS.lib.WordArray.create(iv);
-    const base64 = arrayBufferToBase64(buffer);
-    const decrypted = aes128CbcDecrypt(base64, keyWordArray, ivWordArray);
+    const keyWordArray = CryptoJS.lib.WordArray.create(key as any);
+    const ivWordArray = CryptoJS.lib.WordArray.create(iv as any);
+    // 直接从 ArrayBuffer 创建 WordArray，避免转 Base64 增加内存压力
+    const contentWordArray = CryptoJS.lib.WordArray.create(buffer as any);
+    const decrypted = CryptoJS.AES.decrypt(
+      { ciphertext: contentWordArray } as any,
+      keyWordArray,
+      {
+        iv: ivWordArray,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7,
+      }
+    );
     return wordArrayToArrayBuffer(decrypted);
   } catch (err) {
     logger.warn('AES decrypt failed, returning original data', err);
@@ -141,31 +156,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const len = bytes.byteLength;
   const CHUNK_SIZE = 8192;
 
-  // 使用循环分块转换，平衡速度和内存栈限制
   for (let i = 0; i < len; i += CHUNK_SIZE) {
     const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
-    // @ts-ignore - 兼容性转换
-    binary += String.fromCharCode.apply(null, chunk);
+    // @ts-ignore
+    binary += String.fromCharCode.apply(null, Array.from(chunk) as any);
   }
 
-  // 使用 global.btoa 或兼容方案
-  if (typeof btoa === 'function') {
-    return btoa(binary);
-  } else {
-    // 兜底方案：如果环境完全没有 btoa
-    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    let res = '';
-    for (let i = 0; i < binary.length; i += 3) {
-      const a = binary.charCodeAt(i);
-      const b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : 0;
-      const c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : 0;
-      res += base64Chars[a >> 2];
-      res += base64Chars[((a & 3) << 4) | (b >> 4)];
-      res += i + 1 < binary.length ? base64Chars[((b & 15) << 2) | (c >> 6)] : '=';
-      res += i + 2 < binary.length ? base64Chars[c & 63] : '=';
-    }
-    return res;
-  }
+  return btoa(binary);
 }
 
 function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer {
@@ -189,6 +186,7 @@ export class CacheService {
     retryCount: number = 5
   ): Promise<string> {
     let lastError: Error | null = null;
+    const referer = url.substring(0, url.lastIndexOf('/') + 1);
 
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
@@ -197,7 +195,10 @@ export class CacheService {
           fileCache: true,
           appendExt: 'ts',
           timeout: 30000, // 30s 超时
-        }).fetch('GET', url);
+        }).fetch('GET', url, {
+          ...DEFAULT_HEADERS,
+          'Referer': referer,
+        });
 
         const status = res.info().status;
         if (status !== 200) {
@@ -620,7 +621,14 @@ export class CacheService {
 
     try {
       const fetchText = async (uri: string): Promise<string> => {
-        const response = await fetch(uri, { signal: mergeSignal });
+        const referer = uri.substring(0, uri.lastIndexOf('/') + 1);
+        const response = await fetch(uri, {
+          signal: mergeSignal,
+          headers: {
+            ...DEFAULT_HEADERS,
+            'Referer': referer,
+          }
+        });
         if (!response.ok) throw new Error(`无法获取 M3U8 文件：${response.status}`);
         return await response.text();
       };
@@ -654,7 +662,14 @@ export class CacheService {
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
         try {
-          const resp = await fetch(keyUrl, { signal: mergeSignal });
+          const keyReferer = keyUrl.substring(0, keyUrl.lastIndexOf('/') + 1);
+          const resp = await fetch(keyUrl, {
+            signal: mergeSignal,
+            headers: {
+              ...DEFAULT_HEADERS,
+              'Referer': keyReferer,
+            }
+          });
           const buf = await resp.arrayBuffer();
           encryptionKey = new Uint8Array(buf);
           if (mediaParsed.encryption.iv) {
@@ -689,7 +704,7 @@ export class CacheService {
 
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const CONCURRENCY = 4; // 降低并发数到4，减少内存压力
+      const CONCURRENCY = 2; // 进一步降低并发数，防止低端设备 OOM
       let completedCount = resumeIndex;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
@@ -701,7 +716,7 @@ export class CacheService {
       const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
       const resultsBuffer: { [index: number]: string } = {};
-      const BUFFER_LIMIT = 6; // 限制缓冲中最大未写入片段数
+      const BUFFER_LIMIT = 3; // 限制缓冲中最大未写入片段数
       let nextIndexToWrite = resumeIndex;
       let isWriting = false;
       let writeError: Error | null = null;
@@ -838,14 +853,9 @@ export class CacheService {
   ): Promise<string> {
     return new Promise(async (resolve, reject) => {
       try {
-        const defaultHeaders: Record<string, string> = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': '*/*',
-          'Connection': 'keep-alive',
-        };
         const mergedOptions = {
           ...options || {},
-          headers: { ...defaultHeaders, ...(options?.headers || {}) },
+          headers: { ...DEFAULT_HEADERS, ...(options?.headers || {}) },
         };
         const resumable = FileSystem.createDownloadResumable(
           url,

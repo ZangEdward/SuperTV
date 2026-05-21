@@ -26,4 +26,5 @@ export const Colors = {
   },
 };
 
+// 确保默认导出和命名导出一致
 export default Colors;

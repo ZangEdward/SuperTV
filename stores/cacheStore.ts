@@ -463,8 +463,18 @@ const useCacheStore = create<CacheState>((set, get) => ({
     totalEpisodes,
     resolution,
   }) => {
+    if (!episodeUrl) {
+      Toast.show({ type: "error", text1: "下载失败", text2: "无效的播放链接" });
+      return;
+    }
+
     const itemId = `${source}_${id}_${episodeIndex}`;
-    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: 0 } });
+    logger.info(`Starting single episode download: ${itemId}`);
+
+    set((state) => ({
+      currentDownloadId: itemId,
+      downloadProgress: { ...(state.downloadProgress || {}), [itemId]: 0 }
+    }));
 
     try {
       await CacheService.ensureDownloadDirectory();
@@ -473,14 +483,18 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
       let downloadUri = fileUri;
       if (episodeUrl.toLowerCase().includes(".m3u8")) {
+        logger.debug(`Downloading M3U8 for ${itemId}`);
         downloadUri = await CacheService.downloadM3U8AsMp4(episodeUrl, fileUri, itemId, undefined, (p) => {
           set((state) => ({ downloadProgress: { ...(state.downloadProgress || {}), [itemId]: p } }));
         });
       } else {
+        logger.debug(`Downloading MP4 for ${itemId}`);
         downloadUri = await CacheService.downloadFileWithProgress(episodeUrl, fileUri, (p) => {
           set((state) => ({ downloadProgress: { ...(state.downloadProgress || {}), [itemId]: p } }));
         });
       }
+
+      if (!downloadUri) throw new Error("下载任务未正常完成");
 
       const cachedItem: CachedVideoItem = {
         id: itemId,
@@ -497,12 +511,16 @@ const useCacheStore = create<CacheState>((set, get) => ({
       };
 
       await CacheService.add(cachedItem);
-      set((state) => ({ items: [cachedItem, ...state.items], currentDownloadId: null, downloadProgress: { ...(state.downloadProgress || {}), [itemId]: 1 } }));
+      set((state) => ({
+        items: [cachedItem, ...state.items],
+        currentDownloadId: null,
+        downloadProgress: { ...(state.downloadProgress || {}), [itemId]: 1 }
+      }));
       Toast.show({ type: "success", text1: "下载完成", text2: `${title} ${episodeTitle}` });
     } catch (error) {
-      logger.warn("downloadEpisode failed", error);
+      logger.warn(`downloadEpisode failed for ${itemId}:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      set({ currentDownloadId: null, downloadProgress: { ...(get().downloadProgress || {}) } });
+      set({ currentDownloadId: null });
       Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
     }
   },

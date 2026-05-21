@@ -17,7 +17,7 @@ import useAuthStore from "@/stores/authStore";
 import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
 import { UpdateModal } from "@/components/UpdateModal";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import Colors from "@/constants/Colors";
+import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 import MobileTabContainer from "@/components/navigation/MobileTabContainer";
 
@@ -30,6 +30,9 @@ const CustomDarkTheme = {
     ...DarkTheme.colors,
     background: Colors?.dark?.background ?? '#000',
     card: Colors?.dark?.background ?? '#000',
+    text: Colors?.dark?.text ?? '#fff',
+    border: Colors?.dark?.border ?? '#333',
+    primary: Colors?.dark?.primary ?? '#00bb5e',
   },
 };
 
