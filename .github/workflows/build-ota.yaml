@@ -41,10 +41,10 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Setup Android SDK
+            - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-        - name: Install dependencies
+      - name: Install dependencies
         run: |
           yarn config set network-timeout 300000
           yarn install
