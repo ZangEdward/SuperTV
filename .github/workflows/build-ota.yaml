@@ -44,10 +44,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
+            - name: Install dependencies
         run: |
           yarn config set network-timeout 300000
           yarn install
+
+      - name: 🧹 Clear Metro cache
+        run: rm -rf node_modules/.cache/metro
 
       - name: Get version
         id: get_version
@@ -57,7 +60,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Expo Prebuild
-        run: npx expo prebuild --platform android --no-install
+        run: npx expo prebuild --platform android --no-install --clean
 
       - name: Decode Keystore
         run: |

@@ -27,11 +27,14 @@ jobs:
       - name: 🏗️ Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 📦 Install dependencies
+            - name: 📦 Install dependencies
         run: yarn install
 
+      - name: 🧹 Clear Metro cache
+        run: rm -rf node_modules/.cache/metro
+
       - name: 🛠️ Expo Prebuild
-        run: npx expo prebuild --platform android --no-install
+        run: npx expo prebuild --platform android --no-install --clean
         env:
           EXPO_TV: 1
 
