@@ -265,7 +265,7 @@ export default function CacheManagementScreen() {
 
           {/* 并发下载数 - 放在同一排 */}
           <View style={styles.concurrencyContainer}>
-            <ThemedText style={styles.concurrencyLabel}>并发：</ThemedText>
+            <ThemedText style={styles.concurrencyLabel}>同时下载数：</ThemedText>
             <TouchableOpacity
               style={styles.concurrencyPicker}
               onPress={() => setConcurrencyOpen((prev) => !prev)}
