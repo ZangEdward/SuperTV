@@ -28,8 +28,8 @@ const CustomDarkTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: Colors.dark.background,
-    card: Colors.dark.background,
+    background: Colors?.dark?.background ?? '#000',
+    card: Colors?.dark?.background ?? '#000',
   },
 };
 
@@ -114,7 +114,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider value={theme}>
-          <View style={[styles.container, { backgroundColor: Colors.dark.background }]}>
+          <View style={[styles.container, { backgroundColor: Colors?.dark?.background ?? '#000' }]}>
             <MobileTabContainer>
               <Stack screenOptions={({ route }) => {
                 const params = route.params as any;
@@ -128,7 +128,7 @@ export default function RootLayout() {
 
                 return {
                   headerShown: false,
-                  contentStyle: { backgroundColor: Colors.dark.background },
+                  contentStyle: { backgroundColor: Colors?.dark?.background ?? '#000' },
                   animation: animation,
                   animationDuration: isMobile ? 300 : 200,
                   gestureEnabled: isMobile,
