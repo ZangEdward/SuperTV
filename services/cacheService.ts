@@ -435,8 +435,9 @@ export class CacheService {
   static buildFileName(source: string, id: string, episodeIndex: number, url: string): string {
     const extensionMatch = url.match(/\.(mp4|m3u8|ts|mov|webm)(?:[?#].*)?$/i);
     let extension = extensionMatch ? extensionMatch[1].toLowerCase() : "mp4";
+    // 如果是 m3u8 下载，强制使用 .ts 后缀，避免系统 MediaScanner 将其误认为 mp4 导致硬件解码器崩溃
     if (extension === "m3u8") {
-      extension = "mp4";
+      extension = "ts";
     }
     const normalizedSource = source.replace(/[^a-zA-Z0-9_-]/g, "_");
     const normalizedId = id.toString().replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -642,9 +643,10 @@ export class CacheService {
         let referer = '';
         let origin = '';
         try {
-          const urlObj = new URL(uri);
+          const safeUrl = uri.startsWith('//') ? `https:${uri}` : uri;
+          const urlObj = new URL(safeUrl);
           origin = `${urlObj.protocol}//${urlObj.host}`;
-          referer = uri.substring(0, uri.lastIndexOf('/') + 1);
+          referer = safeUrl.substring(0, safeUrl.lastIndexOf('/') + 1);
         } catch (e) {
           referer = uri;
         }
@@ -715,8 +717,8 @@ export class CacheService {
         }
       }
 
-      if (!destinationPath.endsWith('.mp4')) {
-        destinationPath = destinationPath.replace(/\.[^/.]+$/, '') + '.mp4';
+      if (!destinationPath.endsWith('.ts') && !destinationPath.endsWith('.mp4')) {
+        destinationPath = destinationPath.replace(/\.[^/.]+$/, '') + '.ts';
       }
 
       // 确保目录存在
