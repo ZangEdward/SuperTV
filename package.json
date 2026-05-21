@@ -2,7 +2,7 @@
   "name": "supertv",
   "private": true,
   "main": "expo-router/entry",
-"version": "5.5.28.526",
+  "version": "5.5.28.526",
   "scripts": {
     "start": "EXPO_TV=1 EXPO_USE_METRO_WORKSPACE_ROOT=1 expo start",
     "android": "EXPO_TV=1 EXPO_USE_METRO_WORKSPACE_ROOT=1 expo run:android",
@@ -32,6 +32,7 @@
     "@react-native-cookies/cookies": "^6.2.1",
     "@react-navigation/native": "^6.0.2",
     "ajv": "^8.20.0",
+    "crypto-js": "^4.2.0",
     "expo": "~51.0.13",
     "expo-av": "~14.0.7",
     "expo-blur": "~13.0.2",
@@ -44,9 +45,9 @@
     "expo-linking": "~6.3.1",
     "expo-media-library": "~16.0.3",
     "expo-router": "~3.5.16",
+    "expo-screen-orientation": "~7.0.1",
     "expo-splash-screen": "~0.27.5",
     "expo-status-bar": "~1.12.1",
-    "expo-screen-orientation": "~7.0.1",
     "expo-system-ui": "~3.0.6",
     "expo-web-browser": "~13.0.3",
     "lucide-react-native": "^0.523.0",
@@ -65,9 +66,9 @@
     "react-native-svg": "^15.12.0",
     "react-native-tcp-socket": "^6.0.6",
     "react-native-toast-message": "^2.3.3",
+    "react-native-url-polyfill": "^3.0.0",
     "react-native-web": "~0.19.10",
-    "zustand": "^5.0.6",
-    "crypto-js": "^4.2.0"
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
