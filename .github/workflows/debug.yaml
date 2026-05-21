@@ -1,55 +1,51 @@
-name: Debug JS Bundle Errors #js编译测试请勿删除
+name: Debug JS Bundle Errors
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
+    name: Debug Build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Setup Java
+      - name: ☕ Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Setup Android SDK
+      - name: 🏗️ Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
+      - name: 📦 Install dependencies
         run: yarn install --network-timeout 100000
 
-      # ⭐ 检查入口文件是否存在
-      - name: Verify entry file
+      - name: 🔍 Verify entry file
         run: ls -la index.js
 
-      # ⭐ 生成 android 目录
-      - name: Expo Prebuild
+      - name: 🛠️ Expo Prebuild
         run: npx expo prebuild --platform android --no-install
 
-      # ⭐⭐ 注入 Node Debug Flags（关键）
-      - name: Inject Node Debug Flags
+      - name: 💉 Inject Node Debug Flags
         run: |
           echo "ORG_GRADLE_PROJECT_nodeOptions=--trace-uncaught --trace-warnings --max_old_space_size=4096" >> android/gradle.properties
 
-      # ⭐⭐⭐ 打印 JS bundle 错误（核心步骤）
-      - name: Build Release APK with Full JS Logs
+      - name: 🏗️ Build Release APK with Full JS Logs
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace --info
 
-      # 上传日志
-      - name: Upload Build Logs
+      - name: 📁 Upload Build Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:

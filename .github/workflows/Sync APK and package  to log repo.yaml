@@ -1,4 +1,4 @@
-name: OTA发布
+name: OTA发布 (异库同步)
 
 on:
   workflow_dispatch:
@@ -11,34 +11,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout SuperTV repo
+      - name: 📥 Checkout SuperTV repo
         uses: actions/checkout@v4
 
-      - name: Read version
+      - name: 🏷️ Read version
         id: read_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Download release APK
+      - name: ⬇️ Download release APK
         uses: robinraju/release-downloader@v1
         with:
           repository: ${{ secrets.SOURCE_REPO }}
           tag: v${{ steps.read_version.outputs.version }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}
           fileName: "SuperTV-${{ steps.read_version.outputs.version }}.apk"
 
-      - name: Clone log repo
+      - name: 📂 Clone log repo
         run: |
-          git clone https://github.com/${{ secrets.SYNC_REPO }}.git sync-repo
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
 
-      - name: Update package.json in log/vision
+      - name: 📄 Update package.json in log/vision
         run: |
           mkdir -p sync-repo/log/vision
           cp package.json sync-repo/log/vision/package.json
 
-      - name: Update apksize.json
+      - name: 📏 Update apksize.json
         run: |
           mkdir -p sync-repo/log/vision
           rm -f sync-repo/log/vision/apksize.json
@@ -46,7 +46,7 @@ jobs:
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
           echo "APK size: ${APK_SIZE} bytes"
 
-      - name: Upload APK to log repo Releases
+      - name: 🚀 Upload APK to log repo Releases
         uses: softprops/action-gh-release@v1
         with:
           repository: ${{ secrets.SYNC_REPO }}
@@ -57,7 +57,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
 
-      - name: Generate structured alien-style log file
+      - name: 🪵 Generate structured alien-style log file
         run: |
           TIMESTAMP=$(date +%s)
           LOGFILE="${TIMESTAMP}.log"
@@ -92,7 +92,7 @@ jobs:
           
           echo "LOGFILE_NAME=${LOGFILE}" >> $GITHUB_ENV
 
-      - name: Commit & Push
+      - name: 📤 Commit & Push
         run: |
           cd sync-repo
           git config user.name "github-actions"

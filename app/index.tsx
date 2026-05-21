@@ -301,7 +301,7 @@ export default function HomeScreen() {
           renderItem={renderCategory}
           keyExtractor={(item) => item.title}
           horizontal
-          scrollEnabled={false}
+          scrollEnabled={true}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={dynamicStyles.categoryListContent}
         />
@@ -328,7 +328,7 @@ export default function HomeScreen() {
             }}
             keyExtractor={(item) => item}
             horizontal
-            scrollEnabled={false}
+            scrollEnabled={true}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={dynamicStyles.categoryListContent}
           />
