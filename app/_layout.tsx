@@ -5,7 +5,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from "react";
-import { Platform, View, StyleSheet } from "react-native";
+import { Platform, View, StyleSheet, useColorScheme } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -37,8 +37,8 @@ const CustomDarkTheme = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = "dark";
-  const theme = colorScheme === "dark" ? CustomDarkTheme : DefaultTheme;
+  const colorScheme = useColorScheme();
+  const theme = (colorScheme === "dark" ? CustomDarkTheme : DefaultTheme) ?? DefaultTheme;
 
   const [loaded, error] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),

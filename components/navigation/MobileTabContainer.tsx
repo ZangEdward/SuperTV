@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Platform, Animated, Dimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Home, Search, Heart, Settings, Tv } from 'lucide-react-native';
-import { Colors } from '../../constants/Colors';
+import Colors from '../../constants/Colors';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { DeviceUtils } from '../../utils/DeviceUtils';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
