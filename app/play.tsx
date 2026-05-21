@@ -14,6 +14,7 @@ import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { ArrowLeft, ArrowUpDown, Download } from "lucide-react-native";
 import { ArtIconCast } from "@/components/ArtIcons";
+import Toast from "react-native-toast-message";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
@@ -189,24 +190,33 @@ export default function PlayScreen() {
   };
 
   const handleDownloadCurrent = () => {
-    if (!currentEpisode || !currentEpisode.url || !source || !id || !title) {
-      Toast.show({ type: "error", text1: "下载失败", text2: "缺少必要参数，无法下载" });
-      return;
+    try {
+      if (!currentEpisode || !currentEpisode.url || !source || !id || !title) {
+        Toast.show({ type: "error", text1: "下载失败", text2: "缺少必要参数，无法下载" });
+        return;
+      }
+      const episodeTitle = `第 ${currentEpisodeIndex + 1} 集`;
+      Toast.show({ type: "info", text1: "添加下载", text2: `${title} ${episodeTitle} 已加入下载队列` });
+
+      const downloadParams = {
+        source,
+        source_name: detail?.source_name || source,
+        title,
+        poster: detail?.poster || '',
+        id,
+        episodeIndex: currentEpisodeIndex,
+        episodeTitle,
+        episodeUrl: currentEpisode.url,
+        totalEpisodes: episodes?.length || 1,
+        resolution: (detail as any)?.resolution || null,
+      };
+
+      logger.info("[handleDownloadCurrent] Params:", JSON.stringify(downloadParams));
+      downloadEpisode(downloadParams);
+    } catch (e) {
+      logger.error("[handleDownloadCurrent] Error:", e);
+      Toast.show({ type: "error", text1: "点击下载出错", text2: String(e) });
     }
-    const episodeTitle = `第 ${currentEpisodeIndex + 1} 集`;
-    Toast.show({ type: "info", text1: "添加下载", text2: `${title} ${episodeTitle} 已加入下载队列` });
-    downloadEpisode({
-      source,
-      source_name: detail?.source_name || source,
-      title,
-      poster: detail?.poster || '',
-      id,
-      episodeIndex: currentEpisodeIndex,
-      episodeTitle,
-      episodeUrl: currentEpisode.url,
-      totalEpisodes: episodes.length || 1,
-      resolution: (detail as any)?.resolution || null,
-    });
   };
 
   // 如果初始化失败（detail为null且无法获取），显示错误页面
@@ -298,7 +308,7 @@ export default function PlayScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
         <View style={styles.headerIcons}>
-          {currentEpisode?.url && !isLocalFile && (
+          {currentEpisode?.url && !isLocalFile && isMobile && (
             <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
               <Download size={20} color="white" />
             </TouchableOpacity>

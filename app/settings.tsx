@@ -111,7 +111,7 @@ export default function SettingsScreen() {
       ),
       key: "remote",
     },
-    deviceType !== "tv" && {
+    deviceType === "mobile" && {
       component: <CacheSection />,
       key: "cache",
     },

@@ -451,22 +451,28 @@ const useCacheStore = create<CacheState>((set, get) => ({
     get().processQueue?.();
   },
 
-  downloadEpisode: async ({
-    source,
-    source_name,
-    title,
-    poster,
-    id,
-    episodeIndex,
-    episodeTitle,
-    episodeUrl,
-    totalEpisodes,
-    resolution,
-  }) => {
-    if (!episodeUrl) {
-      Toast.show({ type: "error", text1: "下载失败", text2: "无效的播放链接" });
-      return;
-    }
+  downloadEpisode: async (options) => {
+    // 增加同步错误捕获，防止入参导致的崩溃
+    try {
+      const {
+        source,
+        source_name,
+        title,
+        poster,
+        id,
+        episodeIndex,
+        episodeTitle,
+        episodeUrl,
+        totalEpisodes,
+        resolution,
+      } = options;
+
+      if (!episodeUrl) {
+        Toast.show({ type: "error", text1: "下载失败", text2: "无效的播放链接" });
+        return;
+      }
+
+      logger.info(`[downloadEpisode] Starting: ${title} - ${episodeTitle} URL: ${episodeUrl.substring(0, 100)}...`);
 
     const itemId = `${source}_${id}_${episodeIndex}`;
     logger.info(`Starting single episode download: ${itemId}`);
@@ -518,10 +524,10 @@ const useCacheStore = create<CacheState>((set, get) => ({
       }));
       Toast.show({ type: "success", text1: "下载完成", text2: `${title} ${episodeTitle}` });
     } catch (error) {
-      logger.warn(`downloadEpisode failed for ${itemId}:`, error);
+      logger.warn(`downloadEpisode failed for:`, error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       set({ currentDownloadId: null });
-      Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
+      Toast.show({ type: "error", text1: "下载过程中出错", text2: errorMessage });
     }
   },
 

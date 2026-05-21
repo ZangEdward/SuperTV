@@ -130,10 +130,10 @@ function aes128CbcDecrypt(encryptedBase64: string, key: CryptoJS.lib.WordArray, 
  */
 function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array): ArrayBuffer {
   try {
-    const keyWordArray = CryptoJS.lib.WordArray.create(key as any);
-    const ivWordArray = CryptoJS.lib.WordArray.create(iv as any);
-    // 直接从 ArrayBuffer 创建 WordArray，避免转 Base64 增加内存压力
-    const contentWordArray = CryptoJS.lib.WordArray.create(buffer as any);
+    const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(key) as any);
+    const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(iv) as any);
+    const contentWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(buffer) as any);
+
     const decrypted = CryptoJS.AES.decrypt(
       { ciphertext: contentWordArray } as any,
       keyWordArray,
@@ -179,6 +179,19 @@ export class CacheService {
   /**
    * 下载单个 TS 片段，带自动重试和指数退避
    */
+  private static async getAuthHeaders(): Promise<Record<string, string>> {
+    try {
+      const cookies = await AsyncStorage.getItem("authCookies");
+      if (cookies) {
+        return { 'Cookie': cookies };
+      }
+    } catch (e) {}
+    return {};
+  }
+
+  /**
+   * 下载单个 TS 片段，带自动重试和指数退避
+   */
   private static async downloadSegment(
     url: string,
     index: number,
@@ -186,21 +199,43 @@ export class CacheService {
     retryCount: number = 5
   ): Promise<string> {
     let lastError: Error | null = null;
-    const referer = url.substring(0, url.lastIndexOf('/') + 1);
+    const authHeaders = await this.getAuthHeaders();
+
+    // 构造更精确的 Referer 和 Origin
+    let referer = '';
+    let origin = '';
+    try {
+      const safeUrl = url.startsWith('//') ? `https:${url}` : url;
+      const urlObj = new URL(safeUrl);
+      origin = `${urlObj.protocol}//${urlObj.host}`;
+      referer = safeUrl.substring(0, safeUrl.lastIndexOf('/') + 1);
+    } catch (e) {
+      referer = url;
+    }
 
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
-        // 使用 RNFetchBlob 下载到临时文件，减少 JS 堆内存直接压力
+        const fetchHeaders: Record<string, string> = {
+          ...DEFAULT_HEADERS,
+          ...authHeaders,
+          'Referer': referer,
+        };
+        if (origin) {
+          fetchHeaders['Origin'] = origin;
+        }
+
+        // 使用 RNFetchBlob 下载到临时文件
         const res = await RNFetchBlob.config({
           fileCache: true,
           appendExt: 'ts',
-          timeout: 30000, // 30s 超时
-        }).fetch('GET', url, {
-          ...DEFAULT_HEADERS,
-          'Referer': referer,
-        });
+          timeout: 60000, // 增加到 60s
+        }).fetch('GET', url, fetchHeaders);
 
         const status = res.info().status;
+        if (status === 403 || status === 401) {
+          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+          throw new Error(`权限错误 (HTTP ${status})`);
+        }
         if (status !== 200) {
           await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
           throw new Error(`HTTP ${status}`);
@@ -208,56 +243,38 @@ export class CacheService {
 
         try {
           if (encryption) {
-            // 如果有加密，分块读取并解密以降低内存峰值
             const path = res.path();
-            const stat = await RNFetchBlob.fs.stat(path);
-            const fileSize = stat.size;
+            const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
+            const contentWordArray = CryptoJS.enc.Base64.parse(b64);
 
-            // 对于大文件（>50MB），使用流式分块处理
-            if (fileSize > 50 * 1024 * 1024) {
-              const chunkSize = 5 * 1024 * 1024; // 5MB 分块
-              let result = '';
-              let offset = 0;
+            const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
+            const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.iv) as any);
 
-              while (offset < fileSize) {
-                const end = Math.min(offset + chunkSize, fileSize);
-                const chunkB64 = await RNFetchBlob.fs.readFile(path, 'base64', offset, end - offset);
-                const chunkBuffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(chunkB64));
-                const decryptedChunk = decryptTSFragment(chunkBuffer, encryption.key, encryption.iv);
-                result += arrayBufferToBase64(decryptedChunk);
-                offset = end;
+            const decrypted = CryptoJS.AES.decrypt(
+              { ciphertext: contentWordArray } as any,
+              keyWordArray,
+              {
+                iv: ivWordArray,
+                mode: CryptoJS.mode.CBC,
+                padding: CryptoJS.pad.Pkcs7,
               }
-              return result;
-            } else {
-              const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
-              const buffer = wordArrayToArrayBuffer(CryptoJS.enc.Base64.parse(b64));
-              const decrypted = decryptTSFragment(buffer, encryption.key, encryption.iv);
-              return arrayBufferToBase64(decrypted);
-            }
+            );
+            return CryptoJS.enc.Base64.stringify(decrypted);
           } else {
-            // 无加密，直接返回 base64
             return await res.base64();
           }
         } finally {
-          // 清理临时文件
           await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
         }
       } catch (err: any) {
         lastError = err;
-        const errorMsg = err.message || '未知错误';
-
         if (attempt < retryCount) {
-          const delay = 1000 * Math.pow(2, attempt); // 指数退避: 1s, 2s, 4s
-          logger.warn(`片段 ${index + 1} 下载失败 (第${attempt + 1}次), ${delay}ms后重试: ${errorMsg}`);
+          const delay = 1000 * Math.pow(2, attempt);
           await new Promise(r => setTimeout(r, delay));
-        } else {
-          logger.error(`片段 ${index + 1} 下载失败，已重试${retryCount}次: ${errorMsg} (URL: ${url})`);
-          throw new Error(`片段 ${index + 1} 失败: ${errorMsg}`);
         }
       }
     }
-
-    throw lastError || new Error(`片段 ${index + 1} 未知错误`);
+    throw lastError || new Error(`片段 ${index + 1} 下载失败`);
   }
 
   static async getAll(): Promise<CachedVideoItem[]> {
@@ -620,17 +637,34 @@ export class CacheService {
     }
 
     try {
+      const authHeaders = await this.getAuthHeaders();
       const fetchText = async (uri: string): Promise<string> => {
-        const referer = uri.substring(0, uri.lastIndexOf('/') + 1);
-        const response = await fetch(uri, {
-          signal: mergeSignal,
-          headers: {
-            ...DEFAULT_HEADERS,
-            'Referer': referer,
-          }
-        });
-        if (!response.ok) throw new Error(`无法获取 M3U8 文件：${response.status}`);
-        return await response.text();
+        let referer = '';
+        let origin = '';
+        try {
+          const urlObj = new URL(uri);
+          origin = `${urlObj.protocol}//${urlObj.host}`;
+          referer = uri.substring(0, uri.lastIndexOf('/') + 1);
+        } catch (e) {
+          referer = uri;
+        }
+
+        const headers: Record<string, string> = {
+          ...DEFAULT_HEADERS,
+          ...authHeaders,
+          'Referer': referer,
+        };
+        if (origin) {
+          headers['Origin'] = origin;
+        }
+
+        // 改用 RNFetchBlob 获取文本，因为 fetch 在某些设备上会报 network request failed
+        const res = await RNFetchBlob.fetch('GET', uri, headers);
+        const status = res.info().status;
+        if (status !== 200) {
+          throw new Error(`无法获取 M3U8 文件：${status}`);
+        }
+        return await res.text();
       };
 
       await CacheService.waitIfPaused(taskId);
@@ -663,15 +697,14 @@ export class CacheService {
         if (mergeSignal.aborted) throw new Error("下载已取消");
         try {
           const keyReferer = keyUrl.substring(0, keyUrl.lastIndexOf('/') + 1);
-          const resp = await fetch(keyUrl, {
-            signal: mergeSignal,
-            headers: {
-              ...DEFAULT_HEADERS,
-              'Referer': keyReferer,
-            }
-          });
-          const buf = await resp.arrayBuffer();
-          encryptionKey = new Uint8Array(buf);
+          const keyHeaders = { ...DEFAULT_HEADERS, 'Referer': keyReferer };
+          const keyRes = await RNFetchBlob.fetch('GET', keyUrl, keyHeaders);
+          if (keyRes.info().status !== 200) throw new Error(`Key HTTP ${keyRes.info().status}`);
+
+          const base64Key = await keyRes.base64();
+          const keyWordArray = CryptoJS.enc.Base64.parse(base64Key);
+          encryptionKey = new Uint8Array(wordArrayToArrayBuffer(keyWordArray));
+
           if (mediaParsed.encryption.iv) {
             const hex = mediaParsed.encryption.iv.replace('0x', '');
             encryptionIV = new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
