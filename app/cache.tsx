@@ -12,6 +12,7 @@ import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
 import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import Colors from "../constants/Colors";
+import Toast from 'react-native-toast-message';
 
 export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
