@@ -45,7 +45,9 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   }, [pathname, filteredTabs]);
 
   const isTabRoute = currentIndex !== -1;
-  const enableSwipe = isTabRoute;
+  // 首页有横向滚动的分类列表，禁用滑动切换功能以防止手势冲突
+  const isHome = isTabRoute && filteredTabs[currentIndex]?.key === 'home';
+  const enableSwipe = isTabRoute && !isHome;
   const screenWidth = Dimensions.get('window').width;
   const tabWidth = (screenWidth - spacing * 2) / filteredTabs.length;
 
@@ -95,7 +97,17 @@ const MobileTabContainer: React.FC<MobileTabContainerProps> = ({ children }) => 
   const onHandlerStateChange = (event: any) => {
     if (!isTabRoute) return;
 
-    const { state, translationX, velocityX } = event.nativeEvent;
+    const { state, translationX, velocityX, y } = event.nativeEvent;
+
+    // 如果是在首页，且手势起始位置在顶部区域 (y < 160)，则屏蔽左右滑动翻页
+    // 160px 大约覆盖了状态栏 + 顶部导航 + 两行分类选择器
+    if (currentIndex === 0 && y < 160) {
+      if (state === State.ACTIVE) {
+        // 通过设置一个无法达到的目标值或立即结束来中途屏蔽
+        dragX.setValue(0);
+      }
+      return;
+    }
 
     if (state === State.BEGAN) {
       dragX.stopAnimation();
