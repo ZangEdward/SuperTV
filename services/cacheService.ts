@@ -739,7 +739,8 @@ export class CacheService {
 
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
-      const CONCURRENCY = 2; // 进一步降低并发数，防止低端设备 OOM
+
+      const CONCURRENCY = 6; // 提高并发数，加速下载
       let completedCount = resumeIndex;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一

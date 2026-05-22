@@ -23,18 +23,46 @@ import MobileTabContainer from "@/components/navigation/MobileTabContainer";
 
 const logger = Logger.withTag('RootLayout');
 
+// 安全兜底颜色常量 —— 当 Colors 模块加载失败或未定义时使用
+const SAFE_COLORS = {
+  dark: { background: '#000', text: '#fff', border: '#333', primary: '#00bb5e' },
+  light: { background: '#fff', text: '#11181C', border: '#E5E5E5', primary: '#00bb5e' },
+};
+
+/** 安全获取颜色值，避免因 Colors 未加载而崩溃 */
+function getSafeColor(path: 'dark' | 'light', key: keyof typeof SAFE_COLORS.dark): string {
+  try {
+    if (Colors && typeof Colors === 'object' && Colors[path] && typeof Colors[path] === 'object') {
+      const val = (Colors[path] as Record<string, any>)?.[key];
+      if (typeof val === 'string') return val;
+    }
+  } catch (_) {
+    // 忽略任何访问错误
+  }
+  return SAFE_COLORS[path][key];
+}
+
+// 预计算常用颜色
+const DARK_BG = getSafeColor('dark', 'background');
+const DARK_TEXT = getSafeColor('dark', 'text');
+const DARK_BORDER = getSafeColor('dark', 'border');
+const DARK_PRIMARY = getSafeColor('dark', 'primary');
+
 // 自定义暗色主题，确保背景色一致
 const CustomDarkTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: Colors?.dark?.background ?? '#000',
-    card: Colors?.dark?.background ?? '#000',
-    text: Colors?.dark?.text ?? '#fff',
-    border: Colors?.dark?.border ?? '#333',
-    primary: Colors?.dark?.primary ?? '#00bb5e',
+    background: DARK_BG,
+    card: DARK_BG,
+    text: DARK_TEXT,
+    border: DARK_BORDER,
+    primary: DARK_PRIMARY,
   },
 };
+
+// 将 Toast 注册到全局对象 —— 修复 ReferenceError: Property 'Toast' doesn't exist
+(globalThis as any).Toast = Toast;
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -117,7 +145,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider value={theme}>
-          <View style={[styles.container, { backgroundColor: Colors?.dark?.background ?? '#000' }]}>
+          <View style={[styles.container, { backgroundColor: DARK_BG }]}>
             <MobileTabContainer>
               <Stack screenOptions={({ route }) => {
                 const params = route.params as any;
@@ -131,7 +159,7 @@ export default function RootLayout() {
 
                 return {
                   headerShown: false,
-                  contentStyle: { backgroundColor: Colors?.dark?.background ?? '#000' },
+                  contentStyle: { backgroundColor: DARK_BG },
                   animation: animation,
                   animationDuration: isMobile ? 300 : 200,
                   gestureEnabled: isMobile,

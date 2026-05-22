@@ -27,6 +27,9 @@ import Logger from '@/utils/Logger';
 const logger = Logger.withTag('PlayScreen');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// 注册全局 Toast 引用，防止某些参考路径下 ReferenceError
+(globalThis as any).Toast = Toast;
+
 const LoadingContainer = memo(({ style, currentEpisode }: { style: any; currentEpisode: any }) => (
   <View style={style}>
     <VideoLoadingAnimation showProgressBar />
@@ -190,13 +193,38 @@ export default function PlayScreen() {
   };
 
   const handleDownloadCurrent = () => {
+    // 防御性检查：双重确保 Toast 可用（预防因模块加载时序导致的全局引用失败）
+    const safeToast = (globalThis as any).Toast || Toast;
+    if (!safeToast) {
+      logger.error('[handleDownloadCurrent] Toast 对象不可用，无法显示提示');
+      try {
+        // 兜底：如果连 Toast 都没有，至少用日志记录错误
+        downloadEpisode({
+          source: source as string,
+          source_name: detail?.source_name || source as string,
+          title: title as string,
+          poster: detail?.poster || '',
+          id: id as string,
+          episodeIndex: currentEpisodeIndex,
+          episodeTitle: `第 ${currentEpisodeIndex + 1} 集`,
+          episodeUrl: currentEpisode!.url,
+          totalEpisodes: episodes?.length || 1,
+          resolution: (detail as any)?.resolution || null,
+        });
+      } catch (innerErr) {
+        logger.error('[handleDownloadCurrent] 兜底下载也失败:', innerErr);
+      }
+      return;
+    }
     try {
       if (!currentEpisode || !currentEpisode.url || !source || !id || !title) {
-        Toast.show({ type: "error", text1: "下载失败", text2: "缺少必要参数，无法下载" });
+
+        safeToast.show({ type: "error", text1: "下载失败", text2: "缺少必要参数，无法下载" });
         return;
       }
       const episodeTitle = `第 ${currentEpisodeIndex + 1} 集`;
-      Toast.show({ type: "info", text1: "添加下载", text2: `${title} ${episodeTitle} 已加入下载队列` });
+
+      safeToast.show({ type: "info", text1: "添加下载", text2: `${title} ${episodeTitle} 已加入下载队列` });
 
       const downloadParams = {
         source,
@@ -213,7 +241,6 @@ export default function PlayScreen() {
 
       logger.info("[handleDownloadCurrent] Params:", JSON.stringify(downloadParams));
       downloadEpisode(downloadParams);
-    } catch (e) {
       logger.error("[handleDownloadCurrent] Error:", e);
       Toast.show({ type: "error", text1: "点击下载出错", text2: String(e) });
     }
