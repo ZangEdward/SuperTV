@@ -241,6 +241,7 @@ export default function PlayScreen() {
 
       logger.info("[handleDownloadCurrent] Params:", JSON.stringify(downloadParams));
       downloadEpisode(downloadParams);
+    } catch (e) {
       logger.error("[handleDownloadCurrent] Error:", e);
       Toast.show({ type: "error", text1: "点击下载出错", text2: String(e) });
     }
