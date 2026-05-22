@@ -740,7 +740,7 @@ export class CacheService {
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
 
-      const CONCURRENCY = 6; // 提高并发数，加速下载
+      const CONCURRENCY = 4; // 提高并发数，加速下载
       let completedCount = resumeIndex;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
@@ -752,7 +752,7 @@ export class CacheService {
       const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
       const resultsBuffer: { [index: number]: string } = {};
-      const BUFFER_LIMIT = 8; // 限制缓冲中最大未写入片段数
+      const BUFFER_LIMIT = 6; // 限制缓冲中最大未写入片段数
       let nextIndexToWrite = resumeIndex;
       let isWriting = false;
       let writeError: Error | null = null;
