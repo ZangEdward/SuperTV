@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useTVEventHandler, HWEvent } from "react-native";
 import usePlayerStore from "@/stores/playerStore";
+import { useResponsiveLayout } from "./useResponsiveLayout";
 
 const SEEK_STEP = 20 * 1000; // 快进/快退的时间步长（毫秒）
 
@@ -13,6 +14,7 @@ const CONTROLS_TIMEOUT = 5000;
  */
 export const useTVRemoteHandler = () => {
   const { showControls, setShowControls, showEpisodeModal, togglePlayPause, seek } = usePlayerStore();
+  const { deviceType } = useResponsiveLayout();
 
   const showControlsRef = useRef(showControls);
   const showEpisodeModalRef = useRef(showEpisodeModal);
@@ -126,8 +128,11 @@ export const useTVRemoteHandler = () => {
     [setShowControls, resetTimer, togglePlayPause, seek]
   );
 
-  const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
-  safeUseTVEventHandler(handleTVEvent);
+  // 只有在 TV 模式下才挂载遥控器监听，彻底解决手机端 undefined 崩溃
+  if (deviceType === 'tv' && typeof useTVEventHandler === 'function') {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useTVEventHandler(handleTVEvent);
+  }
 
   // 处理屏幕点击事件
   const onScreenPress = () => {

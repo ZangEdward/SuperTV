@@ -48,11 +48,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const resources = useSources();
 
   const videoTitle = detail?.title || "";
-  const currentEpisode = episodes[currentEpisodeIndex];
+  const currentEpisode = (episodes && Array.isArray(episodes)) ? episodes[currentEpisodeIndex] : null;
   const currentEpisodeTitle = currentEpisode?.title;
-  const currentSource = resources.find((r) => r.source === detail?.source);
+  const currentSource = (resources && Array.isArray(resources)) ? resources.find((r) => r.source === detail?.source) : null;
   const currentSourceName = currentSource?.source_name;
-  const hasNextEpisode = currentEpisodeIndex < (episodes.length || 0) - 1;
+  const hasNextEpisode = currentEpisodeIndex < (episodes?.length || 0) - 1;
 
   const formatTime = (milliseconds: number) => {
     if (!milliseconds) return "00:00";

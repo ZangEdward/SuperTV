@@ -176,9 +176,9 @@ export default function PlayScreen() {
   }, [showControls, showCastModal, deviceType, setShowControls, setShowCastModal, router]);
 
   const episodes = useMemo(() => {
-    if (!detail) return [];
-    const list = (detail.episodes || []).map((url: string, i: number) => ({ index: i, url }));
-    return isReverse ? list.reverse() : list;
+    if (!detail || !Array.isArray(detail.episodes)) return [];
+    const list = detail.episodes.map((url: string, i: number) => ({ index: i, url }));
+    return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
   const sortedSources = useMemo(() => {
