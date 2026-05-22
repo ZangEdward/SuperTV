@@ -83,6 +83,7 @@ export default function PlayScreen() {
     setShowCastModal,
     reset,
     loadVideo,
+    isFullscreen,
   } = usePlayerStore();
 
   // 根据播放状态控制屏幕常亮
@@ -390,29 +391,29 @@ export default function PlayScreen() {
   }
 
   const renderMobileLayout = () => (
-    <View style={[styles.mobileContainer, isMobileLandscape && styles.fullscreenContainer]}>
-      {/* 顶部栏 - 仅在竖屏显示 */}
-      {!isMobileLandscape && (
+    <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
+      {/* 顶部栏 - 仅在非全屏显示 */}
+      {!isFullscreen && (
         <View style={styles.customHeader}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <ArrowLeft size={24} color="white" />
+            <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
           <View style={styles.headerIcons}>
             {currentEpisode?.url && !isLocalFile && isMobile && (
               <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
-                <Download size={20} color="white" />
+                <Download size={18} color="white" />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
-              <ArtIconCast size={24} color="white" />
+              <ArtIconCast size={20} color="white" />
             </TouchableOpacity>
           </View>
         </View>
       )}
 
       {/* 视频播放区 */}
-      <View style={isMobileLandscape ? styles.playerSectionFullscreen : styles.playerSection}>
+      <View style={isFullscreen ? styles.playerSectionFullscreen : styles.playerSection}>
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
@@ -435,8 +436,8 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 底部简化的选集 + 换源 - 仅在竖屏显示，方便快速切换 */}
-      {!isMobileLandscape && (
+      {/* 底部简化的选集 + 换源 - 仅在非全屏显示 */}
+      {!isFullscreen && (
         <View style={styles.mobileBottomBar}>
           {/* 集数选择 */}
           <View style={styles.mobileSection}>
@@ -466,7 +467,7 @@ export default function PlayScreen() {
             <View style={styles.mobileSectionHeader}>
               <Text style={styles.mobileSectionTitle}>播放源</Text>
               <TouchableOpacity onPress={() => setIsReverse(!isReverse)} style={styles.reverseBtn}>
-                <ArrowUpDown size={16} color={isReverse ? "#00bb5e" : "#888"} />
+                <ArrowUpDown size={14} color={isReverse ? "#00bb5e" : "#888"} />
                 <Text style={[styles.reverseText, isReverse && { color: '#00bb5e' }]}>{isReverse ? '倒序' : '正序'}</Text>
               </TouchableOpacity>
             </View>
@@ -529,38 +530,38 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
   mobileContainer: { flex: 1, backgroundColor: '#000' },
-  customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 45, paddingBottom: 8 },
-  backBtn: { padding: 8 },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: 'bold', color: '#00bb5e', marginHorizontal: 8 },
-  headerIcons: { flexDirection: 'row' },
-  overlayIcon: { padding: 8, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 },
-  playerSection: { width: '100%', aspectRatio: 16/9, backgroundColor: '#111' },
+  customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 40, paddingBottom: 4 },
+  backBtn: { padding: 4 },
+  headerTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#00bb5e', marginHorizontal: 8 },
+  headerIcons: { flexDirection: 'row', gap: 4 },
+  overlayIcon: { padding: 6, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20 },
+  playerSection: { width: '100%', aspectRatio: 16/9, backgroundColor: '#000' },
   videoWrapper: { flex: 1 },
   videoPlayer: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
 
-  mobileBottomBar: { flex: 1, paddingHorizontal: 12, paddingTop: 10 },
-  mobileSection: { marginBottom: 12 },
-  mobileSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  mobileSectionTitle: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  rangeSelector: { backgroundColor: '#1a1a1a', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, borderLeftWidth: 3, borderLeftColor: '#00bb5e' },
-  rangeText: { color: '#00bb5e', fontSize: 12, fontWeight: '600' },
-  reverseBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  reverseText: { color: '#888', fontSize: 13 },
+  mobileBottomBar: { flex: 1, paddingHorizontal: 10, paddingTop: 8 },
+  mobileSection: { marginBottom: 10 },
+  mobileSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  mobileSectionTitle: { color: '#eee', fontSize: 14, fontWeight: '600' },
+  rangeSelector: { backgroundColor: '#1a1a1a', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, borderLeftWidth: 2, borderLeftColor: '#00bb5e' },
+  rangeText: { color: '#00bb5e', fontSize: 11, fontWeight: '600' },
+  reverseBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  reverseText: { color: '#777', fontSize: 12 },
 
-  episodeScroll: { maxHeight: 48, marginBottom: 4 },
-  mobileEpItem: { backgroundColor: '#1a1a1a', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 8 },
+  episodeScroll: { maxHeight: 40, marginBottom: 2 },
+  mobileEpItem: { backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, marginRight: 6 },
   mobileEpItemActive: { backgroundColor: '#00bb5e' },
-  mobileEpText: { color: '#aaa', fontSize: 14, fontWeight: '600' },
+  mobileEpText: { color: '#999', fontSize: 13, fontWeight: '600' },
   mobileEpTextActive: { color: '#fff' },
 
-  sourceScroll: { maxHeight: 44 },
-  mobileSourceItem: { backgroundColor: '#1a1a1a', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginRight: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  mobileSourceItemActive: { borderColor: '#00bb5e', borderWidth: 1, backgroundColor: 'rgba(0,187,94,0.1)' },
-  mobileSourceText: { color: '#ccc', fontSize: 13, maxWidth: 100 },
+  sourceScroll: { maxHeight: 38 },
+  mobileSourceItem: { backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, marginRight: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mobileSourceItemActive: { borderColor: '#00bb5e', borderWidth: 1, backgroundColor: 'rgba(0,187,94,0.08)' },
+  mobileSourceText: { color: '#bbb', fontSize: 12, maxWidth: 90 },
   mobileSourceTextActive: { color: '#00bb5e', fontWeight: '700' },
-  mobileSourceEpisodes: { color: '#666', fontSize: 11 },
+  mobileSourceEpisodes: { color: '#555', fontSize: 10 },
   // Fullscreen Styles
   fullscreenContainer: {
     paddingTop: 0,

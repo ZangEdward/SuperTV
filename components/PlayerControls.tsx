@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform } from "react-native";
-import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2 } from "lucide-react-native";
+import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -50,6 +50,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     setOutroStartTime,
     introEndTime,
     outroStartTime,
+    isFullscreen,
+    setIsFullscreen,
   } = usePlayerStore();
 
   const { detail } = useDetailStore();
@@ -90,8 +92,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       if (typeof ScreenOrientation?.lockAsync === 'function') {
         if (isPortrait) {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+          setIsFullscreen(true);
         } else {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+          // If we were already in fullscreen, we might want to stay in fullscreen but portrait
+          // The user said "切换播放器横竖屏", so we stay in "fullscreen mode" but change orientation
         }
       } else {
         console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
@@ -101,10 +106,22 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     }
   };
 
+  const enterFullscreen = async () => {
+    try {
+      if (typeof ScreenOrientation?.lockAsync === 'function') {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        setIsFullscreen(true);
+      }
+    } catch (e) {
+      console.warn("Failed to enter fullscreen:", e);
+    }
+  };
+
   const exitFullscreen = async () => {
     try {
       if (typeof ScreenOrientation?.lockAsync === 'function') {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+        setIsFullscreen(false);
       } else {
         console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
       }
@@ -113,11 +130,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     }
   };
 
-  if (isMobileLandscape) {
+  if (isFullscreen) {
     return (
       <View style={[styles.controlsOverlay, { paddingLeft: Math.max(insets.left, 20), paddingRight: Math.max(insets.right, 20) }]}>
         <View style={styles.mobileTopBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+          <TouchableOpacity onPress={exitFullscreen} style={styles.iconBtn}>
             <ArrowLeft color="white" size={24} />
           </TouchableOpacity>
           <Text style={styles.mobileTitle} numberOfLines={1}>
@@ -191,18 +208,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   if (deviceType === 'mobile' && isPortrait) {
     return (
       <View style={styles.controlsOverlay}>
-        <View style={styles.mobileMiddleRight}>
-          <TouchableOpacity onPress={toggleOrientation} style={styles.sideBtn}>
-            <RotateCw color="white" size={24} />
-            <Text style={styles.sideBtnText}>旋转</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtn}>
+        <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={[styles.centerPlayBtn, { padding: 10, borderRadius: 30 }]}>
           {status?.isLoaded && status.isPlaying ? (
-            <Pause color="white" size={48} />
+            <Pause color="white" size={32} />
           ) : (
-            <Play color="white" size={48} />
+            <Play color="white" size={32} />
           )}
         </TouchableOpacity>
 
@@ -214,19 +224,19 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             />
           </View>
           <View style={styles.mobileBottomRow}>
-            <ThemedText style={styles.timeText}>
+            <ThemedText style={[styles.timeText, { fontSize: 10 }]}>
               {status?.isLoaded
                 ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
                 : "00:00 / 00:00"}
             </ThemedText>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-              <TouchableOpacity style={styles.mobileTextBtn} onPress={() => safeCall(setShowSpeedModal, true)}>
-                <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity style={[styles.mobileTextBtn, { paddingHorizontal: 8, paddingVertical: 4 }]} onPress={() => safeCall(setShowSpeedModal, true)}>
+                <Text style={[styles.mobileTextBtnLabel, { fontSize: 11 }]}>{playbackRate}X</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={toggleOrientation} style={styles.iconBtn}>
-                <RotateCw color="white" size={22} />
+              <TouchableOpacity onPress={enterFullscreen} style={[styles.iconBtn, { padding: 5 }]}>
+                <Maximize2 color="white" size={20} />
               </TouchableOpacity>
             </View>
           </View>

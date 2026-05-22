@@ -28,11 +28,13 @@ interface PlayerState {
   seekPosition: number;
   progressPosition: number;
   showCastModal: boolean;
+  isFullscreen: boolean;
   initialPosition: number;
   playbackRate: number;
   introEndTime?: number;
   outroStartTime?: number;
   setVideoRef: (ref: RefObject<Video>) => void;
+  setIsFullscreen: (full: boolean) => void;
   loadVideo: (options: {
     source: string;
     id: string;
@@ -74,6 +76,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   showSourceModal: false,
   showSpeedModal: false,
   showCastModal: false,
+  isFullscreen: false,
   showNextEpisodeOverlay: false,
   isSeeking: false,
   seekPosition: 0,
@@ -86,6 +89,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   _isRecordSaveThrottled: false,
 
   setVideoRef: (ref) => set({ videoRef: ref }),
+  setIsFullscreen: (full) => set({ isFullscreen: full }),
 
   loadVideo: async ({ source, id, episodeIndex, position, title, fileUri }) => {
     const perfStart = performance.now();
@@ -521,6 +525,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       showSourceModal: false,
       showSpeedModal: false,
       showNextEpisodeOverlay: false,
+      isFullscreen: false,
       initialPosition: 0,
       playbackRate: 1.0,
       introEndTime: undefined,
