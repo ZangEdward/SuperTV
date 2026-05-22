@@ -50,8 +50,8 @@ class DLNAService {
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
-  private readonly SEARCH_INTERVALS = [0, 500, 1000, 2000, 3000, 5000];
-  private readonly SEARCH_TIMEOUT = 15000;
+  private readonly SEARCH_INTERVALS = [0, 1000, 2000, 4000, 6000, 8000];
+  private readonly SEARCH_TIMEOUT = 28000;
   private readonly BACKOFF_TIMEOUT = 3000;
 
   constructor() {}
@@ -243,7 +243,7 @@ class DLNAService {
           'M-SEARCH * HTTP/1.1\r\n' +
           'HOST: ' + this.SSDP_ADDR + ':' + this.SSDP_PORT + '\r\n' +
           'MAN: "ssdp:discover"\r\n' +
-          'MX: 2\r\n' +
+          'MX: 4\r\n' +
           'ST: ' + st + '\r\n' +
           'USER-AGENT: Android/10.0 UPnP/1.1\r\n' +
           '\r\n';

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
-import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, MonitorPlay, RotateCw, Smartphone } from "lucide-react-native";
+import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge } from "lucide-react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { MediaButton } from "@/components/MediaButton";
-import * as ScreenOrientation from "expo-screen-orientation";
 
 import usePlayerStore from "@/stores/playerStore";
 import useDetailStore from "@/stores/detailStore";
@@ -44,38 +43,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const currentSource = resources.find((r) => r.source === detail?.source);
   const currentSourceName = currentSource?.source_name;
   const hasNextEpisode = currentEpisodeIndex < (episodes.length || 0) - 1;
-
-  const [isLandscape, setIsLandscape] = useState(true);
-
-  // 初始检测屏幕方向
-  useEffect(() => {
-    const checkOrientation = async () => {
-      try {
-        const orientation = await ScreenOrientation.getOrientationAsync();
-        setIsLandscape(
-          orientation === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||
-          orientation === ScreenOrientation.Orientation.LANDSCAPE_RIGHT
-        );
-      } catch (error) {
-        console.warn("获取屏幕方向失败:", error);
-      }
-    };
-    checkOrientation();
-  }, []);
-
-  const toggleOrientation = async () => {
-    try {
-      if (isLandscape) {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-        setIsLandscape(false);
-      } else {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-        setIsLandscape(true);
-      }
-    } catch (error) {
-      console.warn("旋转屏幕失败:", error);
-    }
-  };
 
   const formatTime = (milliseconds: number) => {
     if (!milliseconds) return "00:00";
@@ -151,14 +118,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
           <MediaButton onPress={() => setShowSourceModal(true)}>
             <Tv color="white" size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={toggleOrientation}>
-            {isLandscape ? (
-              <Smartphone color="white" size={24} />
-            ) : (
-              <RotateCw color="white" size={24} />
-            )}
           </MediaButton>
         </View>
       </View>
@@ -236,7 +195,7 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 44, // Match TouchableOpacity default size for alignment
+    minWidth: 44,
   },
   resolutionText: {
     color: "white",
