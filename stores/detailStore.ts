@@ -38,6 +38,8 @@ export const episodesSelectorBySource = (source: string) => (state: DetailState)
   return result ? (result.episodes || []) : [];
 };
 
+export const sourcesSelector = (state: DetailState) => state.sources;
+
 const useDetailStore = create<DetailState>((set, get) => ({
   q: null,
   searchResults: [],
