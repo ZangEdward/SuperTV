@@ -87,13 +87,32 @@ export default function PlayScreen() {
 
   // 根据播放状态控制屏幕常亮
   useEffect(() => {
-    if (playbackStatus?.isLoaded && (playbackStatus as any)?.isPlaying) {
-      activateKeepAwakeAsync();
-    } else {
-      deactivateKeepAwakeAsync();
+
+
+
+
+    try {
+      if (playbackStatus?.isLoaded && (playbackStatus as any)?.isPlaying) {
+        if (typeof activateKeepAwakeAsync === 'function') {
+          activateKeepAwakeAsync();
+        }
+      } else {
+        if (typeof deactivateKeepAwakeAsync === 'function') {
+          deactivateKeepAwakeAsync();
+        }
+      }
+    } catch (e) {
+      console.error('[PlayScreen] KeepAwake effect error:', e);
     }
     return () => {
-      deactivateKeepAwakeAsync();
+
+      try {
+        if (typeof deactivateKeepAwakeAsync === 'function') {
+          deactivateKeepAwakeAsync();
+        }
+      } catch (e) {
+        console.error('[PlayScreen] KeepAwake cleanup error:', e);
+      }
     };
   }, [playbackStatus?.isLoaded, (playbackStatus as any)?.isPlaying]);
 
@@ -117,20 +136,49 @@ export default function PlayScreen() {
   const tvRemoteHandler = useTVRemoteHandler();
 
   useEffect(() => {
-    setVideoRef(videoRef);
-    setShowCastModal(false);
 
-    if (fileUri) {
-      loadVideo({
-        source: source || 'local',
-        id: id || 'local',
-        episodeIndex: initialEpIndex,
-        position,
-        title: title || '离线播放',
-        fileUri
-      });
-    } else if (source && id && title) {
-      loadVideo({ source, id, episodeIndex: initialEpIndex, position, title });
+
+    if (typeof setVideoRef === 'function') {
+      setVideoRef(videoRef);
+    } else {
+      console.error('[PlayScreen] setVideoRef is not a function');
+    }
+    if (typeof setShowCastModal === 'function') {
+      setShowCastModal(false);
+    } else {
+      console.error('[PlayScreen] setShowCastModal is not a function');
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+    try {
+      if (typeof loadVideo !== 'function') {
+        console.error('[PlayScreen] loadVideo is not a function');
+        return;
+      }
+      if (fileUri) {
+        loadVideo({
+          source: source || 'local',
+          id: id || 'local',
+          episodeIndex: initialEpIndex,
+          position,
+          title: title || '离线播放',
+          fileUri
+        });
+      } else if (source && id && title) {
+        loadVideo({ source, id, episodeIndex: initialEpIndex, position, title });
+      }
+    } catch (e) {
+      console.error('[PlayScreen] loadVideo error:', e);
     }
     return () => reset();
   }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri]);
@@ -449,7 +497,6 @@ export default function PlayScreen() {
           <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
         ) : isLoading ? (
           <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-        ) : (
           <View style={styles.loadingContainer}>
             <Text style={{ color: 'white', marginBottom: 20, fontSize: 24 }}>无法获取播放链接</Text>
             <StyledButton
