@@ -77,9 +77,13 @@ export const CastModal: React.FC = () => {
       await dlnaService.castVideo(device, castUrl, currentEpisode.title);
       Toast.show({ type: 'success', text1: '投屏成功', text2: '请在电视上查看' });
       setShowCastModal(false);
-    } catch (error) {
+    } catch (error: any) {
       logger.warn('[Cast] Failed:', error);
-      Toast.show({ type: 'error', text1: '投屏失败', text2: '请检查网络连接并确认电视支持 DLNA' });
+      Toast.show({
+        type: 'error',
+        text1: '投屏失败',
+        text2: error.message || '请检查网络连接并确认电视支持 DLNA'
+      });
     }
   };
 

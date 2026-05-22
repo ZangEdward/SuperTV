@@ -50,9 +50,9 @@ class DLNAService {
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
-  private readonly SEARCH_INTERVALS = [0, 1000, 2000, 4000, 6000, 8000];
-  private readonly SEARCH_TIMEOUT = 28000;
-  private readonly BACKOFF_TIMEOUT = 3000;
+  private readonly SEARCH_INTERVALS = [0, 500, 1500, 3000, 6000, 10000]; // 缩短初期间隔，增加频率
+  private readonly SEARCH_TIMEOUT = 30000;
+  private readonly BACKOFF_TIMEOUT = 5000;
 
   constructor() {}
 
@@ -243,9 +243,10 @@ class DLNAService {
           'M-SEARCH * HTTP/1.1\r\n' +
           'HOST: ' + this.SSDP_ADDR + ':' + this.SSDP_PORT + '\r\n' +
           'MAN: "ssdp:discover"\r\n' +
-          'MX: 4\r\n' +
+          'MX: 3\r\n' +
           'ST: ' + st + '\r\n' +
-          'USER-AGENT: Android/10.0 UPnP/1.1\r\n' +
+          'USER-AGENT: Android/11.0 UPnP/1.1 SuperTV/5.5\r\n' +
+          'CPFN.UPNP.ORG: SuperTV\r\n' + // 增加一些电视品牌识别的扩展头
           '\r\n';
 
         try {
@@ -424,8 +425,8 @@ class DLNAService {
 
       if (!setRes.ok) {
         const text = await setRes.text();
-        logger.warn('[DLNA] SetAVTransportURI failed: ' + setRes.status + ' ' + text.substring(0, 200));
-        throw new Error('SetAVTransportURI returned ' + setRes.status);
+        const errorDetail = text.match(/<description>(.*?)<\/description>/i)?.[1] || setRes.statusText;
+        throw new Error(`设置地址失败: ${errorDetail} (${setRes.status})`);
       }
 
       const playRes = await fetch(device.controlUrl, {
@@ -439,14 +440,19 @@ class DLNAService {
 
       if (!playRes.ok) {
         const text = await playRes.text();
-        logger.warn('[DLNA] Play failed: ' + playRes.status + ' ' + text.substring(0, 200));
-        throw new Error('Play returned ' + playRes.status);
+        const errorDetail = text.match(/<description>(.*?)<\/description>/i)?.[1] || playRes.statusText;
+        throw new Error(`播放命令失败: ${errorDetail} (${playRes.status})`);
       }
 
       logger.info('[DLNA] Cast successful to ' + device.name);
       return true;
-    } catch (error) {
-      logger.error('[DLNA] Cast failed:', error);
+    } catch (error: any) {
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
+        throw new Error('连接设备超时，请检查电视网络');
+      }
+      if (error.message.includes('Network request failed')) {
+        throw new Error('无法连接到设备，请确认在同一 WiFi 下');
+      }
       throw error;
     }
   }
