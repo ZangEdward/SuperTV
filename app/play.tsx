@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useCallback, memo, useMemo, useState } from "
 import { StyleSheet, TouchableOpacity, BackHandler, View, ScrollView, Text, Dimensions, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
-import { useKeepAwake } from "expo-keep-awake";
+import { useKeepAwake, activateKeepAwakeAsync, deactivateKeepAwakeAsync } from "expo-keep-awake";
 import { ThemedView } from "@/components/ThemedView";
 import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
@@ -40,8 +40,21 @@ export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
   useKeepAwake();
-  const { deviceType, spacing } = useResponsiveLayout();
+  const { deviceType, spacing, isPortrait } = useResponsiveLayout();
   const isMobile = deviceType === 'mobile';
+  const isMobileLandscape = isMobile && !isPortrait;
+
+  // 根据播放状态控制屏幕常亮
+  useEffect(() => {
+    if (status?.isLoaded && status.isPlaying) {
+      activateKeepAwakeAsync();
+    } else {
+      deactivateKeepAwakeAsync();
+    }
+    return () => {
+      deactivateKeepAwakeAsync();
+    };
+  }, [status?.isLoaded, (status as any)?.isPlaying]);
 
   const {
     episodeIndex: episodeIndexStr,
@@ -328,27 +341,29 @@ export default function PlayScreen() {
   }
 
   const renderMobileLayout = () => (
-    <View style={styles.mobileContainer}>
-      {/* 顶部栏 */}
-      <View style={styles.customHeader}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color="white" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
-        <View style={styles.headerIcons}>
-          {currentEpisode?.url && !isLocalFile && isMobile && (
-            <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
-              <Download size={20} color="white" />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
-            <ArtIconCast size={24} color="white" />
+    <View style={[styles.mobileContainer, isMobileLandscape && styles.fullscreenContainer]}>
+      {/* 顶部栏 - 仅在竖屏显示 */}
+      {!isMobileLandscape && (
+        <View style={styles.customHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={24} color="white" />
           </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
+          <View style={styles.headerIcons}>
+            {currentEpisode?.url && !isLocalFile && isMobile && (
+              <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
+                <Download size={20} color="white" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
+              <ArtIconCast size={24} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* 视频播放区 */}
-      <View style={styles.playerSection}>
+      <View style={isMobileLandscape ? styles.playerSectionFullscreen : styles.playerSection}>
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
@@ -363,6 +378,7 @@ export default function PlayScreen() {
               />
             </View>
           )}
+          {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
           <SeekingBar />
           {currentEpisode?.url && isLoading && (
             <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
@@ -370,56 +386,58 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 底部简化的选集 + 换源 */}
-      <View style={styles.mobileBottomBar}>
-        {/* 集数选择 */}
-        <View style={styles.mobileSection}>
-          <View style={styles.mobileSectionHeader}>
-            <Text style={styles.mobileSectionTitle}>选集</Text>
-            <View style={styles.rangeSelector}>
-              <Text style={styles.rangeText}>1-{detail?.episodes?.length || 0}</Text>
+      {/* 底部简化的选集 + 换源 - 仅在竖屏显示，方便快速切换 */}
+      {!isMobileLandscape && (
+        <View style={styles.mobileBottomBar}>
+          {/* 集数选择 */}
+          <View style={styles.mobileSection}>
+            <View style={styles.mobileSectionHeader}>
+              <Text style={styles.mobileSectionTitle}>选集</Text>
+              <View style={styles.rangeSelector}>
+                <Text style={styles.rangeText}>1-{detail?.episodes?.length || 0}</Text>
+              </View>
             </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
+              {episodes.map((ep) => (
+                <TouchableOpacity
+                  key={ep.index}
+                  style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
+                  onPress={() => handleEpisodePress(ep.index)}
+                >
+                  <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
+                    {(ep.index + 1).toString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
-            {episodes.map((ep) => (
-              <TouchableOpacity
-                key={ep.index}
-                style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
-                onPress={() => handleEpisodePress(ep.index)}
-              >
-                <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
-                  {(ep.index + 1).toString()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
 
-        {/* 源选择 */}
-        <View style={styles.mobileSection}>
-          <View style={styles.mobileSectionHeader}>
-            <Text style={styles.mobileSectionTitle}>播放源</Text>
-            <TouchableOpacity onPress={() => setIsReverse(!isReverse)} style={styles.reverseBtn}>
-              <ArrowUpDown size={16} color={isReverse ? "#00bb5e" : "#888"} />
-              <Text style={[styles.reverseText, isReverse && { color: '#00bb5e' }]}>{isReverse ? '倒序' : '正序'}</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-            {sortedSources.map((item, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
-                onPress={() => handleSourcePress(item)}
-              >
-                <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
-                  {item.source_name}
-                </Text>
-                <Text style={styles.mobileSourceEpisodes}>{item.episodes?.length || 0}集</Text>
+          {/* 源选择 */}
+          <View style={styles.mobileSection}>
+            <View style={styles.mobileSectionHeader}>
+              <Text style={styles.mobileSectionTitle}>播放源</Text>
+              <TouchableOpacity onPress={() => setIsReverse(!isReverse)} style={styles.reverseBtn}>
+                <ArrowUpDown size={16} color={isReverse ? "#00bb5e" : "#888"} />
+                <Text style={[styles.reverseText, isReverse && { color: '#00bb5e' }]}>{isReverse ? '倒序' : '正序'}</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
+              {sortedSources.map((item, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
+                  onPress={() => handleSourcePress(item)}
+                >
+                  <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
+                    {item.source_name}
+                  </Text>
+                  <Text style={styles.mobileSourceEpisodes}>{item.episodes?.length || 0}集</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 
@@ -494,4 +512,13 @@ const styles = StyleSheet.create({
   mobileSourceText: { color: '#ccc', fontSize: 13, maxWidth: 100 },
   mobileSourceTextActive: { color: '#00bb5e', fontWeight: '700' },
   mobileSourceEpisodes: { color: '#666', fontSize: 11 },
+  // Fullscreen Styles
+  fullscreenContainer: {
+    paddingTop: 0,
+    paddingHorizontal: 0,
+  },
+  playerSectionFullscreen: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
 });

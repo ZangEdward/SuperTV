@@ -1,12 +1,17 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
-import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge } from "lucide-react-native";
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform } from "react-native";
+import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2 } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/ThemedText";
 import { MediaButton } from "@/components/MediaButton";
 
 import usePlayerStore from "@/stores/playerStore";
 import useDetailStore from "@/stores/detailStore";
 import { useSources } from "@/stores/sourceStore";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import Colors from "@/constants/Colors";
 
 interface PlayerControlsProps {
   showControls: boolean;
@@ -14,6 +19,11 @@ interface PlayerControlsProps {
 }
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, setShowControls }) => {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { deviceType, isPortrait } = useResponsiveLayout();
+  const isMobileLandscape = deviceType === 'mobile' && !isPortrait;
+
   const {
     currentEpisodeIndex,
     episodes,
@@ -47,8 +57,13 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const formatTime = (milliseconds: number) => {
     if (!milliseconds) return "00:00";
     const totalSeconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    }
     return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
@@ -57,6 +72,168 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       playEpisode(currentEpisodeIndex + 1);
     }
   };
+
+  const toggleOrientation = async () => {
+    try {
+      if (isPortrait) {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      } else {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      }
+    } catch (e) {
+      console.warn("Failed to toggle orientation:", e);
+    }
+  };
+
+  const exitFullscreen = async () => {
+    try {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    } catch (e) {
+      console.warn("Failed to exit fullscreen:", e);
+    }
+  };
+
+  if (isMobileLandscape) {
+    return (
+      <View style={[styles.controlsOverlay, { paddingLeft: Math.max(insets.left, 20), paddingRight: Math.max(insets.right, 20) }]}>
+        {/* Top Section */}
+        <View style={styles.mobileTopBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+            <ArrowLeft color="white" size={24} />
+          </TouchableOpacity>
+          <Text style={styles.mobileTitle} numberOfLines={1}>
+            {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ` - 第${currentEpisodeIndex + 1}集`}
+          </Text>
+        </View>
+
+        {/* Middle Right Section */}
+        <View style={styles.mobileMiddleRight}>
+          <TouchableOpacity onPress={toggleOrientation} style={styles.sideBtn}>
+            <RotateCw color="white" size={24} />
+            <Text style={styles.sideBtnText}>横竖屏</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Bottom Section */}
+        <View style={styles.mobileBottomSection}>
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBarBackground} />
+            <View
+              style={[
+                styles.progressBarFilled,
+                {
+                  width: `${(isSeeking ? seekPosition : progressPosition) * 100}%`,
+                },
+              ]}
+            />
+          </View>
+
+          <View style={styles.mobileBottomRow}>
+            <View style={styles.mobileBottomLeft}>
+               <MediaButton onPress={togglePlayPause} style={styles.mobileMediaBtn}>
+                {status?.isLoaded && status.isPlaying ? (
+                  <Pause color="white" size={24} />
+                ) : (
+                  <Play color="white" size={24} />
+                )}
+              </MediaButton>
+
+              <MediaButton onPress={onPlayNextEpisode} disabled={!hasNextEpisode} style={styles.mobileMediaBtn}>
+                <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
+              </MediaButton>
+
+              <TouchableOpacity onPress={() => setShowEpisodeModal(true)} style={styles.mobileIconBtn}>
+                 <List color="white" size={22} />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setShowSourceModal(true)} style={styles.mobileIconBtn}>
+                 <Tv color="white" size={22} />
+              </TouchableOpacity>
+
+              <ThemedText style={styles.timeText}>
+                {status?.isLoaded
+                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
+                  : "00:00 / 00:00"}
+              </ThemedText>
+            </View>
+
+            <View style={styles.mobileBottomRight}>
+              <TouchableOpacity
+                style={styles.mobileTextBtn}
+                onPress={() => setShowSpeedModal(true)}
+              >
+                <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mobileTextBtn}
+                onPress={exitFullscreen}
+              >
+                <Minimize2 color="white" size={20} />
+                <Text style={styles.mobileTextBtnLabel}>退出全屏</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (deviceType === 'mobile' && isPortrait) {
+    return (
+      <View style={styles.controlsOverlay}>
+         {/* 右侧正中间旋转按钮 */}
+         <View style={styles.mobileMiddleRight}>
+            <TouchableOpacity onPress={toggleOrientation} style={styles.sideBtn}>
+              <RotateCw color="white" size={24} />
+              <Text style={styles.sideBtnText}>旋转</Text>
+            </TouchableOpacity>
+         </View>
+
+         <TouchableOpacity onPress={togglePlayPause} style={styles.centerPlayBtn}>
+            {status?.isLoaded && status.isPlaying ? (
+              <Pause color="white" size={48} />
+            ) : (
+              <Play color="white" size={48} />
+            )}
+         </TouchableOpacity>
+
+         <View style={styles.mobileBottomSection}>
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBarBackground} />
+              <View
+                style={[
+                  styles.progressBarFilled,
+                  {
+                    width: `${(isSeeking ? seekPosition : progressPosition) * 100}%`,
+                  },
+                ]}
+              />
+            </View>
+            <View style={styles.mobileBottomRow}>
+               <ThemedText style={styles.timeText}>
+                {status?.isLoaded
+                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
+                  : "00:00 / 00:00"}
+              </ThemedText>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                <TouchableOpacity
+                  style={styles.mobileTextBtn}
+                  onPress={() => setShowSpeedModal(true)}
+                >
+                  <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={toggleOrientation} style={styles.iconBtn}>
+                  <RotateCw color="white" size={22} />
+                </TouchableOpacity>
+              </View>
+            </View>
+         </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.controlsOverlay}>
@@ -205,5 +382,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+  },
+  // Mobile Landscape Styles
+  mobileTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 10,
+  },
+  iconBtn: {
+    padding: 10,
+  },
+  mobileTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 10,
+    flex: 1,
+  },
+  mobileMiddleRight: {
+    position: 'absolute',
+    right: 20,
+    top: '50%',
+    marginTop: -30, // 向上偏移一半高度以实现绝对垂直居中
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  sideBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  sideBtnText: {
+    color: 'white',
+    fontSize: 9,
+    marginTop: 2,
+  },
+  mobileBottomSection: {
+    width: '100%',
+    paddingBottom: 10,
+  },
+  mobileBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 10,
+  },
+  mobileBottomLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  mobileBottomRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  mobileMediaBtn: {
+    minWidth: 44,
+    padding: 8,
+  },
+  mobileIconBtn: {
+    padding: 8,
+  },
+  timeText: {
+    color: 'white',
+    fontSize: 12,
+    marginLeft: 5,
+  },
+  mobileTextBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  mobileTextBtnLabel: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  centerPlayBtn: {
+    position: 'absolute',
+    top: '40%',
+    left: '45%',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 15,
+    borderRadius: 40,
   },
 });
