@@ -55,7 +55,8 @@ export const RemoteInputSection: React.FC<RemoteInputSectionProps> = ({ onChange
     [isFocused, remoteInputEnabled, handleToggle]
   );
 
-  useTVEventHandler(handleTVEvent);
+  const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
+  safeUseTVEventHandler(handleTVEvent);
 
   return (
     <SettingsSection focusable onFocus={handleSectionFocus} onBlur={handleSectionBlur}

@@ -171,7 +171,8 @@ export default function SettingsScreen() {
   [deviceType]
 );
 
-  useTVEventHandler(deviceType === "tv" ? handleTVEvent : () => { });
+  const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
+  safeUseTVEventHandler(deviceType === "tv" ? handleTVEvent : () => { });
 
   const dynamicStyles = createResponsiveStyles(deviceType, spacing, insets);
 

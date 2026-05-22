@@ -126,7 +126,8 @@ export const useTVRemoteHandler = () => {
     [setShowControls, resetTimer, togglePlayPause, seek]
   );
 
-  useTVEventHandler(handleTVEvent);
+  const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
+  safeUseTVEventHandler(handleTVEvent);
 
   // 处理屏幕点击事件
   const onScreenPress = () => {

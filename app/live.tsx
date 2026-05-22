@@ -102,7 +102,8 @@ export default function LiveScreen() {
     [changeChannel, isChannelListVisible, deviceType]
   );
 
-  useTVEventHandler(deviceType === 'tv' ? handleTVEvent : () => {});
+  const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
+  safeUseTVEventHandler(deviceType === 'tv' ? handleTVEvent : () => {});
 
   // 动态样式
   const dynamicStyles = createResponsiveStyles(deviceType, spacing);

@@ -66,7 +66,8 @@ export const LiveStreamSection = forwardRef<LiveStreamSectionRef, LiveStreamSect
       [isSectionFocused]
     );
 
-    useTVEventHandler(handleTVEvent);
+    const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
+    safeUseTVEventHandler(handleTVEvent);
 
 
         const [selection, setSelection] = useState<{ start: number; end: number }>({

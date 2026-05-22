@@ -72,6 +72,7 @@ export default function PlayScreen() {
     status: playbackStatus,
     isLoading,
     showControls,
+    showCastModal,
     initialPosition,
     introEndTime,
     playbackRate,
@@ -86,7 +87,7 @@ export default function PlayScreen() {
 
   // 根据播放状态控制屏幕常亮
   useEffect(() => {
-    if (playbackStatus?.isLoaded && (playbackStatus as any).isPlaying) {
+    if (playbackStatus?.isLoaded && (playbackStatus as any)?.isPlaying) {
       activateKeepAwakeAsync();
     } else {
       deactivateKeepAwakeAsync();
@@ -159,8 +160,8 @@ export default function PlayScreen() {
 
   useEffect(() => {
     const backAction = () => {
-      if (usePlayerStore.getState().showCastModal) {
-        usePlayerStore.getState().setShowCastModal(false);
+      if (showCastModal) {
+        setShowCastModal(false);
         return true;
       }
       if (showControls && deviceType === 'tv') {
@@ -172,7 +173,7 @@ export default function PlayScreen() {
     };
     BackHandler.addEventListener("hardwareBackPress", backAction);
     return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
-  }, [showControls, deviceType, setShowControls, router]);
+  }, [showControls, showCastModal, deviceType, setShowControls, setShowCastModal, router]);
 
   const episodes = useMemo(() => {
     if (!detail) return [];
