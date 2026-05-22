@@ -497,6 +497,7 @@ export default function PlayScreen() {
           <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
         ) : isLoading ? (
           <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+        ) : (
           <View style={styles.loadingContainer}>
             <Text style={{ color: 'white', marginBottom: 20, fontSize: 24 }}>无法获取播放链接</Text>
             <StyledButton
