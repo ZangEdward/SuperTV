@@ -39,22 +39,9 @@ const LoadingContainer = memo(({ style, currentEpisode }: { style: any; currentE
 export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
-  useKeepAwake();
   const { deviceType, spacing, isPortrait } = useResponsiveLayout();
   const isMobile = deviceType === 'mobile';
   const isMobileLandscape = isMobile && !isPortrait;
-
-  // 根据播放状态控制屏幕常亮
-  useEffect(() => {
-    if (status?.isLoaded && status.isPlaying) {
-      activateKeepAwakeAsync();
-    } else {
-      deactivateKeepAwakeAsync();
-    }
-    return () => {
-      deactivateKeepAwakeAsync();
-    };
-  }, [status?.isLoaded, (status as any)?.isPlaying]);
 
   const {
     episodeIndex: episodeIndexStr,
@@ -82,6 +69,7 @@ export default function PlayScreen() {
   const title = videoTitle || detail?.title;
 
   const {
+    status: playbackStatus,
     isLoading,
     showControls,
     initialPosition,
@@ -95,6 +83,18 @@ export default function PlayScreen() {
     reset,
     loadVideo,
   } = usePlayerStore();
+
+  // 根据播放状态控制屏幕常亮
+  useEffect(() => {
+    if (playbackStatus?.isLoaded && (playbackStatus as any).isPlaying) {
+      activateKeepAwakeAsync();
+    } else {
+      deactivateKeepAwakeAsync();
+    }
+    return () => {
+      deactivateKeepAwakeAsync();
+    };
+  }, [playbackStatus?.isLoaded, (playbackStatus as any)?.isPlaying]);
 
   const { downloadEpisode } = useCacheStore();
   const currentEpisode = usePlayerStore(selectCurrentEpisode);
