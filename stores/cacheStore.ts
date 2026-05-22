@@ -104,26 +104,26 @@ const useCacheStore = create<CacheState>((set, get) => ({
   },
 
   loadCache: async () => {
-    const state = get();
-    // 只有当内存中已经有活跃任务且队列不为空时，才跳过从存储加载队列
-    const hasActiveTasks = state.queue.length > 0 && state.queue.some(g => g.episodes.some(e => e.status === 'downloading'));
+      const state = get();
+      // 如果内存中已经有队列数据，不覆盖（防止播放页新加下载后被旧数据替换）
+      const hasInMemoryQueue = state.queue.length > 0;
 
-    set({ loading: true, error: null });
-    try {
-      await CacheService.ensureDownloadDirectory();
-      const items = await CacheService.getAll();
+      set({ loading: true, error: null });
+      try {
+        await CacheService.ensureDownloadDirectory();
+        const items = await CacheService.getAll();
 
-      if (!hasActiveTasks) {
-        const queue = await CacheService.getQueue();
-        set({ items, queue, loading: false });
-      } else {
-        set({ items, loading: false });
+        if (!hasInMemoryQueue) {
+          const queue = await CacheService.getQueue();
+          set({ items, queue, loading: false });
+        } else {
+          set({ items, loading: false });
+        }
+      } catch (error) {
+        logger.warn("loadCache failed", error);
+        set({ loading: false, error: "加载缓存失败" });
       }
-    } catch (error) {
-      logger.warn("loadCache failed", error);
-      set({ loading: false, error: "加载缓存失败" });
-    }
-  },
+    },
 
   enqueueSeries: (series) => {
     const groupId = `${series.source}_${series.id}_${Date.now()}`;
@@ -308,11 +308,11 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }
 
     // 保存当前已完成的进度（断点续传用），标记曾处于下载中状态
-    ep.wasDownloading = true;
-    ep.status = 'paused';
-    set({ queue: [...get().queue] });
-    CacheService.saveQueue(get().queue);
-  },
+        ep.wasDownloading = true;
+        ep.status = 'paused';
+        set((s) => ({ activeCount: Math.max(0, s.activeCount - 1), queue: [...get().queue] }));
+        CacheService.saveQueue(get().queue);
+      },
 
   /** 继续下载任务 */
   resumeQueuedEpisode: async (groupId, episodeIndex) => {
@@ -322,11 +322,12 @@ const useCacheStore = create<CacheState>((set, get) => ({
     if (!ep) return;
     const itemId = `${group.source}_${group.id}_${ep.index}`;
 
-    if (ep.url.toLowerCase().includes('.m3u8')) {
+        if (ep.url.toLowerCase().includes('.m3u8')) {
       // 如果任务已经在运行中，仅调用 resume
       if (CacheService.isTaskPaused(itemId)) {
         CacheService.resumeTask(itemId);
         ep.status = 'downloading';
+        set((s) => ({ activeCount: s.activeCount + 1, queue: [...get().queue] }));
       } else {
         // 如果任务不在运行中（如重启后），重新启动下载（它会自动根据 completedCount 续传）
         ep.status = 'pending';
@@ -587,8 +588,9 @@ const useCacheStore = create<CacheState>((set, get) => ({
       await get().pauseQueuedEpisode(item.groupId, item.index);
     }
 
-    // 将所有排队中或等待中的任务也设为暂停
+        // 将所有排队中或等待中的任务也设为暂停
     set((state) => ({
+      activeCount: 0,
       queue: state.queue.map(group => ({
         ...group,
         episodes: group.episodes.map(ep => {
