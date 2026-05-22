@@ -752,7 +752,7 @@ export class CacheService {
       const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
       const resultsBuffer: { [index: number]: string } = {};
-      const BUFFER_LIMIT = 3; // 限制缓冲中最大未写入片段数
+      const BUFFER_LIMIT = 8; // 限制缓冲中最大未写入片段数
       let nextIndexToWrite = resumeIndex;
       let isWriting = false;
       let writeError: Error | null = null;
