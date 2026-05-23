@@ -6,11 +6,13 @@
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
+
     "splash": {
       "image": "./assets/images/icon-boot.png",
       "resizeMode": "contain",
       "backgroundColor": "#151718"
     },
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.supertv.app",
@@ -20,6 +22,7 @@
         "backgroundColor": "#151718"
       }
     },
+
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -44,9 +47,11 @@
         "android.permission.NEARBY_WIFI_DEVICES"
       ]
     },
+
     "web": {
       "favicon": "./assets/images/icon.png"
     },
+
     "plugins": [
       "expo-router",
       "expo-font",
@@ -60,8 +65,12 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+
+      // ⭐ 你的原生模块插件必须写在这里
+      "./plugins/multicast-plugin"
     ],
+
     "experiments": {
       "typedRoutes": true
     }
