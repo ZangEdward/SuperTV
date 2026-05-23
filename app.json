@@ -22,7 +22,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon-boot.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#000000"
       },
       "splash": {

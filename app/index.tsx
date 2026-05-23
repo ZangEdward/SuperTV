@@ -243,7 +243,7 @@ export default function HomeScreen() {
   const dynamicStyles = StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: deviceType === "mobile" ? insets.top : deviceType === "tablet" ? insets.top + 20 : 40,
+      paddingTop: deviceType === "mobile" ? insets.top : deviceType === "tablet" ? insets.top + 20 : 60,
     },
     headerContainer: {
       flexDirection: "row",
@@ -255,7 +255,6 @@ export default function HomeScreen() {
     headerTitle: {
       fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,
       fontWeight: "bold",
-      paddingTop: 16,
     },
     rightHeaderButtons: {
       flexDirection: "row",

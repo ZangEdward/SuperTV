@@ -112,6 +112,7 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
         fontSize: 16,
         fontWeight: "600",
         color: colors.text,
+        lineHeight: 22, // 增加行高防止裁剪
       },
       selectedText: {
         color: "#fff",

@@ -289,7 +289,7 @@ export default function DetailScreen() {
   }
 
   return (
-    <ThemedView style={[commonStyles.container, { paddingTop: 40 }]}>
+    <ThemedView style={[commonStyles.container, { paddingTop: isTV ? 60 : 40 }]}>
       <ScrollView style={styles.tvScrollContainer}>
         <View style={styles.tvTopContainer}>
           <Image source={{ uri: detail.poster }} style={styles.tvPoster} />
@@ -367,17 +367,17 @@ const styles = StyleSheet.create({
   tvPoster: { width: 200, height: 300, borderRadius: 10 },
   tvInfoContainer: { flex: 1, marginLeft: 30 },
   tvTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tvTitle: { fontSize: 32, fontWeight: 'bold', color: 'white' },
-  tvMeta: { fontSize: 18, color: '#aaa', marginTop: 10 },
-  tvDesc: { fontSize: 16, color: '#ccc', lineHeight: 24 },
+  tvTitle: { fontSize: 32, fontWeight: 'bold', color: 'white', lineHeight: 42 },
+  tvMeta: { fontSize: 18, color: '#aaa', marginTop: 10, lineHeight: 24 },
+  tvDesc: { fontSize: 16, color: '#ccc', lineHeight: 26 },
   tvBottomContainer: { marginTop: 20 },
-  tvSectionTitle: { fontSize: 24, fontWeight: 'bold', color: 'white' },
+  tvSectionTitle: { fontSize: 24, fontWeight: 'bold', color: 'white', lineHeight: 32, marginVertical: 8 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 },
   optimizeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0, 187, 94, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   optimizeText: { color: Colors.dark.primary, fontSize: 14, fontWeight: 'bold' },
   tvSourceList: { marginBottom: 20 },
   tvSourceBtn: { marginRight: 15, minWidth: 120 },
-  tvSourceBtnText: { fontSize: 18, color: 'white' },
+  tvSourceBtnText: { fontSize: 18, color: 'white', lineHeight: 24 },
   tvEpisodeGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   tvEpisodeBtn: { margin: 10, minWidth: 100 },
 

@@ -23,11 +23,11 @@ export const textStyles = function (
     title: {
       fontSize: 32 * scale,
       fontWeight: 'bold',
-      lineHeight: 32 * scale,
+      lineHeight: 40 * scale,
     },
     subtitle: {
       fontSize: 20 * scale,
-      lineHeight: 20 * scale,
+      lineHeight: 28 * scale,
       fontWeight: 'bold',
     },
     link: {
