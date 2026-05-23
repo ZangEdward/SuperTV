@@ -28,7 +28,7 @@
       "splash": {
         "image": "./assets/images/icon-boot.png",
         "resizeMode": "contain",
-        "backgroundColor": "#1517180"
+        "backgroundColor": "#151718"
       },
       "package": "com.supertv.app",
       "backgroundColor": "#151718",
