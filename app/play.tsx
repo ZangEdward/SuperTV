@@ -22,6 +22,7 @@ import useCacheStore from "@/stores/cacheStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
 import { StyledButton } from "@/components/StyledButton";
+import * as ScreenOrientation from 'expo-screen-orientation';
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('PlayScreen');
@@ -84,6 +85,7 @@ export default function PlayScreen() {
     reset,
     loadVideo,
     isFullscreen,
+    setIsFullscreen,
   } = usePlayerStore();
 
   // 根据播放状态控制屏幕常亮
@@ -181,8 +183,16 @@ export default function PlayScreen() {
     } catch (e) {
       console.error('[PlayScreen] loadVideo error:', e);
     }
-    return () => reset();
-  }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri]);
+    return () => {
+      reset();
+      // Ensure we restore portrait orientation when leaving the player
+      if (isMobile) {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(e =>
+          console.warn('[PlayScreen] Failed to reset orientation on cleanup:', e)
+        );
+      }
+    };
+  }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri, isMobile]);
 
   // 检测初始化失败：detail为null且detailStore已完成加载
   useEffect(() => {
@@ -213,6 +223,11 @@ export default function PlayScreen() {
         setShowCastModal(false);
         return true;
       }
+      if (isFullscreen) {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        setIsFullscreen(false);
+        return true;
+      }
       if (showControls && deviceType === 'tv') {
         setShowControls(false);
         return true;
@@ -222,7 +237,7 @@ export default function PlayScreen() {
     };
     BackHandler.addEventListener("hardwareBackPress", backAction);
     return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
-  }, [showControls, showCastModal, deviceType, setShowControls, setShowCastModal, router]);
+  }, [showControls, showCastModal, isFullscreen, deviceType, setShowControls, setShowCastModal, setIsFullscreen, router]);
 
   const episodes = useMemo(() => {
     if (!detail || !Array.isArray(detail.episodes)) return [];

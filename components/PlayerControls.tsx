@@ -145,7 +145,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
         <View style={styles.mobileMiddleRight}>
           <TouchableOpacity onPress={toggleOrientation} style={styles.sideBtn}>
             <RotateCw color="white" size={24} />
-            <Text style={styles.sideBtnText}>横竖屏</Text>
           </TouchableOpacity>
         </View>
 
@@ -196,7 +195,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
               <TouchableOpacity style={styles.mobileTextBtn} onPress={exitFullscreen}>
                 <Minimize2 color="white" size={20} />
-                <Text style={styles.mobileTextBtnLabel}>退出全屏</Text>
               </TouchableOpacity>
             </View>
           </View>
