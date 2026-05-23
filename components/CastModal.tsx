@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity, PermissionsAndroid, Platform } from "react-native";
 import { StyledButton } from "./StyledButton";
 import usePlayerStore from "@/stores/playerStore";
+import "@/services/dlnaService";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { tcpHttpServer } from "@/services/tcpHttpServer";
 import { Tv, RefreshCw } from "lucide-react-native";
