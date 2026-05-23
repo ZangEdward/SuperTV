@@ -30,23 +30,23 @@ module.exports = function withMulticastPlugin(config) {
     },
   ]);
 
-  // 2. 修改 MainApplication.java（适配 RN 0.74）
+  // 2. 修改 Kotlin MainApplication.kt
   config = withMainApplication(config, (config) => {
     let src = config.modResults.contents;
 
     // 注入 import
-    if (!src.includes("import com.supertv.app.MulticastPackage;")) {
+    if (!src.includes("import com.supertv.app.MulticastPackage")) {
       src = src.replace(
-        "import com.facebook.react.defaults.DefaultReactNativeHost;",
-        "import com.facebook.react.defaults.DefaultReactNativeHost;\nimport com.supertv.app.MulticastPackage;"
+        "import com.facebook.react.defaults.DefaultReactNativeHost",
+        "import com.facebook.react.defaults.DefaultReactNativeHost\nimport com.supertv.app.MulticastPackage"
       );
     }
 
     // 注入 package
-    if (!src.includes("new MulticastPackage()")) {
+    if (!src.includes("MulticastPackage()")) {
       src = src.replace(
-        "return new PackageList(this).getPackages();",
-        "return new PackageList(this).getPackages().concat(new MulticastPackage());"
+        "return PackageList(this).packages",
+        "return PackageList(this).packages + MulticastPackage()"
       );
     }
 
