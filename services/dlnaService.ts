@@ -7,9 +7,6 @@ const { MulticastModule } = NativeModules;
 console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
 
 const logger = Logger.withTag('DLNAService');
-const { MulticastModule } = NativeModules;
-
-console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
 
 export interface DLNADevice {
   id: string;
