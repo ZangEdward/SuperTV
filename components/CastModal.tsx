@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity, PermissionsAndroid, Platform } from "react-native";
 import { StyledButton } from "./StyledButton";
 import usePlayerStore from "@/stores/playerStore";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
@@ -9,6 +9,46 @@ import Toast from "react-native-toast-message";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('CastModal');
+
+/**
+ * 请求 DLNA 搜索所需的权限
+ */
+async function requestDlnaPermissions() {
+  if (Platform.OS !== 'android') return true;
+
+  try {
+    const apiLevel = Platform.Version as number;
+
+    // Android 13+ (API 33+) 还需要 NEARBY_WIFI_DEVICES
+    if (apiLevel >= 33) {
+      const granted = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      ]);
+
+      return (
+        granted[PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES] === PermissionsAndroid.RESULTS.GRANTED &&
+        granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
+      );
+    }
+
+    // Android 10-12 需要 FINE_LOCATION
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: '需要定位权限',
+        message: '搜索附近的投屏设备需要定位权限以扫描 WiFi 网络',
+        buttonNeutral: '稍后',
+        buttonNegative: '拒绝',
+        buttonPositive: '确定',
+      }
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (err) {
+    logger.warn('[Cast] Permission request error:', err);
+    return false;
+  }
+}
 
 /**
  * 将可能的本地 file:// 地址转为 HTTP 可访问地址
@@ -31,7 +71,17 @@ export const CastModal: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const searchTimerRef = useRef<any>(null);
 
-  const startSearch = useCallback(() => {
+  const startSearch = useCallback(async () => {
+    const hasPermission = await requestDlnaPermissions();
+    if (!hasPermission) {
+      Toast.show({
+        type: 'error',
+        text1: '权限不足',
+        text2: '搜索投屏设备需要附近的设备或定位权限',
+      });
+      return;
+    }
+
     // 显示之前缓存过的设备（如果有）
     const cachedDevices = dlnaService.getDevices();
     if (cachedDevices.length > 0) {
