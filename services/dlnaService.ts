@@ -105,51 +105,58 @@ class DLNAService {
     }
   }
 
-  private initSocket() {
-    try {
-      if (this.socket) {
-          try { this.socket.close(); } catch(e) {}
-      }
-      this.socket = TcpSocket.createUdpSocket('udp4');
-
-      this.socket.on('message', (msg: Buffer, rinfo: { address: string; port: number }) => {
-        const data = msg.toString();
-        // 关键：不区分大小写匹配关键字段
-        const isSSDP = /HTTP\/1\.1 200 OK|NOTIFY|LOCATION:/i.test(data);
-        if (isSSDP) {
-          this.handleSSDPMessage(data, rinfo.address);
-        }
-      });
-
-      this.socket.on('error', (err: any) => {
-        logger.warn('[DLNA] Socket error:', err);
-      });
-
-      // 绑定 0.0.0.0 接收所有网卡数据
-      this.socket.bind({ port: 0, address: '0.0.0.0' }, () => {
-        try {
-          this.socket.setBroadcast(true);
-          this.socket.setMulticastTTL(64);
-          if (this.localIp && this.localIp !== '0.0.0.0') {
-            this.socket.addMembership(this.SSDP_ADDR, this.localIp);
-          } else {
-            this.socket.addMembership(this.SSDP_ADDR);
-          }
-        } catch (e: any) {
-          logger.warn('[DLNA] Multicast bind error:', e?.message);
-        }
-
-        this.SEARCH_INTERVALS.forEach(delay => {
-          const t = setTimeout(() => {
-            if (this.scanning) this.broadcastMSEARCH();
-          }, delay);
-          this.searchTimers.push(t);
-        });
-      });
-    } catch (error) {
-      logger.error('[DLNA] Init failed:', error);
+private initSocket() {
+  try {
+    if (this.socket) {
+      try { this.socket.close(); } catch(e) {}
     }
+
+    this.socket = TcpSocket.createUdpSocket('udp4');
+
+    // 必须先加入组播
+    try {
+      if (this.localIp && this.localIp !== '0.0.0.0') {
+        this.socket.addMembership(this.SSDP_ADDR, this.localIp);
+      } else {
+        this.socket.addMembership(this.SSDP_ADDR);
+      }
+    } catch (e) {
+      logger.warn('[DLNA] addMembership error:', e);
+    }
+
+    this.socket.on('message', (msg, rinfo) => {
+      console.log('[DLNA] UDP message:', msg.toString());
+      const data = msg.toString();
+      if (/HTTP\/1\.1 200 OK|NOTIFY|LOCATION:/i.test(data)) {
+        this.handleSSDPMessage(data, rinfo.address);
+      }
+    });
+
+    this.socket.on('error', (err) => {
+      logger.warn('[DLNA] Socket error:', err);
+    });
+
+    // 必须绑定 1900
+    this.socket.bind({ port: 1900, address: '0.0.0.0' }, () => {
+      try {
+        this.socket.setBroadcast(true);
+        this.socket.setMulticastTTL(64);
+      } catch (e) {}
+
+      this.SEARCH_INTERVALS.forEach(delay => {
+        const t = setTimeout(() => {
+          if (this.scanning) this.broadcastMSEARCH();
+        }, delay);
+        this.searchTimers.push(t);
+      });
+    });
+
+  } catch (error) {
+    logger.error('[DLNA] Init failed:', error);
   }
+}
+
+
 
   private broadcastMSEARCH() {
     if (!this.socket) return;
