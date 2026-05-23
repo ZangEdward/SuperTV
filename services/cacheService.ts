@@ -237,8 +237,21 @@ export class CacheService {
       ? `${TEMP_DIR}${taskId}_seg_${index}${TMP_EXTENSION}`
       : `${TEMP_DIR}seg_${index}${TMP_EXTENSION}`;
 
+    // 移除 file:// 前缀，并确保路径对原生层是干净的
+    let normalizedTempPath = tempPath;
+    if (Platform.OS === 'android') {
+      normalizedTempPath = tempPath.startsWith('file://') ? tempPath.slice(7) : tempPath;
+    }
+
+    const tempDir = normalizedTempPath.substring(0, normalizedTempPath.lastIndexOf('/'));
+
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
+        // 确保临时目录存在（双重保险）
+        if (attempt === 0) {
+          await RNFetchBlob.fs.mkdir(tempDir).catch(() => {});
+        }
+
         const fetchHeaders: Record<string, string> = {
           ...DEFAULT_HEADERS,
           ...authHeaders,
@@ -250,23 +263,23 @@ export class CacheService {
 
         // 使用 RNFetchBlob 下载到指定的临时文件（位于应用数据目录中）
         const res = await RNFetchBlob.config({
-          path: tempPath,
+          path: normalizedTempPath,
           timeout: 60000,
         }).fetch('GET', url, fetchHeaders);
 
         const status = res.info().status;
         if (status === 403 || status === 401) {
-          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
+          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
           throw new Error(`权限错误 (HTTP ${status})`);
         }
         if (status !== 200) {
-          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
+          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
           throw new Error(`HTTP ${status}`);
         }
 
         try {
           if (encryption) {
-            const b64 = await RNFetchBlob.fs.readFile(tempPath, 'base64');
+            const b64 = await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
             const contentWordArray = CryptoJS.enc.Base64.parse(b64);
 
             const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
@@ -283,14 +296,14 @@ export class CacheService {
             );
             return CryptoJS.enc.Base64.stringify(decrypted);
           } else {
-            return await RNFetchBlob.fs.readFile(tempPath, 'base64');
+            return await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
           }
         } finally {
-          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
+          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
         }
       } catch (err: any) {
         lastError = err;
-        await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
+        await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
         if (attempt < retryCount) {
           const delay = 1000 * Math.pow(2, attempt);
           await new Promise(r => setTimeout(r, delay));
@@ -768,7 +781,10 @@ export class CacheService {
       let completedCount = resumeIndex;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
-      const normalizedDestPath = Platform.OS === 'android' ? destinationPath.replace('file://', '') : destinationPath;
+      let normalizedDestPath = destinationPath;
+      if (Platform.OS === 'android') {
+        normalizedDestPath = destinationPath.startsWith('file://') ? destinationPath.slice(7) : destinationPath;
+      }
 
       await ensureTempDir();
 

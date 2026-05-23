@@ -101,6 +101,9 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       status: null
     });
 
+    // 短暂延迟，确保渲染状态已同步，避免 native 崩溃
+    await new Promise(r => setTimeout(r, 50));
+
     const perfStart = performance.now();
     logger.info(`[PERF] PlayerStore.loadVideo START - source: ${source}, id: ${id}, title: ${title}`);
 

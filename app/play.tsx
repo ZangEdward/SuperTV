@@ -436,12 +436,56 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 非全屏模式下隐藏选集列表，保持 UI 极简 */}
+      {/* 底部简化的选集 + 换源 - 仅在非全屏显示，方便快速切换 */}
       {!isFullscreen && (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <ThemedText style={{ color: '#666', textAlign: 'center', fontSize: 13 }}>
-            点击视频进入全屏模式查看更多选项
-          </ThemedText>
+        <View style={styles.mobileBottomBar}>
+          {/* 集数选择 */}
+          <View style={styles.mobileSection}>
+            <View style={styles.mobileSectionHeader}>
+              <Text style={styles.mobileSectionTitle}>选集</Text>
+              <View style={styles.rangeSelector}>
+                <Text style={styles.rangeText}>1-{detail?.episodes?.length || 0}</Text>
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
+              {episodes.map((ep) => (
+                <TouchableOpacity
+                  key={ep.index}
+                  style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
+                  onPress={() => handleEpisodePress(ep.index)}
+                >
+                  <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
+                    {(ep.index + 1).toString()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 源选择 */}
+          <View style={styles.mobileSection}>
+            <View style={styles.mobileSectionHeader}>
+              <Text style={styles.mobileSectionTitle}>播放源</Text>
+              <TouchableOpacity onPress={() => setIsReverse(!isReverse)} style={styles.reverseBtn}>
+                <ArrowUpDown size={14} color={isReverse ? "#00bb5e" : "#888"} />
+                <Text style={[styles.reverseText, isReverse && { color: '#00bb5e' }]}>{isReverse ? '倒序' : '正序'}</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
+              {sortedSources.map((item, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
+                  onPress={() => handleSourcePress(item)}
+                >
+                  <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
+                    {item.source_name}
+                  </Text>
+                  <Text style={styles.mobileSourceEpisodes}>{item.episodes?.length || 0}集</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       )}
     </View>
