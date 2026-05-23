@@ -2,6 +2,10 @@ import TcpSocket from 'react-native-tcp-socket';
 import NetInfo from "@react-native-community/netinfo";
 import { NativeModules, Platform } from 'react-native';
 import Logger from '@/utils/Logger';
+import { NativeModules } from "react-native";
+const { MulticastModule } = NativeModules;
+
+console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
 
 const logger = Logger.withTag('DLNAService');
 const { MulticastModule } = NativeModules;
