@@ -6,6 +6,8 @@ import Logger from '@/utils/Logger';
 const logger = Logger.withTag('DLNAService');
 const { MulticastModule } = NativeModules;
 
+console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
+
 export interface DLNADevice {
   id: string;
   name: string;

@@ -21,8 +21,10 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 import MobileTabContainer from "@/components/navigation/MobileTabContainer";
+import { NativeModules } from 'react-native'; // 引入原生模块
 
 const logger = Logger.withTag('RootLayout');
+const { MulticastModule } = NativeModules;
 
 // 安全兜底颜色常量 —— 当 Colors 模块加载失败或未定义时使用
 const SAFE_COLORS = {
@@ -111,6 +113,11 @@ export default function RootLayout() {
     const initializeApp = async () => {
       try {
         await loadSettings();
+        // 关键：App 启动即开启组播锁
+        if (Platform.OS === 'android' && MulticastModule) {
+          MulticastModule.acquire();
+          logger.info('[Multicast] Lock acquired at startup');
+        }
       } catch (e) {
         logger.error('Failed to load settings', e);
       } finally {

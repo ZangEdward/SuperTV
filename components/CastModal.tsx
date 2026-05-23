@@ -19,31 +19,40 @@ async function requestDlnaPermissions() {
   try {
     const apiLevel = Platform.Version as number;
 
-    // Android 13+ (API 33+) 还需要 NEARBY_WIFI_DEVICES
+    // 定义权限常量字符串（防止常量未定义导致崩溃）
+    const PERM_NEARBY = 'android.permission.NEARBY_WIFI_DEVICES';
+    const PERM_LOCATION = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
+
+    // Android 13+ (API 33+)：必须授权“附近的设备”
     if (apiLevel >= 33) {
       const granted = await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES,
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PERM_NEARBY as any,
+        PERM_LOCATION,
       ]);
 
       return (
-        granted[PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES] === PermissionsAndroid.RESULTS.GRANTED &&
-        granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
+        granted[PERM_NEARBY] === PermissionsAndroid.RESULTS.GRANTED ||
+        granted[PERM_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
       );
     }
 
-    // Android 10-12 需要 FINE_LOCATION
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: '需要定位权限',
-        message: '搜索附近的投屏设备需要定位权限以扫描 WiFi 网络',
-        buttonNeutral: '稍后',
-        buttonNegative: '拒绝',
-        buttonPositive: '确定',
-      }
-    );
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
+    // Android 10-12 (API 29-32)：依赖定位权限进行 WiFi 扫描
+    if (apiLevel >= 29) {
+      const granted = await PermissionsAndroid.request(
+        PERM_LOCATION,
+        {
+          title: '需要定位权限',
+          message: '搜索附近的投屏设备需要定位权限以扫描局域网',
+          buttonNeutral: '稍后',
+          buttonNegative: '拒绝',
+          buttonPositive: '确定',
+        }
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    }
+
+    // Android 9 及以下：Manifest 声明即可
+    return true;
   } catch (err) {
     logger.warn('[Cast] Permission request error:', err);
     return false;
