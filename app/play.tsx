@@ -13,6 +13,7 @@ import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { ArrowLeft, ArrowUpDown, Download, Cast } from "lucide-react-native";
+import { StatusBar } from "expo-status-bar";
 import Toast from "react-native-toast-message";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
@@ -431,7 +432,7 @@ export default function PlayScreen() {
       )}
 
       {/* 视频播放区 */}
-      <View style={isFullscreen ? styles.playerSectionFullscreen : styles.playerSection}>
+      <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
@@ -454,40 +455,12 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 底部简化的选集 + 换源 - 仅在非全屏显示，方便快速切换 */}
+      {/* 非全屏模式下隐藏选集列表，保持 UI 极简 */}
       {!isFullscreen && (
-        <View style={styles.mobileBottomBar}>
-          <View style={styles.mobileSection}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
-              {episodes.map((ep) => (
-                <TouchableOpacity
-                  key={ep.index}
-                  style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
-                  onPress={() => handleEpisodePress(ep.index)}
-                >
-                  <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
-                    {(ep.index + 1).toString()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          <View style={styles.mobileSection}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-              {sortedSources.map((item, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
-                  onPress={() => handleSourcePress(item)}
-                >
-                  <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
-                    {item.source_name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <ThemedText style={{ color: '#666', textAlign: 'center', fontSize: 13 }}>
+            点击视频进入全屏模式查看更多选项
+          </ThemedText>
         </View>
       )}
     </View>
@@ -520,6 +493,7 @@ export default function PlayScreen() {
 
   return (
     <ThemedView style={{ flex: 1, backgroundColor: 'black' }}>
+      <StatusBar hidden={isFullscreen ? !showControls : false} animated={true} />
       {deviceType === 'tv' ? renderTVLayout() : renderMobileLayout()}
       <EpisodeSelectionModal />
       <SourceSelectionModal />

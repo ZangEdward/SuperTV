@@ -246,12 +246,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   if (deviceType === 'mobile' && isPortrait) {
     return (
       <View style={styles.controlsOverlay}>
-        <View style={styles.mobileTopBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
-            <ArrowLeft color="white" size={24} />
-          </TouchableOpacity>
-        </View>
-
         <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={[styles.centerPlayBtn, { padding: 10, borderRadius: 30 }]}>
           {status?.isLoaded && status.isPlaying ? (
             <Pause color="white" size={32} />
@@ -275,22 +269,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
               style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
             />
           </View>
-          <View style={styles.mobileBottomRow}>
-            <ThemedText style={[styles.timeText, { fontSize: 10 }]}>
-              {status?.isLoaded
-                ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
-                : "00:00 / 00:00"}
-            </ThemedText>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TouchableOpacity style={[styles.mobileTextBtn, { paddingHorizontal: 8, paddingVertical: 4 }]} onPress={() => safeCall(setShowSpeedModal, true)}>
-                <Text style={[styles.mobileTextBtnLabel, { fontSize: 11 }]}>{playbackRate}X</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={enterFullscreen} style={[styles.iconBtn, { padding: 5 }]}>
-                <Maximize2 color="white" size={20} />
-              </TouchableOpacity>
-            </View>
+          <View style={[styles.mobileBottomRow, { justifyContent: 'flex-end' }]}>
+            <TouchableOpacity onPress={enterFullscreen} style={[styles.iconBtn, { padding: 5 }]}>
+              <Maximize2 color="white" size={24} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
