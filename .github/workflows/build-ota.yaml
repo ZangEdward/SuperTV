@@ -60,7 +60,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Expo Prebuild
-        run: npx expo prebuild --platform android --no-install --clean
+        run: npx expo prebuild --platform android --no-install
 
       - name: Decode Keystore
         run: |

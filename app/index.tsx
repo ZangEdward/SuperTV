@@ -250,9 +250,9 @@ export default function HomeScreen() {
       justifyContent: "space-between",
       alignItems: "center",
       paddingHorizontal: spacing * 1.5,
-      marginTop: deviceType === "tv" ? 40 : spacing,
-      marginBottom: spacing,
-      minHeight: 80, // 显式给标题容器足够的高度
+      marginTop: deviceType === "tv" ? 10 : spacing,
+      marginBottom: deviceType === "tv" ? spacing / 2 : spacing,
+      minHeight: deviceType === "tv" ? 60 : 80, // 减小 TV 端高度
     },
     headerTitle: {
       fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 34,
@@ -268,7 +268,7 @@ export default function HomeScreen() {
       marginLeft: spacing / 2,
     },
     categoryContainer: {
-      paddingBottom: spacing / 2,
+      paddingBottom: deviceType === "tv" ? 0 : spacing / 2,
     },
     categoryListContent: {
       paddingHorizontal: spacing,

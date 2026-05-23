@@ -226,8 +226,8 @@ const createResponsiveStyles = (deviceType: string, spacing: number, insets: any
       justifyContent: "flex-start",
       alignItems: "center",
       paddingHorizontal: spacing * 1.5,
-      marginTop: isTV ? 40 : insets.top + 10,
-      marginBottom: spacing,
+      marginTop: isTV ? 10 : insets.top + 10,
+      marginBottom: isTV ? spacing / 2 : spacing,
       zIndex: 100,
     },
     headerTitle: {
