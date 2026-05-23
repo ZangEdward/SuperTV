@@ -232,7 +232,7 @@ const createStyles = (spacing: number, sidebarWidth: number, isPortrait: boolean
     },
     content: {
       flex: 1,
-      backgroundColor: '#000',
+      backgroundColor: '#151718',
     },
   });
 };

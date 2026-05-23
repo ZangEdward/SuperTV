@@ -345,20 +345,20 @@ export default function HomeScreen() {
           </ThemedText>
         </View>
       ) : (apiConfigStatus.isValidating && contentData.length === 0) ? (
-        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
+        <View style={[commonStyles.center, { backgroundColor: '#151718' }]}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center", color: '#888' }}>
             正在连接服务器...
           </ThemedText>
         </View>
       ) : apiConfigStatus.error && !apiConfigStatus.isValid && contentData.length === 0 ? (
-        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
+        <View style={[commonStyles.center, { backgroundColor: '#151718' }]}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
             {apiConfigStatus.error}
           </ThemedText>
         </View>
       ) : (loading && contentData.length === 0) ? (
-        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
+        <View style={[commonStyles.center, { backgroundColor: '#151718' }]}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
       ) : error && contentData.length === 0 ? (

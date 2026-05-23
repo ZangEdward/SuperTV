@@ -351,7 +351,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 const styles = StyleSheet.create({
   controlsOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    backgroundColor: "rgba(21, 23, 24, 0.5)",
     justifyContent: "space-between",
     padding: 20,
   },
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
   progressBarTouchable: { position: "absolute", left: 0, right: 0, height: 30, top: -10, zIndex: 10 },
   controlButton: { padding: 10, flexDirection: "row", alignItems: "center" },
   topRightContainer: { padding: 10, alignItems: "center", justifyContent: "center", minWidth: 44 },
-  resolutionText: { color: "white", fontSize: 16, fontWeight: "bold", backgroundColor: "rgba(0,0,0,0.5)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  resolutionText: { color: "white", fontSize: 16, fontWeight: "bold", backgroundColor: "rgba(21, 23, 24, 0.6)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   mobileTopBar: { flexDirection: 'row', alignItems: 'center', paddingTop: 10 },
   iconBtn: { padding: 10 },
   mobileTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 10, flex: 1 },
@@ -378,5 +378,5 @@ const styles = StyleSheet.create({
   timeText: { color: 'white', fontSize: 12, marginLeft: 5 },
   mobileTextBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   mobileTextBtnLabel: { color: 'white', fontSize: 13, fontWeight: '600' },
-  centerPlayBtn: { position: 'absolute', top: '40%', left: '45%', backgroundColor: 'rgba(0,0,0,0.5)', padding: 15, borderRadius: 40 },
+  centerPlayBtn: { position: 'absolute', top: '40%', left: '45%', backgroundColor: 'rgba(21, 23, 24, 0.6)', padding: 15, borderRadius: 40 },
 });

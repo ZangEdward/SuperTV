@@ -28,7 +28,7 @@ const { MulticastModule } = NativeModules;
 
 // 安全兜底颜色常量 —— 当 Colors 模块加载失败或未定义时使用
 const SAFE_COLORS = {
-  dark: { background: '#000', text: '#fff', border: '#333', primary: '#00bb5e' },
+  dark: { background: '#151718', text: '#fff', border: '#333', primary: '#00bb5e' },
   light: { background: '#fff', text: '#11181C', border: '#E5E5E5', primary: '#00bb5e' },
 };
 

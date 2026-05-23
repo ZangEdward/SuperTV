@@ -101,6 +101,33 @@ export const CastModal: React.FC = () => {
     };
   }, [showCastModal, startSearch]);
 
+  /** 自动重试投屏 */
+  const tryCast = async (device: DLNADevice, url: string, title: string, retry = 0) => {
+    try {
+      await dlnaService.castVideo(device, url, title);
+
+      setCastingDevice(device);
+      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放' });
+
+    } catch (error) {
+      if (retry < 2) {
+        Toast.show({
+          type: 'info',
+          text1: '投屏失败，正在重试...',
+          text2: `第 ${retry + 2} 次尝试`
+        });
+
+        setTimeout(() => tryCast(device, url, title, retry + 1), 1000);
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: '投屏失败',
+          text2: '请检查网络或电视是否支持 DLNA'
+        });
+      }
+    }
+  };
+
   /** 执行投屏 */
   const onCast = async (device: DLNADevice) => {
     const currentEpisode = episodes[currentEpisodeIndex];
@@ -111,22 +138,9 @@ export const CastModal: React.FC = () => {
 
     const castUrl = convertToHttpUrl(currentEpisode.url);
 
-    try {
-      Toast.show({ type: 'info', text1: '正在投屏...', text2: `连接到 ${device.name}` });
-      await dlnaService.castVideo(device, castUrl, currentEpisode.title);
+    Toast.show({ type: 'info', text1: '正在投屏...', text2: `连接到 ${device.name}` });
 
-      // ⭐ 投屏成功后不关闭弹窗，而是进入“已投屏状态”
-      setCastingDevice(device);
-
-      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放' });
-    } catch (error: any) {
-      logger.warn('[Cast] Failed:', error);
-      Toast.show({
-        type: 'error',
-        text1: '投屏失败',
-        text2: error.message || '请检查网络连接并确认电视支持 DLNA'
-      });
-    }
+    tryCast(device, castUrl, currentEpisode.title, 0);
   };
 
   /** 关闭弹窗 */
@@ -165,7 +179,7 @@ export const CastModal: React.FC = () => {
                 onPress={async () => {
                   try {
                     await dlnaService.stopCast(castingDevice);
-                    Toast.show({ type: 'success', text1: '已断开投屏' });
+                    Toast.show({ type: 'success', text1: '已断开投屏', text2: '电视已停止播放' });
                     setCastingDevice(null);
                   } catch (e) {
                     Toast.show({ type: 'error', text1: '断开失败', text2: '请重试' });
