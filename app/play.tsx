@@ -139,64 +139,45 @@ export default function PlayScreen() {
   const tvRemoteHandler = useTVRemoteHandler();
 
   useEffect(() => {
-
-
     if (typeof setVideoRef === 'function') {
       setVideoRef(videoRef);
-    } else {
-      console.error('[PlayScreen] setVideoRef is not a function');
     }
+
     if (typeof setShowCastModal === 'function') {
       setShowCastModal(false);
-    } else {
-      console.error('[PlayScreen] setShowCastModal is not a function');
     }
-
-
-
-
-
-
-
-
-
-
-
 
     try {
       if (typeof loadVideo !== 'function') {
-        console.error('[PlayScreen] loadVideo is not a function');
         return;
       }
       if (fileUri) {
         loadVideo({
-          source: source || 'local',
-          id: id || 'local',
+          source: sourceStr || 'local',
+          id: videoId || 'local',
           episodeIndex: initialEpIndex,
           position,
-          title: title || '离线播放',
+          title: videoTitle || '离线播放',
           fileUri
         });
-      } else if (source && id && title) {
-        loadVideo({ source, id, episodeIndex: initialEpIndex, position, title });
+      } else if (sourceStr && videoId && videoTitle) {
+        // Use router params for initial load to avoid dependency on 'detail' which changes during load
+        loadVideo({ source: sourceStr, id: videoId, episodeIndex: initialEpIndex, position, title: videoTitle });
       }
     } catch (e) {
       console.error('[PlayScreen] loadVideo error:', e);
     }
+  }, [initialEpIndex, sourceStr, videoId, videoTitle, position, setVideoRef, loadVideo, fileUri]);
+
+  // Handle unmount cleanup separately to avoid resetting on every param update
+  useEffect(() => {
     return () => {
-      // Condition: only reset if we are actually unmounting the screen (leaving the player)
-      // Since we don't have a reliable way to check that here, we keep it simple
-      // but maybe avoid calling reset if we're just switching episodes?
-      // For now, let's keep it but ensure it doesn't cause a loop.
       reset();
-      // Ensure we restore portrait orientation when leaving the player
       if (isMobile) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(e =>
-          console.warn('[PlayScreen] Failed to reset orientation on cleanup:', e)
-        );
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
       }
     };
-  }, [initialEpIndex, source, position, setVideoRef, reset, loadVideo, id, title, fileUri, isMobile]);
+  }, [reset, isMobile]);
 
   // 检测初始化失败：detail为null且detailStore已完成加载
   useEffect(() => {
