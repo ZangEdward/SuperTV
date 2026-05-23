@@ -16,8 +16,7 @@ export interface DLNADevice {
 }
 
 /**
- * 终极适配版 DLNA 发现服务
- * 修复：解决 Android 13+ 组播锁定和多网卡冲突
+ * 高兼容性 DLNA 搜索服务 (V3 稳定版)
  */
 class DLNAService {
   private devices: Map<string, DLNADevice> = new Map();
@@ -28,10 +27,11 @@ class DLNAService {
   private currentCallback: ((devices: DLNADevice[]) => void) | null = null;
   private receivedKeys: Set<string> = new Set();
   private localIp: string = '0.0.0.0';
+  private broadcastAddr: string = '255.255.255.255';
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
-  private readonly SEARCH_INTERVALS = [0, 500, 2000, 4500, 8000, 12000];
+  private readonly SEARCH_INTERVALS = [0, 800, 2500, 5000, 9000, 14000];
 
   constructor() {}
 
@@ -45,56 +45,53 @@ class DLNAService {
 
     if (this.scanning) this.stopSearch();
 
+    // 计算网段广播地址 (如 192.168.1.255)
     try {
       const state = await NetInfo.fetch();
       if (state.type === 'wifi' && state.details && 'ipAddress' in state.details) {
         this.localIp = (state.details as any).ipAddress;
+        const parts = this.localIp.split('.');
+        if (parts.length === 4) {
+          this.broadcastAddr = `${parts[0]}.${parts[1]}.${parts[2]}.255`;
+        }
       }
-    } catch (e) {
-      this.localIp = '0.0.0.0';
-    }
+    } catch (e) {}
 
     this.scanning = true;
     this.currentCallback = callback;
     this.receivedKeys.clear();
 
-    // 开启组播锁，确保 Android 能够接收 UDP 响应包
+    // 开启组播锁
     if (Platform.OS === 'android' && MulticastModule) {
       try {
         MulticastModule.acquire();
-        logger.info('[DLNA] Multicast lock acquired');
       } catch (e) {
-        logger.warn('[DLNA] Failed to acquire multicast lock:', e);
+        logger.warn('[DLNA] Lock acquire failed', e);
       }
     }
 
-    logger.info(`[DLNA] Starting search. Interface: ${this.localIp}`);
-    this.initSocket();
+    logger.info(`[DLNA] Search Start. Local: ${this.localIp}, Broadcast: ${this.broadcastAddr}`);
+
+    // 延迟 200ms 确保锁生效
+    setTimeout(() => this.initSocket(), 200);
 
     this.searchTimeout = setTimeout(() => {
       if (this.scanning) {
         this.stopSearch();
         if (this.currentCallback) this.currentCallback(this.getDevices());
       }
-    }, 25000);
+    }, 30000);
   }
 
   public stopSearch() {
     this.scanning = false;
     this.currentCallback = null;
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
-      this.searchTimeout = null;
-    }
+    if (this.searchTimeout) { clearTimeout(this.searchTimeout); this.searchTimeout = null; }
     this.searchTimers.forEach(t => clearTimeout(t));
     this.searchTimers = [];
 
-    // 释放组播锁
     if (Platform.OS === 'android' && MulticastModule) {
-      try {
-        MulticastModule.release();
-        logger.info('[DLNA] Multicast lock released');
-      } catch (e) {}
+      try { MulticastModule.release(); } catch (e) {}
     }
 
     if (this.socket) {
@@ -108,13 +105,16 @@ class DLNAService {
 
   private initSocket() {
     try {
+      if (this.socket) {
+          try { this.socket.close(); } catch(e) {}
+      }
       this.socket = TcpSocket.createUdpSocket('udp4');
 
       this.socket.on('message', (msg: Buffer, rinfo: { address: string; port: number }) => {
-        if (rinfo.address === this.localIp) return;
         const data = msg.toString();
-        // 标准/非标准报文过滤
-        if (data.includes('LOCATION:') || data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY')) {
+        // 关键：不区分大小写匹配关键字段
+        const isSSDP = /HTTP\/1\.1 200 OK|NOTIFY|LOCATION:/i.test(data);
+        if (isSSDP) {
           this.handleSSDPMessage(data, rinfo.address);
         }
       });
@@ -123,22 +123,20 @@ class DLNAService {
         logger.warn('[DLNA] Socket error:', err);
       });
 
-      // 关键：绑定 0.0.0.0 以接收所有回包
+      // 绑定 0.0.0.0 接收所有网卡数据
       this.socket.bind({ port: 0, address: '0.0.0.0' }, () => {
         try {
           this.socket.setBroadcast(true);
-          this.socket.setMulticastTTL(4);
-          this.socket.setMulticastLoopbackMode(true);
+          this.socket.setMulticastTTL(64);
           if (this.localIp && this.localIp !== '0.0.0.0') {
             this.socket.addMembership(this.SSDP_ADDR, this.localIp);
           } else {
             this.socket.addMembership(this.SSDP_ADDR);
           }
         } catch (e: any) {
-          logger.warn('[DLNA] Multicast bind warning:', e?.message);
+          logger.warn('[DLNA] Multicast bind error:', e?.message);
         }
 
-        // 立即触发密集搜索
         this.SEARCH_INTERVALS.forEach(delay => {
           const t = setTimeout(() => {
             if (this.scanning) this.broadcastMSEARCH();
@@ -147,7 +145,7 @@ class DLNAService {
         });
       });
     } catch (error) {
-      logger.error('[DLNA] Init error:', error);
+      logger.error('[DLNA] Init failed:', error);
     }
   }
 
@@ -161,7 +159,6 @@ class DLNAService {
     ];
 
     targets.forEach(st => {
-      // 对齐乐播等 App 的标准 SSDP 报文格式
       const msg =
         'M-SEARCH * HTTP/1.1\r\n' +
         'HOST: 239.255.255.250:1900\r\n' +
@@ -173,13 +170,20 @@ class DLNAService {
         '\r\n';
 
       try {
+        // 组播
         this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR);
+        // 全域广播
         this.socket.send(msg, 0, msg.length, this.SSDP_PORT, '255.255.255.255');
+        // 网段广播 (解决部分路由屏蔽 255.255.255.255 的问题)
+        if (this.broadcastAddr !== '255.255.255.255') {
+            this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.broadcastAddr);
+        }
       } catch (e) {}
     });
   }
 
   private handleSSDPMessage(data: string, ip: string) {
+    // 正则提取 LOCATION，不区分大小写
     const locationMatch = data.match(/LOCATION:\s*(.+?)[\r\n]/i);
     if (!locationMatch || !locationMatch[1]) return;
     const descriptionUrl = locationMatch[1].trim();
@@ -223,7 +227,7 @@ class DLNAService {
 
       if (!this.devices.has(id)) {
         this.devices.set(id, { id, name: friendlyName, host: ip, port, controlUrl, descriptionUrl: url });
-        logger.info(`[DLNA] Found Device: ${friendlyName} @ ${ip}`);
+        logger.info(`[DLNA] Discovered: ${friendlyName} @ ${ip}`);
         if (this.currentCallback) this.currentCallback(this.getDevices());
       }
     } catch (e) {}
