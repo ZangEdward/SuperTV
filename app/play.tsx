@@ -67,6 +67,15 @@ export default function PlayScreen() {
   const isLocalFile = !!fileUri;
 
   const { detail, searchResults, setDetail, error: detailError, loading: detailLoading } = useDetailStore();
+
+  // 关键修复：增加校验，确保当前 store 中的 detail 与路由参数匹配
+  // 如果不匹配，说明是上一个视频的残余数据，应视为加载中
+  const isDetailMatching = useMemo(() => {
+    if (!detail) return false;
+    if (isLocalFile) return true;
+    return detail.id.toString() === videoId && detail.source === sourceStr;
+  }, [detail, videoId, sourceStr, isLocalFile]);
+
   const source = sourceStr || detail?.source;
   const id = videoId || detail?.id.toString();
   const title = videoTitle || detail?.title;
@@ -342,7 +351,8 @@ export default function PlayScreen() {
     );
   }
 
-  if (!isLocalFile && !detail) {
+  // 关键修复：如果详情不匹配或者正在加载，显示加载页
+  if (!isLocalFile && (!detail || !isDetailMatching)) {
     if (detailError) {
       return (
         <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
@@ -367,19 +377,7 @@ export default function PlayScreen() {
         </ThemedView>
       );
     }
-    if (!detailLoading && isInitFailed) {
-      return (
-        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
-          <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
-            <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 12, fontWeight: '600' }}>播放源不可用</Text>
-            <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 24, textAlign: 'center', lineHeight: 20 }}>
-              该视频播放源可能已过期或不可用{'\n'}请尝试从详情页选择其他播放源
-            </Text>
-            <StyledButton text="返回" onPress={() => router.back()} variant="primary" />
-          </View>
-        </ThemedView>
-      );
-    }
+
     return (
       <ThemedView style={[styles.tvContainer, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
         <VideoLoadingAnimation showProgressBar />

@@ -93,6 +93,14 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   setIsFullscreen: (full) => set({ isFullscreen: full }),
 
   loadVideo: async ({ source, id, episodeIndex, position, title, fileUri }) => {
+    // 关键修复：开始加载新视频前，先重置当前播放状态，防止旧视频残留导致崩溃
+    set({
+      isLoading: true,
+      episodes: [],
+      currentEpisodeIndex: -1,
+      status: null
+    });
+
     const perfStart = performance.now();
     logger.info(`[PERF] PlayerStore.loadVideo START - source: ${source}, id: ${id}, title: ${title}`);
 
@@ -173,10 +181,6 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       logger.info(`[INFO] No existing detail, using provided source "${source}" to get episodes`);
       episodes = episodesSelectorBySource(source)(useDetailStore.getState());
     }
-
-    set({
-      isLoading: true,
-    });
 
     const needsDetailInit = !detail || !episodes || episodes.length === 0 || detail.title !== title;
     logger.info(`[PERF] Detail check - needsInit: ${needsDetailInit}, hasDetail: ${!!detail}, episodesCount: ${episodes?.length || 0}`);
