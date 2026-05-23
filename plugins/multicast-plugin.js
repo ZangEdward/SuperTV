@@ -1,6 +1,4 @@
-// plugins/multicast-plugin.js
-
-const { withAppBuildGradle, withMainApplication, withDangerousMod } = require("@expo/config-plugins");
+const { withDangerousMod, withMainApplication } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -18,13 +16,11 @@ module.exports = function withMulticastPlugin(config) {
         fs.mkdirSync(androidSrcMainPath, { recursive: true });
       }
 
-      // 写入 MulticastModule.java
       fs.writeFileSync(
         path.join(androidSrcMainPath, "MulticastModule.java"),
         fs.readFileSync(path.join(__dirname, "MulticastModule.java"), "utf8")
       );
 
-      // 写入 MulticastPackage.java
       fs.writeFileSync(
         path.join(androidSrcMainPath, "MulticastPackage.java"),
         fs.readFileSync(path.join(__dirname, "MulticastPackage.java"), "utf8")
@@ -34,21 +30,23 @@ module.exports = function withMulticastPlugin(config) {
     },
   ]);
 
-  // 2. 修改 MainApplication.java，自动注册 MulticastPackage
+  // 2. 修改 MainApplication.java（适配 RN 0.74）
   config = withMainApplication(config, (config) => {
     let src = config.modResults.contents;
 
-    if (!src.includes("new MulticastPackage()")) {
+    // 注入 import
+    if (!src.includes("import com.supertv.app.MulticastPackage;")) {
       src = src.replace(
-        "return packages;",
-        "packages.add(new MulticastPackage());\n        return packages;"
+        "import com.facebook.react.defaults.DefaultReactNativeHost;",
+        "import com.facebook.react.defaults.DefaultReactNativeHost;\nimport com.supertv.app.MulticastPackage;"
       );
     }
 
-    if (!src.includes("import com.supertv.app.MulticastPackage;")) {
+    // 注入 package
+    if (!src.includes("new MulticastPackage()")) {
       src = src.replace(
-        "import com.facebook.react.ReactApplication;",
-        "import com.facebook.react.ReactApplication;\nimport com.supertv.app.MulticastPackage;"
+        "return new PackageList(this).getPackages();",
+        "return new PackageList(this).getPackages().concat(new MulticastPackage());"
       );
     }
 
