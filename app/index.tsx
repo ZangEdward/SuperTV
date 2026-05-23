@@ -255,6 +255,7 @@ export default function HomeScreen() {
     headerTitle: {
       fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,
       fontWeight: "bold",
+      lineHeight: deviceType === "mobile" ? 32 : deviceType === "tablet" ? 38 : 44,
     },
     rightHeaderButtons: {
       flexDirection: "row",

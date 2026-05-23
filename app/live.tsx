@@ -233,6 +233,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number, insets: any
     headerTitle: {
       fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,
       fontWeight: "bold",
+      lineHeight: deviceType === "mobile" ? 32 : deviceType === "tablet" ? 38 : 44,
     },
     modalContainer: {
       flex: 1,

@@ -112,7 +112,8 @@ export const StyledButton = forwardRef<View, StyledButtonProps>(
         fontSize: 16,
         fontWeight: "600",
         color: colors.text,
-        lineHeight: 22, // 增加行高防止裁剪
+        lineHeight: 24,
+        includeFontPadding: false, // 禁用 Android 默认字体填充，解决偏移问题
       },
       selectedText: {
         color: "#fff",
