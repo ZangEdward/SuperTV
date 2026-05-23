@@ -54,6 +54,7 @@ export type QueuedEpisode = {
   completedCount?: number; // 新增：已完成的分片数量，用于断点续传
   id?: string; // constructed id string
   wasDownloading?: boolean; // 标记暂停前是否正在下载中，用于 resumeAll 区分
+  resumeData?: string; // 新增：用于 MP4 下载的断点续传数据
 };
 
 export type GroupedDownload = {
@@ -206,23 +207,31 @@ const useCacheStore = create<CacheState>((set, get) => ({
         delete (get() as any)._controllers[itemId];
       } else {
         // create DownloadResumable here so we can cancel later
-        const resumable = FileSystem.createDownloadResumable(ep.url, fileUri, {}, (progress) => {
-          if (progress.totalBytesExpectedToWrite > 0) {
-            const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-            const q = get().queue;
-            const gi = q.findIndex(g => g.groupId === groupId);
-            if (gi !== -1) {
-              const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
-              if (ei !== -1) {
-                q[gi].episodes[ei].progress = p;
-                set({
-                  downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
-                  queue: [...q]
-                });
+        const resumable = FileSystem.createDownloadResumable(
+          ep.url,
+          fileUri,
+          {},
+          (progress) => {
+            if (progress.totalBytesExpectedToWrite > 0) {
+              const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+              const q = get().queue;
+              const gi = q.findIndex(g => g.groupId === groupId);
+              if (gi !== -1) {
+                const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
+                if (ei !== -1) {
+                  q[gi].episodes[ei].progress = p;
+                  set({
+                    downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
+                    queue: [...q]
+                  });
+                  // 这里的进度也会触发保存
+                  if (Math.floor(p * 100) % 5 === 0) CacheService.saveQueue(q);
+                }
               }
             }
-          }
-        });
+          },
+          ep.resumeData
+        );
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: resumable };
         const res = await resumable.downloadAsync();
         if (!res || !res.uri) throw new Error('下载失败');
@@ -303,7 +312,12 @@ const useCacheStore = create<CacheState>((set, get) => ({
       const controllers = (get() as any)._controllers || {};
       const ctrl = controllers[itemId];
       if (ctrl && typeof ctrl.pauseAsync === 'function') {
-        try { await ctrl.pauseAsync(); } catch (e) {}
+        try {
+          const pauseResult = await ctrl.pauseAsync();
+          ep.resumeData = pauseResult.resumeData;
+        } catch (e) {
+          logger.warn('pauseAsync failed', e);
+        }
       }
     }
 
@@ -370,9 +384,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
         }
         return;
       }
-      // 如果没有 resumable（如已清除），重新下载
+      // 如果没有 resumable（如已清除，比如重启后），重新启动下载（它会通过 ep.resumeData 续传）
       ep.status = 'pending';
-      ep.progress = 0;
       set({ queue: [...get().queue] });
       (get() as any).processQueue?.();
       return;

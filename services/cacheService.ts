@@ -68,7 +68,7 @@ interface ActiveM3U8Task {
 const activeM3U8Tasks = new Map<string, ActiveM3U8Task>();
 
 // ================== 临时文件管理（类似Chrome .crdownload / .tmp 机制） ==================
-const TEMP_DIR = `${FileSystem.cacheDirectory}m3u8_temp/`;
+const TEMP_DIR = `${FileSystem.documentDirectory}m3u8_temp/`;
 const TMP_EXTENSION = '.supertv.tmp';
 
 /**
@@ -79,7 +79,26 @@ async function ensureTempDir(): Promise<void> {
 }
 
 /**
- * 清理临时目录中所有 .supertv.tmp 文件
+ * 清理指定任务的临时片段文件
+ */
+async function cleanupTaskTemp(taskId: string): Promise<void> {
+  try {
+    const info = await FileSystem.getInfoAsync(TEMP_DIR);
+    if (info.exists) {
+      const files = await FileSystem.readDirectoryAsync(TEMP_DIR);
+      for (const file of files) {
+        if (file.startsWith(taskId) && file.endsWith(TMP_EXTENSION)) {
+          await FileSystem.deleteAsync(`${TEMP_DIR}${file}`, { idempotent: true });
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn(`cleanupTaskTemp failed for ${taskId}`, e);
+  }
+}
+
+/**
+ * 全局清理：清理临时目录中所有 .supertv.tmp 文件
  */
 async function cleanTempDir(): Promise<void> {
   try {
@@ -196,7 +215,8 @@ export class CacheService {
     url: string,
     index: number,
     encryption?: { key: Uint8Array; iv: Uint8Array } | null,
-    retryCount: number = 5
+    retryCount: number = 5,
+    taskId?: string
   ): Promise<string> {
     let lastError: Error | null = null;
     const authHeaders = await this.getAuthHeaders();
@@ -213,6 +233,10 @@ export class CacheService {
       referer = url;
     }
 
+    const tempPath = taskId
+      ? `${TEMP_DIR}${taskId}_seg_${index}${TMP_EXTENSION}`
+      : `${TEMP_DIR}seg_${index}${TMP_EXTENSION}`;
+
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
         const fetchHeaders: Record<string, string> = {
@@ -224,27 +248,25 @@ export class CacheService {
           fetchHeaders['Origin'] = origin;
         }
 
-        // 使用 RNFetchBlob 下载到临时文件
+        // 使用 RNFetchBlob 下载到指定的临时文件（位于应用数据目录中）
         const res = await RNFetchBlob.config({
-          fileCache: true,
-          appendExt: 'ts',
-          timeout: 60000, // 增加到 60s
+          path: tempPath,
+          timeout: 60000,
         }).fetch('GET', url, fetchHeaders);
 
         const status = res.info().status;
         if (status === 403 || status === 401) {
-          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
           throw new Error(`权限错误 (HTTP ${status})`);
         }
         if (status !== 200) {
-          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
           throw new Error(`HTTP ${status}`);
         }
 
         try {
           if (encryption) {
-            const path = res.path();
-            const b64 = await RNFetchBlob.fs.readFile(path, 'base64');
+            const b64 = await RNFetchBlob.fs.readFile(tempPath, 'base64');
             const contentWordArray = CryptoJS.enc.Base64.parse(b64);
 
             const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
@@ -261,13 +283,14 @@ export class CacheService {
             );
             return CryptoJS.enc.Base64.stringify(decrypted);
           } else {
-            return await res.base64();
+            return await RNFetchBlob.fs.readFile(tempPath, 'base64');
           }
         } finally {
-          await RNFetchBlob.fs.unlink(res.path()).catch(() => {});
+          await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
         }
       } catch (err: any) {
         lastError = err;
+        await RNFetchBlob.fs.unlink(tempPath).catch(() => {});
         if (attempt < retryCount) {
           const delay = 1000 * Math.pow(2, attempt);
           await new Promise(r => setTimeout(r, delay));
@@ -441,7 +464,8 @@ export class CacheService {
     }
     const normalizedSource = source.replace(/[^a-zA-Z0-9_-]/g, "_");
     const normalizedId = id.toString().replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${normalizedSource}_${normalizedId}_${episodeIndex + 1}_${Date.now()}.${extension}`;
+    // 移除 Date.now()，使文件名在多次运行间保持一致以支持断点续传
+    return `${normalizedSource}_${normalizedId}_${episodeIndex + 1}.${extension}`;
   }
 
   static resolveUrl(url: string, baseUrl: string): string {
@@ -792,7 +816,7 @@ export class CacheService {
           const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
 
           // 传参 retryCount=5，减少总等待时间
-          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 5);
+          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 5, taskId);
           resultsBuffer[index] = b64;
 
           // 触发顺序写入
@@ -844,7 +868,7 @@ export class CacheService {
         }
       }
       await writeStream.close();
-      await cleanTempDir();
+      await cleanupTaskTemp(taskId);
 
       const fileStat = await RNFetchBlob.fs.stat(normalizedDestPath);
       if (!fileStat || fileStat.size === 0) {
