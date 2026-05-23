@@ -14,6 +14,7 @@ import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { ArrowLeft, ArrowUpDown, Download, Cast } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
@@ -40,6 +41,7 @@ const LoadingContainer = memo(({ style, currentEpisode }: { style: any; currentE
 export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { deviceType, spacing, isPortrait } = useResponsiveLayout();
   const isMobile = deviceType === 'mobile';
   const isMobileLandscape = isMobile && !isPortrait;
@@ -97,21 +99,20 @@ export default function PlayScreen() {
     try {
       if (playbackStatus?.isLoaded && (playbackStatus as any)?.isPlaying) {
         if (typeof activateKeepAwakeAsync === 'function') {
-          activateKeepAwakeAsync();
+          activateKeepAwakeAsync().catch(() => {});
         }
       } else {
         if (typeof deactivateKeepAwakeAsync === 'function') {
-          deactivateKeepAwakeAsync();
+          deactivateKeepAwakeAsync().catch(() => {});
         }
       }
     } catch (e) {
       console.error('[PlayScreen] KeepAwake effect error:', e);
     }
     return () => {
-
       try {
         if (typeof deactivateKeepAwakeAsync === 'function') {
-          deactivateKeepAwakeAsync();
+          deactivateKeepAwakeAsync().catch(() => {});
         }
       } catch (e) {
         console.error('[PlayScreen] KeepAwake cleanup error:', e);
