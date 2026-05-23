@@ -95,7 +95,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     const initializeApp = async () => {
-      await loadSettings();
+      try {
+        await loadSettings();
+      } catch (e) {
+        logger.error('Failed to load settings', e);
+      }
     };
     initializeApp();
     initUpdateStore(); // 初始化更新存储
@@ -108,13 +112,14 @@ export default function RootLayout() {
   }, [apiBaseUrl, checkLoginStatus]);
 
   useEffect(() => {
-    if (loaded || error) {
+    // Wait for BOTH fonts and API config to be ready (at least settings loaded)
+    if (loaded && apiBaseUrl) {
       SplashScreen.hideAsync();
-      if (error) {
-        logger.warn(`Error in loading fonts: ${error}`);
-      }
+    } else if (error) {
+      SplashScreen.hideAsync();
+      logger.warn(`Error in loading fonts: ${error}`);
     }
-  }, [loaded, error]);
+  }, [loaded, error, apiBaseUrl]);
 
   // 检查更新
   useEffect(() => {

@@ -342,24 +342,24 @@ export default function HomeScreen() {
             {getApiConfigErrorMessage(apiConfigStatus)}
           </ThemedText>
         </View>
-      ) : apiConfigStatus.isValidating ? (
-        <View style={commonStyles.center}>
-          <ActivityIndicator size="large" />
-          <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
-            正在验证服务器配置...
+      ) : (apiConfigStatus.isValidating && contentData.length === 0) ? (
+        <View style={[commonStyles.center, { backgroundColor: Colors.dark.background }]}>
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
+          <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center", color: '#888' }}>
+            正在连接服务器...
           </ThemedText>
         </View>
-      ) : apiConfigStatus.error && !apiConfigStatus.isValid ? (
+      ) : apiConfigStatus.error && !apiConfigStatus.isValid && contentData.length === 0 ? (
         <View style={commonStyles.center}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
             {apiConfigStatus.error}
           </ThemedText>
         </View>
-      ) : loading ? (
-        <View style={commonStyles.center}>
-          <ActivityIndicator size="large" />
+      ) : (loading && contentData.length === 0) ? (
+        <View style={[commonStyles.center, { backgroundColor: Colors.dark.background }]}>
+          <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
-      ) : error ? (
+      ) : error && contentData.length === 0 ? (
         <View style={commonStyles.center}>
           <ThemedText type="subtitle" style={{ padding: spacing }}>
             {error}
