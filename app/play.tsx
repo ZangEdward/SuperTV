@@ -406,28 +406,8 @@ export default function PlayScreen() {
 
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
-      {/* 顶部栏 - 仅在非全屏显示 */}
-      {!isFullscreen && (
-        <View style={styles.customHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <ArrowLeft size={22} color="white" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
-          <View style={styles.headerIcons}>
-            {currentEpisode?.url && !isLocalFile && isMobile && (
-              <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadCurrent}>
-                <Download size={18} color="white" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
-              <Cast size={20} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
       {/* 视频播放区 */}
-      <View style={isFullscreen ? styles.playerSectionFullscreen : styles.playerSection}>
+      <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: insets.top + 20 }]}>
         <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
@@ -450,56 +430,12 @@ export default function PlayScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 底部简化的选集 + 换源 - 仅在非全屏显示 */}
+      {/* 非全屏模式下隐藏顶部栏和选集列表，保持 UI 极简 */}
       {!isFullscreen && (
-        <View style={styles.mobileBottomBar}>
-          {/* 集数选择 */}
-          <View style={styles.mobileSection}>
-            <View style={styles.mobileSectionHeader}>
-              <Text style={styles.mobileSectionTitle}>选集</Text>
-              <View style={styles.rangeSelector}>
-                <Text style={styles.rangeText}>1-{detail?.episodes?.length || 0}</Text>
-              </View>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
-              {episodes.map((ep) => (
-                <TouchableOpacity
-                  key={ep.index}
-                  style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
-                  onPress={() => handleEpisodePress(ep.index)}
-                >
-                  <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
-                    {(ep.index + 1).toString()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* 源选择 */}
-          <View style={styles.mobileSection}>
-            <View style={styles.mobileSectionHeader}>
-              <Text style={styles.mobileSectionTitle}>播放源</Text>
-              <TouchableOpacity onPress={() => setIsReverse(!isReverse)} style={styles.reverseBtn}>
-                <ArrowUpDown size={14} color={isReverse ? "#00bb5e" : "#888"} />
-                <Text style={[styles.reverseText, isReverse && { color: '#00bb5e' }]}>{isReverse ? '倒序' : '正序'}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-              {sortedSources.map((item, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
-                  onPress={() => handleSourcePress(item)}
-                >
-                  <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
-                    {item.source_name}
-                  </Text>
-                  <Text style={styles.mobileSourceEpisodes}>{item.episodes?.length || 0}集</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <ThemedText style={{ color: '#888', textAlign: 'center' }}>
+            点击视频进入全屏模式查看更多控制选项
+          </ThemedText>
         </View>
       )}
     </View>

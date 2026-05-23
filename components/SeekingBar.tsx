@@ -34,17 +34,6 @@ export const SeekingBar = () => {
       <Text style={styles.timeText}>
         {formatTime(currentPositionMillis)} / {formatTime(durationMillis)}
       </Text>
-      <View style={styles.seekingBarContainer}>
-        <View style={styles.seekingBarBackground} />
-        <View
-          style={[
-            styles.seekingBarFilled,
-            {
-              width: `${seekPosition * 100}%`,
-            },
-          ]}
-        />
-      </View>
     </View>
   );
 };
@@ -52,35 +41,19 @@ export const SeekingBar = () => {
 const styles = StyleSheet.create({
   seekingContainer: {
     position: "absolute",
-    bottom: 80,
-    left: "5%",
-    right: "5%",
+    top: '45%',
+    left: 0,
+    right: 0,
     alignItems: "center",
+    zIndex: 200,
   },
   timeText: {
     color: "white",
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  seekingBarContainer: {
-    width: "100%",
-    height: 5,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 2.5,
-  },
-  seekingBarBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 2.5,
-  },
-  seekingBarFilled: {
-    height: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 2.5,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
 });

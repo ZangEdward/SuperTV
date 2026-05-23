@@ -161,7 +161,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
           </TouchableOpacity>
         </View>
 
-        <View style={styles.mobileBottomSection}>
+        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <View
             style={styles.progressBarContainer}
             onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
@@ -180,8 +180,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             />
           </View>
 
-          <View style={styles.mobileBottomRow}>
-            <View style={styles.mobileBottomLeft}>
+          <View style={[styles.mobileBottomRow, isPortrait && { flexWrap: 'wrap', gap: 10 }]}>
+            <View style={[styles.mobileBottomLeft, isPortrait && { gap: 8, flex: 1 }]}>
               <MediaButton onPress={() => safeCall(togglePlayPause)} style={styles.mobileMediaBtn}>
                 {status?.isLoaded && status.isPlaying ? (
                   <Pause color="white" size={24} />
@@ -194,22 +194,37 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
                 <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
               </MediaButton>
 
-              <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
-                <List color="white" size={22} />
-              </TouchableOpacity>
+              {!isPortrait && (
+                <>
+                  <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
+                    <List color="white" size={22} />
+                  </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
-                <Tv color="white" size={22} />
-              </TouchableOpacity>
+                  <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
+                    <Tv color="white" size={22} />
+                  </TouchableOpacity>
+                </>
+              )}
 
-              <ThemedText style={styles.timeText}>
+              <ThemedText style={[styles.timeText, isPortrait && { fontSize: 10 }]}>
                 {status?.isLoaded
                   ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
                   : "00:00 / 00:00"}
               </ThemedText>
             </View>
 
-            <View style={styles.mobileBottomRight}>
+            <View style={[styles.mobileBottomRight, isPortrait && { gap: 10 }]}>
+              {isPortrait && (
+                <>
+                  <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
+                    <List color="white" size={20} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
+                    <Tv color="white" size={20} />
+                  </TouchableOpacity>
+                </>
+              )}
               <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
                 <RotateCw color="white" size={22} />
               </TouchableOpacity>
@@ -231,6 +246,12 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   if (deviceType === 'mobile' && isPortrait) {
     return (
       <View style={styles.controlsOverlay}>
+        <View style={styles.mobileTopBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+            <ArrowLeft color="white" size={24} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={[styles.centerPlayBtn, { padding: 10, borderRadius: 30 }]}>
           {status?.isLoaded && status.isPlaying ? (
             <Pause color="white" size={32} />
@@ -239,7 +260,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
           )}
         </TouchableOpacity>
 
-        <View style={styles.mobileBottomSection}>
+        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 15) }]}>
           <View
             style={styles.progressBarContainer}
             onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
@@ -262,10 +283,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             </ThemedText>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TouchableOpacity onPress={toggleOrientation} style={[styles.iconBtn, { padding: 5 }]}>
-                <RotateCw color="white" size={20} />
-              </TouchableOpacity>
-
               <TouchableOpacity style={[styles.mobileTextBtn, { paddingHorizontal: 8, paddingVertical: 4 }]} onPress={() => safeCall(setShowSpeedModal, true)}>
                 <Text style={[styles.mobileTextBtnLabel, { fontSize: 11 }]}>{playbackRate}X</Text>
               </TouchableOpacity>

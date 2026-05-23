@@ -60,8 +60,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         return;
       }
       
-      // 优化：只要有集数索引（通常来自播放记录），就直接跳转播放
-      if (episodeIndex !== undefined && episodeIndex > 0) {
+      // 优化：只要有集数索引（来自播放记录），就直接跳转播放
+      if (episodeIndex !== undefined) {
         router.push({
           pathname: "/play",
           params: { source, id, episodeIndex: episodeIndex - 1, title, position: (playTime || 0) * 1000 },
