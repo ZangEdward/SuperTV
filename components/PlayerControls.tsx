@@ -91,14 +91,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const [barWidth, setBarWidth] = useState(0);
 
   const handleProgressTouch = (e: GestureResponderEvent) => {
-    if (barWidth > 0) {
+    if (barWidth > 0 && e.nativeEvent) {
       const touchX = e.nativeEvent.locationX;
       const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
-      const isRelease = e.type === 'touchUp' || e.nativeEvent.touches.length === 0;
-      // If it's a move, we only update UI. If it's a grant or release, we finalize.
-      // Actually, e.type is not standard for all platforms in nativeEvent.
-      // Better to check if we are in onResponderRelease.
-      const isFinalize = e.nativeEvent.touches.length === 0;
+
+      // Safety check for touches array
+      const touches = e.nativeEvent.touches || [];
+      const isFinalize = touches.length === 0;
+
       safeCall(seekToPosition, ratio, isFinalize);
     }
   };

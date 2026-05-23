@@ -75,29 +75,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     const { videoSource } = useSettingsStore.getState();
 
-    const processAndSetResults = async (results: SearchResult[], latency?: number, merge = false) => {
-      const resultsWithResolution = await Promise.all(
-        results.map(async (searchResult) => {
-          let resolution;
-          try {
-            if (searchResult.episodes && searchResult.episodes.length > 0) {
-              resolution = await getResolutionFromM3U8(searchResult.episodes[0], signal);
-            }
-          } catch (e) {
-            if ((e as Error).name !== "AbortError") {
-              logger.info(`Failed to get resolution for ${searchResult.source_name}`, e);
-            }
-          }
-          return { ...searchResult, resolution, latency };
-        })
-      );
+    const processAndSetResults = async (results: SearchResult[], defaultLatency?: number, merge = false) => {
+      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
       
       if (signal.aborted) return;
 
       const state = get();
       const existingSources = new Set(state.searchResults.map((r) => r.source));
-      const newResults = resultsWithResolution.filter((r) => !existingSources.has(r.source));
-      const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithResolution;
+      const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
+      const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithLatency;
 
       const finalResults = combinedResults.sort((a, b) => {
         if (b.episodes.length !== a.episodes.length) {
@@ -113,7 +99,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
           )
         : null;
 
-      const selectedDetail = state.detail ?? preferredMatch ?? finalResults[0] ?? null;
+      // FIX: Ensure we keep the preferred source if it's found
+      const selectedDetail = preferredMatch || state.detail || finalResults[0] || null;
 
       set({
         searchResults: finalResults,
@@ -125,8 +112,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
         detail: selectedDetail,
       });
 
-      // 如果选定的 detail 没有剧集，必须异步获取一次详情
-      // 在 loadVideo 中会调用此 processAndSetResults，我们需要确保 init 返回时数据是完整的
       if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
         await get().setDetail(selectedDetail);
       }
