@@ -87,7 +87,7 @@ export const CastModal: React.FC = () => {
       Toast.show({
         type: 'error',
         text1: '权限不足',
-        text2: '搜索投屏设备需要附近的设备或定位权限',
+        text2: '请在系统设置中允许“附近的设备”权限以搜索电视',
       });
       return;
     }

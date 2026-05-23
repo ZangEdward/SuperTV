@@ -2,6 +2,7 @@ import TcpSocket from 'react-native-tcp-socket';
 import NetInfo from "@react-native-community/netinfo";
 import { NativeModules, Platform } from 'react-native';
 import Logger from '@/utils/Logger';
+import dgram from 'react-native-udp';
 const { MulticastModule } = NativeModules;
 
 console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
@@ -111,18 +112,7 @@ private initSocket() {
       try { this.socket.close(); } catch(e) {}
     }
 
-    this.socket = TcpSocket.createUdpSocket('udp4');
-
-    // 必须先加入组播
-    try {
-      if (this.localIp && this.localIp !== '0.0.0.0') {
-        this.socket.addMembership(this.SSDP_ADDR, this.localIp);
-      } else {
-        this.socket.addMembership(this.SSDP_ADDR);
-      }
-    } catch (e) {
-      logger.warn('[DLNA] addMembership error:', e);
-    }
+    this.socket = dgram.createSocket('udp4');
 
     this.socket.on('message', (msg, rinfo) => {
       console.log('[DLNA] UDP message:', msg.toString());
@@ -133,26 +123,28 @@ private initSocket() {
     });
 
     this.socket.on('error', (err) => {
-      logger.warn('[DLNA] Socket error:', err);
+      console.log('[DLNA] UDP error:', err);
     });
 
-    // 必须绑定 1900
-    this.socket.bind({ port: 1900, address: '0.0.0.0' }, () => {
+    this.socket.bind(1900, () => {
+      this.socket.setBroadcast(true);
+      this.socket.setMulticastTTL(64);
+
       try {
-        this.socket.setBroadcast(true);
-        this.socket.setMulticastTTL(64);
-      } catch (e) {}
+        this.socket.addMembership('239.255.255.250');
+      } catch (e) {
+        console.log('[DLNA] addMembership error:', e);
+      }
 
       this.SEARCH_INTERVALS.forEach(delay => {
-        const t = setTimeout(() => {
+        setTimeout(() => {
           if (this.scanning) this.broadcastMSEARCH();
         }, delay);
-        this.searchTimers.push(t);
       });
     });
 
-  } catch (error) {
-    logger.error('[DLNA] Init failed:', error);
+  } catch (e) {
+    console.log('[DLNA] Init failed:', e);
   }
 }
 
