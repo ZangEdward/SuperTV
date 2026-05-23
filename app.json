@@ -67,7 +67,6 @@
         }
       ],
 
-      // ⭐ 你的原生模块插件必须写在这里
       "./plugins/multicast-plugin"
     ],
 
