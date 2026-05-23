@@ -250,12 +250,14 @@ export default function HomeScreen() {
       justifyContent: "space-between",
       alignItems: "center",
       paddingHorizontal: spacing * 1.5,
+      marginTop: spacing,
       marginBottom: spacing,
+      minHeight: 80, // 显式给标题容器足够的高度
     },
     headerTitle: {
-      fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,
+      fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 34,
       fontWeight: "bold",
-      lineHeight: deviceType === "mobile" ? 32 : deviceType === "tablet" ? 38 : 44,
+      lineHeight: deviceType === "mobile" ? 34 : deviceType === "tablet" ? 40 : 50, // 大幅提高行高
     },
     rightHeaderButtons: {
       flexDirection: "row",

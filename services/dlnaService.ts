@@ -14,13 +14,13 @@ export interface DLNADevice {
 }
 
 /**
- * 工业级 DLNA/SSDP 发现服务
- * 修复：通过 NetInfo 获取真实 WiFi IP 并强制绑定，解决“其他 App 能搜到但本 App 搜不到”的问题。
+ * 终极适配版 DLNA 发现服务
+ * 修复：解决 Android 13+ 组播锁定和多网卡冲突
  */
 class DLNAService {
   private devices: Map<string, DLNADevice> = new Map();
   private searchTimeout: any = null;
-  private udpSocket: any = null;
+  private socket: any = null;
   private searchTimers: any[] = [];
   private scanning = false;
   private currentCallback: ((devices: DLNADevice[]) => void) | null = null;
@@ -29,8 +29,7 @@ class DLNAService {
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
-  private readonly SEARCH_INTERVALS = [0, 800, 2000, 5000, 10000];
-  private readonly SEARCH_TIMEOUT = 25000;
+  private readonly SEARCH_INTERVALS = [0, 500, 2000, 4500, 8000, 12000];
 
   constructor() {}
 
@@ -44,13 +43,10 @@ class DLNAService {
 
     if (this.scanning) this.stopSearch();
 
-    // 1. 关键：获取 WiFi 真实 IP
     try {
       const state = await NetInfo.fetch();
       if (state.type === 'wifi' && state.details && 'ipAddress' in state.details) {
         this.localIp = (state.details as any).ipAddress;
-      } else {
-        this.localIp = '0.0.0.0'; // 降级处理
       }
     } catch (e) {
       this.localIp = '0.0.0.0';
@@ -60,13 +56,15 @@ class DLNAService {
     this.currentCallback = callback;
     this.receivedKeys.clear();
 
-    logger.info(`[DLNA] Starting search on interface: ${this.localIp}`);
-    this.initSocketAndSearch();
+    logger.info(`[DLNA] Starting search. Interface: ${this.localIp}`);
+    this.initSocket();
 
     this.searchTimeout = setTimeout(() => {
-      this.stopSearch();
-      if (this.currentCallback) this.currentCallback(this.getDevices());
-    }, this.SEARCH_TIMEOUT);
+      if (this.scanning) {
+        this.stopSearch();
+        if (this.currentCallback) this.currentCallback(this.getDevices());
+      }
+    }, 25000);
   }
 
   public stopSearch() {
@@ -78,67 +76,62 @@ class DLNAService {
     }
     this.searchTimers.forEach(t => clearTimeout(t));
     this.searchTimers = [];
-    this.closeSocket();
-  }
-
-  private closeSocket() {
-    if (this.udpSocket) {
+    if (this.socket) {
       try {
-        this.udpSocket.removeAllListeners();
-        this.udpSocket.close();
+        this.socket.removeAllListeners();
+        this.socket.close();
       } catch (_) {}
-      this.udpSocket = null;
+      this.socket = null;
     }
   }
 
-  private initSocketAndSearch() {
+  private initSocket() {
     try {
-      this.closeSocket();
-      this.udpSocket = TcpSocket.createUdpSocket('udp4');
+      this.socket = TcpSocket.createUdpSocket('udp4');
 
-      this.udpSocket.on('message', (msg: Buffer, rinfo: { address: string; port: number }) => {
-        // 过滤自己发出的包
+      this.socket.on('message', (msg: Buffer, rinfo: { address: string; port: number }) => {
         if (rinfo.address === this.localIp) return;
-
         const data = msg.toString();
-        // 增加容错：部分电视响应不规范，只要有 LOCATION 就算有效 SSDP 响应
-        if (data.includes('LOCATION:') || data.includes('200 OK') || data.includes('NOTIFY')) {
+        // 标准/非标准报文过滤
+        if (data.includes('LOCATION:') || data.includes('HTTP/1.1 200 OK') || data.includes('NOTIFY')) {
           this.handleSSDPMessage(data, rinfo.address);
         }
       });
 
-      this.udpSocket.on('error', (err: any) => {
-        logger.warn('[DLNA] Socket Error:', err);
+      this.socket.on('error', (err: any) => {
+        logger.warn('[DLNA] Socket error:', err);
       });
 
-      // 2. 关键：强制绑定到 WiFi 接口的 IP
-      this.udpSocket.bind({ port: 0, address: this.localIp }, () => {
+      // 关键：绑定 0.0.0.0 以接收所有回包
+      this.socket.bind({ port: 0, address: '0.0.0.0' }, () => {
         try {
-          // 3. 关键：显式指定本地 IP 作为组播接口
-          this.udpSocket.addMembership(this.SSDP_ADDR, this.localIp);
-          this.udpSocket.setBroadcast(true);
-          this.udpSocket.setMulticastTTL(4);
+          this.socket.setBroadcast(true);
+          this.socket.setMulticastTTL(4);
+          this.socket.setMulticastLoopbackMode(true);
+          if (this.localIp && this.localIp !== '0.0.0.0') {
+            this.socket.addMembership(this.SSDP_ADDR, this.localIp);
+          } else {
+            this.socket.addMembership(this.SSDP_ADDR);
+          }
         } catch (e: any) {
-          logger.warn('[DLNA] Membership Error (Expected on some devices):', e?.message);
+          logger.warn('[DLNA] Multicast bind warning:', e?.message);
         }
-        this.fireMultiSearch();
+
+        // 立即触发密集搜索
+        this.SEARCH_INTERVALS.forEach(delay => {
+          const t = setTimeout(() => {
+            if (this.scanning) this.broadcastMSEARCH();
+          }, delay);
+          this.searchTimers.push(t);
+        });
       });
     } catch (error) {
       logger.error('[DLNA] Init error:', error);
     }
   }
 
-  private fireMultiSearch() {
-    this.SEARCH_INTERVALS.forEach(delay => {
-      const timer = setTimeout(() => {
-        if (this.scanning) this.broadcastMSEARCH();
-      }, delay);
-      this.searchTimers.push(timer);
-    });
-  }
-
   private broadcastMSEARCH() {
-    if (!this.udpSocket) return;
+    if (!this.socket) return;
 
     const targets = [
       'upnp:rootdevice',
@@ -147,30 +140,22 @@ class DLNAService {
     ];
 
     targets.forEach(st => {
+      // 对齐乐播等 App 的标准 SSDP 报文格式
       const msg =
         'M-SEARCH * HTTP/1.1\r\n' +
         'HOST: 239.255.255.250:1900\r\n' +
         'MAN: "ssdp:discover"\r\n' +
         'MX: 3\r\n' +
         'ST: ' + st + '\r\n' +
+        'USER-AGENT: Android/11.0 UPnP/1.1 SuperTV/5.5\r\n' +
+        'CPFN.UPNP.ORG: SuperTV\r\n' +
         '\r\n';
 
       try {
-        this.udpSocket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR);
+        this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR);
+        this.socket.send(msg, 0, msg.length, this.SSDP_PORT, '255.255.255.255');
       } catch (e) {}
     });
-
-    // 补充向全网广播发送
-    const bcMsg =
-      'M-SEARCH * HTTP/1.1\r\n' +
-      'HOST: 255.255.255.255:1900\r\n' +
-      'MAN: "ssdp:discover"\r\n' +
-      'MX: 3\r\n' +
-      'ST: upnp:rootdevice\r\n' +
-      '\r\n';
-    try {
-      this.udpSocket.send(bcMsg, 0, bcMsg.length, this.SSDP_PORT, '255.255.255.255');
-    } catch (e) {}
   }
 
   private handleSSDPMessage(data: string, ip: string) {
@@ -178,28 +163,11 @@ class DLNAService {
     if (!locationMatch || !locationMatch[1]) return;
     const descriptionUrl = locationMatch[1].trim();
 
-    if (data.includes('ssdp:byebye')) {
-      this.handleDeviceOffline(descriptionUrl);
-      return;
-    }
-
     const deviceKey = ip + '|' + descriptionUrl;
     if (!this.receivedKeys.has(deviceKey)) {
       this.receivedKeys.add(deviceKey);
       this.parseDeviceDescription(descriptionUrl, ip);
     }
-  }
-
-  private handleDeviceOffline(url: string) {
-    let changed = false;
-    for (const [id, dev] of this.devices) {
-      if (dev.descriptionUrl === url) {
-        this.devices.delete(id);
-        changed = true;
-        break;
-      }
-    }
-    if (changed && this.currentCallback) this.currentCallback(this.getDevices());
   }
 
   private async parseDeviceDescription(url: string, ip: string) {
@@ -234,7 +202,7 @@ class DLNAService {
 
       if (!this.devices.has(id)) {
         this.devices.set(id, { id, name: friendlyName, host: ip, port, controlUrl, descriptionUrl: url });
-        logger.info(`[DLNA] Found: ${friendlyName} @ ${ip}`);
+        logger.info(`[DLNA] Found Device: ${friendlyName} @ ${ip}`);
         if (this.currentCallback) this.currentCallback(this.getDevices());
       }
     } catch (e) {}
@@ -246,7 +214,6 @@ class DLNAService {
     const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
 
     try {
-      await this.stopCast(device).catch(() => {});
       const setUriBody = bodyWrap('SetAVTransportURI', `<CurrentURI>${esc(videoUrl)}</CurrentURI><CurrentURIMetaData><![CDATA[${metadata}]]></CurrentURIMetaData>`);
       await fetch(device.controlUrl, {
         method: 'POST',
