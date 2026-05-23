@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator, TouchableOpacity, PermissionsAndroid, Platform } from "react-native";
 import { StyledButton } from "./StyledButton";
 import usePlayerStore from "@/stores/playerStore";
-import "@/services/dlnaService";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { tcpHttpServer } from "@/services/tcpHttpServer";
 import { Tv, RefreshCw } from "lucide-react-native";
@@ -11,48 +10,31 @@ import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('CastModal');
 
-/**
- * 请求 DLNA 搜索所需的权限
- */
+/** 请求 DLNA 搜索所需的权限 */
 async function requestDlnaPermissions() {
   if (Platform.OS !== 'android') return true;
 
   try {
     const apiLevel = Platform.Version as number;
-
-    // 定义权限常量字符串（防止常量未定义导致崩溃）
     const PERM_NEARBY = 'android.permission.NEARBY_WIFI_DEVICES';
     const PERM_LOCATION = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
 
-    // Android 13+ (API 33+)：必须授权“附近的设备”
     if (apiLevel >= 33) {
       const granted = await PermissionsAndroid.requestMultiple([
         PERM_NEARBY as any,
         PERM_LOCATION,
       ]);
-
       return (
         granted[PERM_NEARBY] === PermissionsAndroid.RESULTS.GRANTED ||
         granted[PERM_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
       );
     }
 
-    // Android 10-12 (API 29-32)：依赖定位权限进行 WiFi 扫描
     if (apiLevel >= 29) {
-      const granted = await PermissionsAndroid.request(
-        PERM_LOCATION,
-        {
-          title: '需要定位权限',
-          message: '搜索附近的投屏设备需要定位权限以扫描局域网',
-          buttonNeutral: '稍后',
-          buttonNegative: '拒绝',
-          buttonPositive: '确定',
-        }
-      );
+      const granted = await PermissionsAndroid.request(PERM_LOCATION);
       return granted === PermissionsAndroid.RESULTS.GRANTED;
     }
 
-    // Android 9 及以下：Manifest 声明即可
     return true;
   } catch (err) {
     logger.warn('[Cast] Permission request error:', err);
@@ -60,10 +42,7 @@ async function requestDlnaPermissions() {
   }
 }
 
-/**
- * 将可能的本地 file:// 地址转为 HTTP 可访问地址
- * 缓存文件需要以 HTTP 方式提供给 DLNA 设备
- */
+/** file:// → http:// 转换 */
 function convertToHttpUrl(url: string): string {
   if (url.startsWith('file://')) {
     const httpUrl = tcpHttpServer.getLocalUrl(url);
@@ -76,20 +55,18 @@ function convertToHttpUrl(url: string): string {
 }
 
 export const CastModal: React.FC = () => {
-  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, status } = usePlayerStore();
-  const [devices, setDevices] = useState<DLNADevice[]>(() => dlnaService.getDevices());
+  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex } = usePlayerStore();
+  const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [castingDevice, setCastingDevice] = useState<DLNADevice | null>(null);
   const searchTimerRef = useRef<any>(null);
 
+  /** 开始搜索 */
   const startSearch = useCallback(async () => {
-    // 1. 清空旧设备（UI）
     setDevices([]);
-
-    // 2. 清空 dlnaService 内部缓存
     dlnaService.receivedKeys.clear();
-    dlnaService.clearDevices?.(); // 如果你实现了 clearDevices()
+    dlnaService.clearDevices?.();
 
-    // 3. 权限检查
     const hasPermission = await requestDlnaPermissions();
     if (!hasPermission) {
       Toast.show({
@@ -100,22 +77,20 @@ export const CastModal: React.FC = () => {
       return;
     }
 
-    // 4. 开始搜索
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     setIsSearching(true);
 
-    // 5. 持续更新设备列表（不要在这里停止搜索）
     dlnaService.searchDevices((foundDevices) => {
-      setDevices([...foundDevices]); // 每次更新 UI
+      setDevices([...foundDevices]);
     });
 
-    // 6. 15 秒后停止搜索
     searchTimerRef.current = setTimeout(() => {
       setIsSearching(false);
       dlnaService.stopSearch();
     }, 15000);
   }, []);
 
+  /** 弹窗打开时自动搜索 */
   useEffect(() => {
     if (showCastModal) {
       startSearch();
@@ -126,6 +101,7 @@ export const CastModal: React.FC = () => {
     };
   }, [showCastModal, startSearch]);
 
+  /** 执行投屏 */
   const onCast = async (device: DLNADevice) => {
     const currentEpisode = episodes[currentEpisodeIndex];
     if (!currentEpisode) {
@@ -133,14 +109,16 @@ export const CastModal: React.FC = () => {
       return;
     }
 
-    // 如果 URL 是本地缓存文件（file://），转为 HTTP 地址
     const castUrl = convertToHttpUrl(currentEpisode.url);
 
     try {
       Toast.show({ type: 'info', text1: '正在投屏...', text2: `连接到 ${device.name}` });
       await dlnaService.castVideo(device, castUrl, currentEpisode.title);
-      Toast.show({ type: 'success', text1: '投屏成功', text2: '请在电视上查看' });
-      setShowCastModal(false);
+
+      // ⭐ 投屏成功后不关闭弹窗，而是进入“已投屏状态”
+      setCastingDevice(device);
+
+      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放' });
     } catch (error: any) {
       logger.warn('[Cast] Failed:', error);
       Toast.show({
@@ -151,6 +129,7 @@ export const CastModal: React.FC = () => {
     }
   };
 
+  /** 关闭弹窗 */
   const onClose = () => {
     dlnaService.stopSearch();
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -158,9 +137,11 @@ export const CastModal: React.FC = () => {
   };
 
   return (
-    <Modal visible={showCastModal} transparent={true} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={showCastModal} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
+
+          {/* 标题 + 刷新按钮 */}
           <View style={styles.header}>
             <Text style={styles.modalTitle}>选择投屏设备</Text>
             <TouchableOpacity onPress={startSearch} disabled={isSearching}>
@@ -169,9 +150,33 @@ export const CastModal: React.FC = () => {
           </View>
 
           <Text style={styles.tipText}>
-            请确认电视和手机在同一WiFi网络下，且电视已开启DLNA/投屏功能
+            请确认电视和手机在同一 WiFi 网络下，且电视已开启 DLNA/投屏功能
           </Text>
 
+          {/* ⭐ 已投屏状态 */}
+          {castingDevice && (
+            <View style={{ marginBottom: 20 }}>
+              <Text style={{ color: '#0f0', marginBottom: 10 }}>
+                当前已连接：{castingDevice.name}
+              </Text>
+
+              <StyledButton
+                text="断开投屏"
+                onPress={async () => {
+                  try {
+                    await dlnaService.stopCast(castingDevice);
+                    Toast.show({ type: 'success', text1: '已断开投屏' });
+                    setCastingDevice(null);
+                  } catch (e) {
+                    Toast.show({ type: 'error', text1: '断开失败', text2: '请重试' });
+                  }
+                }}
+                style={{ backgroundColor: '#aa0000' }}
+              />
+            </View>
+          )}
+
+          {/* 搜索中 */}
           {isSearching && devices.length === 0 && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00bb5e" />
@@ -179,13 +184,15 @@ export const CastModal: React.FC = () => {
             </View>
           )}
 
-          {!isSearching && devices.length === 0 && (
+          {/* 搜索结束但无设备 */}
+          {!isSearching && devices.length === 0 && !castingDevice && (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>未找到可用设备</Text>
               <StyledButton text="重新搜索" onPress={startSearch} style={{ marginTop: 20 }} />
             </View>
           )}
 
+          {/* 设备列表 */}
           <FlatList
             data={devices}
             keyExtractor={(item) => item.id}
@@ -241,9 +248,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   loadingContainer: {
-    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    marginVertical: 20,
   },
   loadingText: {
     color: "#888",
