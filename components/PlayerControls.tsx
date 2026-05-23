@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform } from "react-native";
-import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2 } from "lucide-react-native";
+import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform, GestureResponderEvent } from "react-native";
+import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2, Cast } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -52,6 +52,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     outroStartTime,
     isFullscreen,
     setIsFullscreen,
+    seekToPosition,
   } = usePlayerStore();
 
   const { detail } = useDetailStore();
@@ -84,6 +85,21 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       console.warn('[PlayerControls] No next episode available');
     } else {
       console.warn('[PlayerControls] playEpisode is not a function');
+    }
+  };
+
+  const [barWidth, setBarWidth] = useState(0);
+
+  const handleProgressTouch = (e: GestureResponderEvent) => {
+    if (barWidth > 0) {
+      const touchX = e.nativeEvent.locationX;
+      const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
+      const isRelease = e.type === 'touchUp' || e.nativeEvent.touches.length === 0;
+      // If it's a move, we only update UI. If it's a grant or release, we finalize.
+      // Actually, e.type is not standard for all platforms in nativeEvent.
+      // Better to check if we are in onResponderRelease.
+      const isFinalize = e.nativeEvent.touches.length === 0;
+      safeCall(seekToPosition, ratio, isFinalize);
     }
   };
 
@@ -140,16 +156,21 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
           <Text style={styles.mobileTitle} numberOfLines={1}>
             {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ` - 第${currentEpisodeIndex + 1}集`}
           </Text>
-        </View>
-
-        <View style={styles.mobileMiddleRight}>
-          <TouchableOpacity onPress={toggleOrientation} style={styles.sideBtn}>
-            <RotateCw color="white" size={24} />
+          <TouchableOpacity onPress={() => safeCall(setShowCastModal, true)} style={styles.iconBtn}>
+            <Cast color="white" size={22} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.mobileBottomSection}>
-          <View style={styles.progressBarContainer}>
+          <View
+            style={styles.progressBarContainer}
+            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={handleProgressTouch}
+            onResponderMove={handleProgressTouch}
+            onResponderRelease={handleProgressTouch}
+          >
             <View style={styles.progressBarBackground} />
             <View
               style={[
@@ -189,6 +210,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             </View>
 
             <View style={styles.mobileBottomRight}>
+              <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
+                <RotateCw color="white" size={22} />
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.mobileTextBtn} onPress={() => safeCall(setShowSpeedModal, true)}>
                 <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
               </TouchableOpacity>
@@ -215,7 +240,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
         </TouchableOpacity>
 
         <View style={styles.mobileBottomSection}>
-          <View style={styles.progressBarContainer}>
+          <View
+            style={styles.progressBarContainer}
+            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={handleProgressTouch}
+            onResponderMove={handleProgressTouch}
+            onResponderRelease={handleProgressTouch}
+          >
             <View style={styles.progressBarBackground} />
             <View
               style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
@@ -229,6 +262,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             </ThemedText>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity onPress={toggleOrientation} style={[styles.iconBtn, { padding: 5 }]}>
+                <RotateCw color="white" size={20} />
+              </TouchableOpacity>
+
               <TouchableOpacity style={[styles.mobileTextBtn, { paddingHorizontal: 8, paddingVertical: 4 }]} onPress={() => safeCall(setShowSpeedModal, true)}>
                 <Text style={[styles.mobileTextBtnLabel, { fontSize: 11 }]}>{playbackRate}X</Text>
               </TouchableOpacity>
@@ -253,12 +290,19 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       </View>
 
       <View style={styles.bottomControlsContainer}>
-        <View style={styles.progressBarContainer}>
+        <View
+          style={styles.progressBarContainer}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+          onStartShouldSetResponder={() => deviceType !== 'tv'} // TV doesn't use touch to seek here usually
+          onMoveShouldSetResponder={() => deviceType !== 'tv'}
+          onResponderGrant={handleProgressTouch}
+          onResponderMove={handleProgressTouch}
+          onResponderRelease={handleProgressTouch}
+        >
           <View style={styles.progressBarBackground} />
           <View
             style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
           />
-          <Pressable style={styles.progressBarTouchable} />
         </View>
 
         <ThemedText style={{ color: "white", marginTop: 5 }}>
@@ -316,9 +360,9 @@ const styles = StyleSheet.create({
   controlTitle: { color: "white", fontSize: 16, fontWeight: "bold", flex: 1, textAlign: "center", marginHorizontal: 10 },
   bottomControlsContainer: { width: "100%", alignItems: "center" },
   bottomControls: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 15 },
-  progressBarContainer: { width: "100%", height: 8, position: "relative", marginTop: 10 },
-  progressBarBackground: { position: "absolute", left: 0, right: 0, height: 8, backgroundColor: "rgba(255, 255, 255, 0.3)", borderRadius: 4 },
-  progressBarFilled: { position: "absolute", left: 0, height: 8, backgroundColor: "#fff", borderRadius: 4 },
+  progressBarContainer: { width: "100%", height: 30, position: "relative", marginTop: 5, justifyContent: 'center' },
+  progressBarBackground: { position: "absolute", left: 0, right: 0, height: 6, backgroundColor: "rgba(255, 255, 255, 0.3)", borderRadius: 3 },
+  progressBarFilled: { position: "absolute", left: 0, height: 6, backgroundColor: "#fff", borderRadius: 3 },
   progressBarTouchable: { position: "absolute", left: 0, right: 0, height: 30, top: -10, zIndex: 10 },
   controlButton: { padding: 10, flexDirection: "row", alignItems: "center" },
   topRightContainer: { padding: 10, alignItems: "center", justifyContent: "center", minWidth: 44 },
@@ -326,9 +370,6 @@ const styles = StyleSheet.create({
   mobileTopBar: { flexDirection: 'row', alignItems: 'center', paddingTop: 10 },
   iconBtn: { padding: 10 },
   mobileTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 10, flex: 1 },
-  mobileMiddleRight: { position: 'absolute', right: 20, top: '50%', marginTop: -30, alignItems: 'center', zIndex: 100 },
-  sideBtn: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)', width: 50, height: 50, borderRadius: 25 },
-  sideBtnText: { color: 'white', fontSize: 9, marginTop: 2 },
   mobileBottomSection: { width: '100%', paddingBottom: 10 },
   mobileBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingHorizontal: 10 },
   mobileBottomLeft: { flexDirection: 'row', alignItems: 'center', gap: 15 },

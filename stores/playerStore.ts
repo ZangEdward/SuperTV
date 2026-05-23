@@ -46,6 +46,7 @@ interface PlayerState {
   playEpisode: (index: number) => void;
   togglePlayPause: () => void;
   seek: (duration: number) => void;
+  seekToPosition: (ratio: number, finalize?: boolean) => void;
   handlePlaybackStatusUpdate: (newStatus: AVPlaybackStatus) => void;
   setLoading: (loading: boolean) => void;
   setShowControls: (show: boolean) => void;
@@ -356,6 +357,31 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     }
     const timeoutId = setTimeout(() => set({ isSeeking: false }), 1000);
     set({ _seekTimeout: timeoutId });
+  },
+
+  seekToPosition: async (ratio, finalize = true) => {
+    const { status, videoRef } = get();
+    if (!status?.isLoaded || !status.durationMillis) return;
+
+    set({
+      isSeeking: true,
+      seekPosition: ratio,
+    });
+
+    if (finalize) {
+      const newPosition = Math.max(0, Math.min(ratio * status.durationMillis, status.durationMillis));
+      try {
+        await videoRef?.current?.setPositionAsync(newPosition);
+      } catch (error) {
+        logger.debug("Failed to seek to position:", error);
+      }
+
+      if (get()._seekTimeout) {
+        clearTimeout(get()._seekTimeout);
+      }
+      const timeoutId = setTimeout(() => set({ isSeeking: false }), 1500);
+      set({ _seekTimeout: timeoutId });
+    }
   },
 
   setIntroEndTime: () => {

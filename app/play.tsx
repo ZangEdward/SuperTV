@@ -12,8 +12,7 @@ import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
 import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
-import { ArrowLeft, ArrowUpDown, Download } from "lucide-react-native";
-import { ArtIconCast } from "@/components/ArtIcons";
+import { ArrowLeft, ArrowUpDown, Download, Cast } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
@@ -421,7 +420,7 @@ export default function PlayScreen() {
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal(true)}>
-              <ArtIconCast size={20} color="white" />
+              <Cast size={20} color="white" />
             </TouchableOpacity>
           </View>
         </View>
