@@ -4,7 +4,8 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect } from "react";
+import * as SystemUI from 'expo-system-ui';
+import { useEffect, useState } from "react";
 import { Platform, View, StyleSheet, useColorScheme } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -79,6 +80,19 @@ export default function RootLayout() {
   const { checkLoginStatus } = useAuthStore();
   const { checkForUpdate, lastCheckTime } = useUpdateStore();
   const responsiveConfig = useResponsiveLayout();
+  const [appIsReady, setAppIsReady] = useState(false);
+
+  useEffect(() => {
+    async function setupSystemUI() {
+      try {
+        // 设置原生系统的背景颜色为黑色，消除白屏闪烁
+        await SystemUI.setBackgroundColorAsync(DARK_BG);
+      } catch (e) {
+        // 忽略错误
+      }
+    }
+    setupSystemUI();
+  }, []);
 
   useEffect(() => {
     async function lockOrientation() {
@@ -99,6 +113,8 @@ export default function RootLayout() {
         await loadSettings();
       } catch (e) {
         logger.error('Failed to load settings', e);
+      } finally {
+        setAppIsReady(true);
       }
     };
     initializeApp();
@@ -112,14 +128,17 @@ export default function RootLayout() {
   }, [apiBaseUrl, checkLoginStatus]);
 
   useEffect(() => {
-    // Wait for BOTH fonts and API config to be ready (at least settings loaded)
-    if (loaded && apiBaseUrl) {
-      SplashScreen.hideAsync();
+    // 只有当字体加载完成且初始化设置（如 apiBaseUrl 加载）完成后才关闭开屏
+    if (loaded && appIsReady) {
+      // 稍微延迟 100ms 确保 React 已经完成了第一帧渲染
+      setTimeout(() => {
+        SplashScreen.hideAsync();
+      }, 100);
     } else if (error) {
       SplashScreen.hideAsync();
       logger.warn(`Error in loading fonts: ${error}`);
     }
-  }, [loaded, error, apiBaseUrl]);
+  }, [loaded, error, appIsReady]);
 
   // 检查更新
   useEffect(() => {
@@ -143,7 +162,7 @@ export default function RootLayout() {
   }, [remoteInputEnabled, startServer, stopServer, responsiveConfig.deviceType]);
 
   if (!loaded && !error) {
-    return null;
+    return <View style={{ flex: 1, backgroundColor: DARK_BG }} />;
   }
 
   return (

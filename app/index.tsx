@@ -243,14 +243,14 @@ export default function HomeScreen() {
   const dynamicStyles = StyleSheet.create({
     container: {
       flex: 1,
-      paddingTop: deviceType === "mobile" ? insets.top : deviceType === "tablet" ? insets.top + 20 : 60,
+      paddingTop: deviceType === "mobile" ? insets.top : deviceType === "tablet" ? insets.top + 20 : 0,
     },
     headerContainer: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
       paddingHorizontal: spacing * 1.5,
-      marginTop: spacing,
+      marginTop: deviceType === "tv" ? 40 : spacing,
       marginBottom: spacing,
       minHeight: 80, // 显式给标题容器足够的高度
     },
@@ -345,20 +345,20 @@ export default function HomeScreen() {
           </ThemedText>
         </View>
       ) : (apiConfigStatus.isValidating && contentData.length === 0) ? (
-        <View style={[commonStyles.center, { backgroundColor: Colors.dark.background }]}>
+        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center", color: '#888' }}>
             正在连接服务器...
           </ThemedText>
         </View>
       ) : apiConfigStatus.error && !apiConfigStatus.isValid && contentData.length === 0 ? (
-        <View style={commonStyles.center}>
+        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
           <ThemedText type="subtitle" style={{ padding: spacing, textAlign: "center" }}>
             {apiConfigStatus.error}
           </ThemedText>
         </View>
       ) : (loading && contentData.length === 0) ? (
-        <View style={[commonStyles.center, { backgroundColor: Colors.dark.background }]}>
+        <View style={[commonStyles.center, { backgroundColor: '#000' }]}>
           <ActivityIndicator size="large" color={Colors.dark.primary} />
         </View>
       ) : error && contentData.length === 0 ? (
