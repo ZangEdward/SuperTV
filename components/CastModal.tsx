@@ -116,26 +116,6 @@ export const CastModal: React.FC = () => {
     }, 15000);
   }, []);
 
-    // 显示之前缓存过的设备（如果有）
-    const cachedDevices = dlnaService.getDevices();
-    if (cachedDevices.length > 0) {
-      setDevices(cachedDevices);
-    }
-
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    setIsSearching(true);
-
-    dlnaService.searchDevices((foundDevices) => {
-      setDevices(foundDevices);
-      setIsSearching(false);
-    });
-
-    // 15 秒超时保护
-    searchTimerRef.current = setTimeout(() => {
-      setIsSearching(false);
-    }, 15000);
-  }, []);
-
   useEffect(() => {
     if (showCastModal) {
       startSearch();
