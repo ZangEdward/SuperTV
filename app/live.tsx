@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, FlatList, StyleSheet, ActivityIndicator, Modal, useTVEventHandler, HWEvent, Text } from "react-native";
 import LivePlayer from "@/components/LivePlayer";
+import { useIsFocused } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fetchAndParseM3u, getPlayableUrl, Channel } from "@/services/m3u";
 import { useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
@@ -15,6 +17,8 @@ import { DeviceUtils } from "@/utils/DeviceUtils";
 export default function LiveScreen() {
   const { m3uUrl } = useSettingsStore();
   const router = useRouter();
+  const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
 
   // 响应式布局配置
   const responsiveConfig = useResponsiveLayout();
@@ -93,20 +97,20 @@ export default function LiveScreen() {
 
   const handleTVEvent = useCallback(
     (event: HWEvent) => {
-      if (deviceType !== 'tv') return;
+      if (!isFocused || deviceType !== 'tv') return;
       if (isChannelListVisible) return;
       if (event.eventType === "down") setIsChannelListVisible(true);
       else if (event.eventType === "left") changeChannel("prev");
       else if (event.eventType === "right") changeChannel("next");
     },
-    [changeChannel, isChannelListVisible, deviceType]
+    [changeChannel, isChannelListVisible, deviceType, isFocused]
   );
 
   const safeUseTVEventHandler = typeof useTVEventHandler === 'function' ? useTVEventHandler : () => {};
   safeUseTVEventHandler(deviceType === 'tv' ? handleTVEvent : () => {});
 
   // 动态样式
-  const dynamicStyles = createResponsiveStyles(deviceType, spacing);
+  const dynamicStyles = createResponsiveStyles(deviceType, spacing, insets);
 
   const renderLiveContent = () => (
     <>
@@ -207,9 +211,10 @@ export default function LiveScreen() {
   );
 }
 
-const createResponsiveStyles = (deviceType: string, spacing: number) => {
+const createResponsiveStyles = (deviceType: string, spacing: number, insets: any) => {
   const isMobile = deviceType === 'mobile';
   const isTablet = deviceType === 'tablet';
+  const isTV = deviceType === 'tv';
   const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
 
   return StyleSheet.create({
@@ -221,8 +226,9 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       justifyContent: "flex-start",
       alignItems: "center",
       paddingHorizontal: spacing * 1.5,
-      marginTop: 40,
+      marginTop: isTV ? 20 : insets.top + 10,
       marginBottom: spacing,
+      zIndex: 100,
     },
     headerTitle: {
       fontSize: deviceType === "mobile" ? 24 : deviceType === "tablet" ? 28 : 32,

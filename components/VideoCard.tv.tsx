@@ -237,13 +237,13 @@ const styles = StyleSheet.create({
   },
   pressable: {
     width: CARD_WIDTH + 20,
-    height: CARD_HEIGHT + 60,
+    height: CARD_HEIGHT + 70,
     justifyContent: 'center',
     alignItems: "center",
     overflow: "visible",
   },
   card: {
-    marginTop: 10,
+    marginTop: 20, // 增加顶部边距，防止焦点边框被遮挡
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     borderRadius: 8,
@@ -258,10 +258,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.3)",
     borderColor: Colors.dark.primary,
-    borderWidth: 2,
+    borderWidth: 3, // 稍微加粗一点
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
+    zIndex: 10, // 确保在最上层
   },
   buttonRow: {
     position: "absolute",

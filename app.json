@@ -2,12 +2,12 @@
   "expo": {
     "name": "SuperTV",
     "slug": "supertv",
-    "version": "5.5.30.523",
+    "version": "5.6.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/icon-boot.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
