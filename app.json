@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/images/icon-boot.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#151718"
     },
     "ios": {
       "supportsTablet": true,
@@ -17,21 +17,21 @@
       "splash": {
         "image": "./assets/images/icon-boot.png",
         "resizeMode": "contain",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#151718"
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#151718"
       },
       "splash": {
         "image": "./assets/images/icon-boot.png",
         "resizeMode": "contain",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#1517180"
       },
       "package": "com.supertv.app",
-      "backgroundColor": "#000000",
+      "backgroundColor": "#151718",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
