@@ -5,8 +5,6 @@ import Logger from '@/utils/Logger';
 import dgram from 'react-native-udp';
 const { MulticastModule } = NativeModules;
 
-console.log("[DLNA] Debug: MulticastModule =", MulticastModule);
-
 const logger = Logger.withTag('DLNAService');
 
 export interface DLNADevice {
@@ -18,19 +16,12 @@ export interface DLNADevice {
   descriptionUrl: string;
 }
 
-/**
- * 高兼容性 DLNA 搜索服务 (V3 稳定版)
- */
 class DLNAService {
   private devices: Map<string, DLNADevice> = new Map();
-  private searchTimeout: any = null;
-  private socket: any = null;
-  private searchTimers: any[] = [];
-  private scanning = false;
-  private currentCallback: ((devices: DLNADevice[]) => void) | null = null;
   private receivedKeys: Set<string> = new Set();
-  private localIp: string = '0.0.0.0';
-  private broadcastAddr: string = '255.255.255.255';
+  private scanning = false;
+  private socket: any = null;
+  private currentCallback: ((devices: DLNADevice[]) => void) | null = null;
 
   private readonly SSDP_ADDR = '239.255.255.250';
   private readonly SSDP_PORT = 1900;
@@ -38,63 +29,42 @@ class DLNAService {
 
   constructor() {}
 
+  // -------------------------
+  // 设备管理
+  // -------------------------
   public getDevices(): DLNADevice[] {
     return Array.from(this.devices.values());
   }
 
+  public clearDevices() {
+    this.devices.clear();
+  }
+
+  // -------------------------
+  // 搜索入口
+  // -------------------------
   public async searchDevices(callback: (devices: DLNADevice[]) => void) {
-    const existing = this.getDevices();
-    if (existing.length > 0) callback(existing);
-
-    if (this.scanning) this.stopSearch();
-
-    // 计算网段广播地址 (如 192.168.1.255)
-    try {
-      const state = await NetInfo.fetch();
-      if (state.type === 'wifi' && state.details && 'ipAddress' in state.details) {
-        this.localIp = (state.details as any).ipAddress;
-        const parts = this.localIp.split('.');
-        if (parts.length === 4) {
-          this.broadcastAddr = `${parts[0]}.${parts[1]}.${parts[2]}.255`;
-        }
-      }
-    } catch (e) {}
-
     this.scanning = true;
     this.currentCallback = callback;
     this.receivedKeys.clear();
+    this.clearDevices();
 
-    // 开启组播锁
-    if (Platform.OS === 'android' && MulticastModule) {
-      try {
-        MulticastModule.acquire();
-      } catch (e) {
-        logger.warn('[DLNA] Lock acquire failed', e);
-      }
-    }
+    await this.initSocket();
 
-    logger.info(`[DLNA] Search Start. Local: ${this.localIp}, Broadcast: ${this.broadcastAddr}`);
-
-    // 延迟 200ms 确保锁生效
-    setTimeout(() => this.initSocket(), 200);
-
-    this.searchTimeout = setTimeout(() => {
-      if (this.scanning) {
-        this.stopSearch();
-        if (this.currentCallback) this.currentCallback(this.getDevices());
-      }
-    }, 30000);
+    // 多次发送 M-SEARCH
+    this.SEARCH_INTERVALS.forEach(delay => {
+      setTimeout(() => {
+        if (this.scanning) this.broadcastMSEARCH();
+      }, delay);
+    });
   }
 
   public stopSearch() {
     this.scanning = false;
     this.currentCallback = null;
-    if (this.searchTimeout) { clearTimeout(this.searchTimeout); this.searchTimeout = null; }
-    this.searchTimers.forEach(t => clearTimeout(t));
-    this.searchTimers = [];
 
     if (Platform.OS === 'android' && MulticastModule) {
-      try { MulticastModule.release(); } catch (e) {}
+      try { MulticastModule.release(); } catch (_) {}
     }
 
     if (this.socket) {
@@ -106,50 +76,51 @@ class DLNAService {
     }
   }
 
-private initSocket() {
-  try {
-    if (this.socket) {
-      try { this.socket.close(); } catch(e) {}
-    }
-
-    this.socket = dgram.createSocket('udp4');
-
-    this.socket.on('message', (msg, rinfo) => {
-      console.log('[DLNA] UDP message:', msg.toString());
-      const data = msg.toString();
-      if (/HTTP\/1\.1 200 OK|NOTIFY|LOCATION:/i.test(data)) {
-        this.handleSSDPMessage(data, rinfo.address);
-      }
-    });
-
-    this.socket.on('error', (err) => {
-      console.log('[DLNA] UDP error:', err);
-    });
-
-    this.socket.bind(1900, () => {
-      this.socket.setBroadcast(true);
-      this.socket.setMulticastTTL(64);
-
-      try {
-        this.socket.addMembership('239.255.255.250');
-      } catch (e) {
-        console.log('[DLNA] addMembership error:', e);
+  // -------------------------
+  // 初始化 socket
+  // -------------------------
+  private async initSocket() {
+    try {
+      if (this.socket) {
+        try { this.socket.close(); } catch (_) {}
       }
 
-      this.SEARCH_INTERVALS.forEach(delay => {
-        setTimeout(() => {
-          if (this.scanning) this.broadcastMSEARCH();
-        }, delay);
+      const state = await NetInfo.fetch();
+      const localIp = state.details?.ipAddress || "0.0.0.0";
+
+      if (Platform.OS === 'android' && MulticastModule) {
+        try { MulticastModule.acquire(); } catch (_) {}
+      }
+
+      this.socket = dgram.createSocket('udp4');
+
+      this.socket.on('message', (msg, rinfo) => {
+        this.handleSSDPMessage(msg.toString(), rinfo.address);
       });
-    });
 
-  } catch (e) {
-    console.log('[DLNA] Init failed:', e);
+      this.socket.on('error', (err) => {
+        console.log('[DLNA] UDP error:', err);
+      });
+
+      this.socket.bind(1900, localIp, () => {
+        this.socket.setBroadcast(true);
+        this.socket.setMulticastTTL(64);
+
+        try {
+          this.socket.addMembership(this.SSDP_ADDR, localIp);
+        } catch (e) {
+          console.log('[DLNA] addMembership error:', e);
+        }
+      });
+
+    } catch (e) {
+      console.log('[DLNA] Init failed:', e);
+    }
   }
-}
 
-
-
+  // -------------------------
+  // 发送 M-SEARCH
+  // -------------------------
   private broadcastMSEARCH() {
     if (!this.socket) return;
 
@@ -167,53 +138,46 @@ private initSocket() {
         'MX: 3\r\n' +
         'ST: ' + st + '\r\n' +
         'USER-AGENT: Android/11.0 UPnP/1.1 SuperTV/5.5\r\n' +
-        'CPFN.UPNP.ORG: SuperTV\r\n' +
         '\r\n';
 
       try {
-        // 组播
         this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR);
-        // 全域广播
-        this.socket.send(msg, 0, msg.length, this.SSDP_PORT, '255.255.255.255');
-        // 网段广播 (解决部分路由屏蔽 255.255.255.255 的问题)
-        if (this.broadcastAddr !== '255.255.255.255') {
-            this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.broadcastAddr);
-        }
-      } catch (e) {}
+      } catch (_) {}
     });
   }
 
+  // -------------------------
+  // 处理 SSDP 消息
+  // -------------------------
   private handleSSDPMessage(data: string, ip: string) {
-    // 正则提取 LOCATION，不区分大小写
     const locationMatch = data.match(/LOCATION:\s*(.+?)[\r\n]/i);
-    if (!locationMatch || !locationMatch[1]) return;
-    const descriptionUrl = locationMatch[1].trim();
+    if (!locationMatch) return;
 
-    const deviceKey = ip + '|' + descriptionUrl;
-    if (!this.receivedKeys.has(deviceKey)) {
-      this.receivedKeys.add(deviceKey);
+    const descriptionUrl = locationMatch[1].trim();
+    const key = descriptionUrl;
+
+    if (!this.receivedKeys.has(key)) {
+      this.receivedKeys.add(key);
       this.parseDeviceDescription(descriptionUrl, ip);
     }
   }
 
+  // -------------------------
+  // 解析设备描述
+  // -------------------------
   private async parseDeviceDescription(url: string, ip: string) {
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(tid);
+      const res = await fetch(url);
       if (!res.ok) return;
+
       const xml = await res.text();
 
       const nameMatch = xml.match(/<friendlyName>(.*?)<\/friendlyName>/i);
       const friendlyName = nameMatch ? nameMatch[1].trim() : `DLNA Device (${ip})`;
 
       const avMatch = xml.match(/<serviceType>urn:schemas-upnp-org:service:AVTransport:[12]<\/serviceType>[\s\S]*?<controlURL>(.*?)<\/controlURL>/i);
-      let controlUrl = avMatch ? avMatch[2].trim() : '';
-      if (!controlUrl) {
-        const anyCtrlUrl = xml.match(/<controlURL>(.*?)<\/controlURL>/i);
-        if (anyCtrlUrl) controlUrl = anyCtrlUrl[1].trim();
-      }
+      let controlUrl = avMatch ? avMatch[1].trim() : '';
+
       if (!controlUrl) return;
 
       if (!controlUrl.startsWith('http')) {
@@ -228,12 +192,14 @@ private initSocket() {
 
       if (!this.devices.has(id)) {
         this.devices.set(id, { id, name: friendlyName, host: ip, port, controlUrl, descriptionUrl: url });
-        logger.info(`[DLNA] Discovered: ${friendlyName} @ ${ip}`);
         if (this.currentCallback) this.currentCallback(this.getDevices());
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
+  // -------------------------
+  // 投屏
+  // -------------------------
   public async castVideo(device: DLNADevice, videoUrl: string, title: string) {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
     const metadata = `<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="0" parentID="-1" restricted="1"><dc:title>${esc(title)}</dc:title><upnp:class>object.item.videoItem</upnp:class><res protocolInfo="http-get:*:video/mp4:*">${esc(videoUrl)}</res></item></DIDL-Lite>`;
@@ -246,26 +212,19 @@ private initSocket() {
         headers: { 'Content-Type': 'text/xml; charset="utf-8"', 'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI"' },
         body: setUriBody,
       });
+
       const playBody = bodyWrap('Play', `<Speed>1</Speed>`);
       await fetch(device.controlUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/xml; charset="utf-8"', 'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Play"' },
         body: playBody,
       });
+
       return true;
     } catch (error) {
       logger.error('[DLNA] Cast error:', error);
       throw error;
     }
-  }
-
-  public async stopCast(device: DLNADevice) {
-    const body = `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Stop></s:Body></s:Envelope>`;
-    return fetch(device.controlUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/xml; charset="utf-8"', 'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Stop"' },
-      body: body,
-    });
   }
 }
 

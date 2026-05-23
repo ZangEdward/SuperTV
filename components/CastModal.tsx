@@ -82,6 +82,14 @@ export const CastModal: React.FC = () => {
   const searchTimerRef = useRef<any>(null);
 
   const startSearch = useCallback(async () => {
+    // 1. 清空旧设备（UI）
+    setDevices([]);
+
+    // 2. 清空 dlnaService 内部缓存
+    dlnaService.receivedKeys.clear();
+    dlnaService.clearDevices?.(); // 如果你实现了 clearDevices()
+
+    // 3. 权限检查
     const hasPermission = await requestDlnaPermissions();
     if (!hasPermission) {
       Toast.show({
@@ -91,6 +99,22 @@ export const CastModal: React.FC = () => {
       });
       return;
     }
+
+    // 4. 开始搜索
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    setIsSearching(true);
+
+    // 5. 持续更新设备列表（不要在这里停止搜索）
+    dlnaService.searchDevices((foundDevices) => {
+      setDevices([...foundDevices]); // 每次更新 UI
+    });
+
+    // 6. 15 秒后停止搜索
+    searchTimerRef.current = setTimeout(() => {
+      setIsSearching(false);
+      dlnaService.stopSearch();
+    }, 15000);
+  }, []);
 
     // 显示之前缓存过的设备（如果有）
     const cachedDevices = dlnaService.getDevices();
