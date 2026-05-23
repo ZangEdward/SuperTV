@@ -1,8 +1,10 @@
 import TcpSocket from 'react-native-tcp-socket';
 import NetInfo from "@react-native-community/netinfo";
+import { NativeModules, Platform } from 'react-native';
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('DLNAService');
+const { MulticastModule } = NativeModules;
 
 export interface DLNADevice {
   id: string;
@@ -56,6 +58,16 @@ class DLNAService {
     this.currentCallback = callback;
     this.receivedKeys.clear();
 
+    // 开启组播锁，确保 Android 能够接收 UDP 响应包
+    if (Platform.OS === 'android' && MulticastModule) {
+      try {
+        MulticastModule.acquire();
+        logger.info('[DLNA] Multicast lock acquired');
+      } catch (e) {
+        logger.warn('[DLNA] Failed to acquire multicast lock:', e);
+      }
+    }
+
     logger.info(`[DLNA] Starting search. Interface: ${this.localIp}`);
     this.initSocket();
 
@@ -76,6 +88,15 @@ class DLNAService {
     }
     this.searchTimers.forEach(t => clearTimeout(t));
     this.searchTimers = [];
+
+    // 释放组播锁
+    if (Platform.OS === 'android' && MulticastModule) {
+      try {
+        MulticastModule.release();
+        logger.info('[DLNA] Multicast lock released');
+      } catch (e) {}
+    }
+
     if (this.socket) {
       try {
         this.socket.removeAllListeners();
