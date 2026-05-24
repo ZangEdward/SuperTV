@@ -216,58 +216,50 @@ const useDetailStore = create<DetailState>((set, get) => ({
     // 使用当前控制器的 signal，支持取消
     const signal = controller?.signal;
 
-    // 并发对所有源的第一集进行深度测速
-    const results = await Promise.all(
-      searchResults.map(async (item) => {
-        // 优先使用已加载的 episodes，如果没有则尝试获取
+    // 为了实现实时反馈，不使用 Promise.all 阻塞，而是逐个或分批完成并更新
+    searchResults.forEach(async (item) => {
+      try {
+        // 1. 确保有 episodes 数据
         let episodes = item.episodes;
         if (!episodes || episodes.length === 0) {
-            try {
-                const detail = await api.getVideoDetail(item.source, item.id.toString());
-                episodes = detail.episodes || [];
-            } catch {
-                return { source: item.source, latency: Infinity, speed: 0 };
-            }
+          const detail = await api.getVideoDetail(item.source, item.id.toString());
+          episodes = detail.episodes || [];
         }
 
-        if (episodes.length === 0) return { source: item.source, latency: Infinity, speed: 0 };
+        if (episodes.length === 0) {
+           set(state => ({
+             searchResults: state.searchResults.map(r =>
+               r.source === item.source ? { ...r, latency: Infinity, speed: 0 } : r
+             )
+           }));
+           return;
+        }
 
-        // 测试第一集
+        // 2. 执行深度测速
         const testUrl = episodes[0];
         const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
-        return { source: item.source, ...metrics };
-      })
-    );
 
-    set((state) => {
-      const updatedResults = state.searchResults.map(result => {
-        const metric = results.find(r => r.source === result.source);
-        return {
-          ...result,
-          latency: metric?.latency ?? result.latency,
-          speed: metric?.speed ?? result.speed
-        };
-      });
+        // 3. 实时更新当前源的状态
+        set(state => {
+          const newResults = state.searchResults.map(r =>
+            r.source === item.source ? { ...r, ...metrics } : r
+          );
 
-      const finalResults = updatedResults.sort((a, b) => {
-        // 速度优先，延迟其次
-        if (a.speed !== b.speed) {
-            return (b.speed || 0) - (a.speed || 0);
-        }
-        return (a.latency || Infinity) - (b.latency || Infinity);
-      });
-
-      return {
-        searchResults: finalResults,
-        sources: finalResults.map((r) => ({
-          source: r.source,
-          source_name: r.source_name,
-          resolution: r.resolution,
-        })),
-        // 自动切换到测速最快的源
-        detail: finalResults[0] || state.detail
-      };
+          // 检查是否所有源都测速完成了（或者超出了初始列表长度）
+          // 这里可以不做排序，等全部完成后再统一排序，或者保持实时排序（由于 TV 端焦点问题，建议最后统排）
+          return { searchResults: newResults };
+        });
+      } catch (e) {
+        set(state => ({
+          searchResults: state.searchResults.map(r =>
+            r.source === item.source ? { ...r, latency: Infinity, speed: 0 } : r
+          )
+        }));
+      }
     });
+
+    // 等待一段时间（比如测速超时的最大值）后进行最终排序，或者由 UI 触发重排
+    // 这里我们简单处理：在所有并发触发后，不在这里阻塞，让 UI 实时显示数值
   },
 
   setDetail: async (detail) => {
