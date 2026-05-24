@@ -106,8 +106,11 @@ export const useVideoHandlers = ({
   const videoProps = useMemo(() => {
     let videoUrl = currentEpisode?.url || "";
 
+    // 安全检查：确保 videoUrl 是字符串再进行操作
+    const isStringUrl = typeof videoUrl === 'string';
+
     // 如果是 M3U8 且不是本地文件，通过本地服务器代理进行广告过滤
-    if (videoUrl && videoUrl.toLowerCase().includes('.m3u8') && !videoUrl.startsWith('file://')) {
+    if (isStringUrl && videoUrl.toLowerCase().includes('.m3u8') && !videoUrl.startsWith('file://')) {
       const proxyUrl = tcpHttpServer.getProxyUrl(videoUrl);
       if (proxyUrl) {
         console.log(`[AD_FILTER] Using proxy for ad filtering: ${proxyUrl}`);
@@ -116,7 +119,7 @@ export const useVideoHandlers = ({
     }
 
     return {
-      source: (!isCasting && videoUrl && videoUrl.trim() !== "") ? { uri: videoUrl } : undefined,
+      source: (!isCasting && isStringUrl && videoUrl.trim() !== "") ? { uri: videoUrl } : undefined,
       posterSource: detail?.poster ? { uri: detail.poster } : undefined,
       resizeMode: ResizeMode.CONTAIN,
       rate: playbackRate,

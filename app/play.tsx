@@ -58,7 +58,8 @@ export default function PlayScreen() {
   const isDetailMatching = useMemo(() => {
     if (!detail) return false;
     if (isLocalFile) return true;
-    return detail.id.toString() === params.id && detail.source === params.source;
+    // 使用 String() 安全转换，防止 id 为空时 .toString() 崩溃
+    return String(detail.id || '') === params.id && detail.source === params.source;
   }, [detail, params.id, params.source, isLocalFile]);
 
   const source = params.source || detail?.source;
@@ -101,6 +102,11 @@ export default function PlayScreen() {
   }, [deviceType, setShowControls, showControls, tvRemoteHandler]);
 
   const gesture = useMemo(() => {
+    // 基础安全检查：确保 Gesture 对象及其方法存在
+    if (typeof Gesture?.Tap !== 'function' || typeof Gesture?.Pan !== 'function') {
+      return Gesture.Tap().runOnJS(true); // 退回到最简单的点击
+    }
+
     if (showControls) return Gesture.Tap().runOnJS(true);
 
     const singleTap = Gesture.Tap()
@@ -119,7 +125,8 @@ export default function PlayScreen() {
     const panGesture = Gesture.Pan()
       .runOnJS(true)
       .onStart(() => {
-        const state = usePlayerStore.getState();
+        const state = usePlayerStore.getState?.();
+        if (!state) return;
         panStartPos.current = state.status?.isLoaded ? (state.status as any).positionMillis : 0;
       })
       .onUpdate((event) => {
@@ -127,23 +134,29 @@ export default function PlayScreen() {
         if (now - lastUpdateTime.current < 32) return;
         lastUpdateTime.current = now;
 
-        const state = usePlayerStore.getState();
-        if (!state.status?.isLoaded || !(state.status as any).durationMillis) return;
+        const state = usePlayerStore.getState?.();
+        if (!state || !state.status?.isLoaded || !(state.status as any).durationMillis) return;
 
         const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, (state.status as any).durationMillis));
         const ratio = targetPos / (state.status as any).durationMillis;
         seekToPosition?.(ratio, false);
       })
       .onEnd((event) => {
-        const state = usePlayerStore.getState();
-        if (!state.status?.isLoaded || !(state.status as any).durationMillis) return;
+        const state = usePlayerStore.getState?.();
+        if (!state || !state.status?.isLoaded || !(state.status as any).durationMillis) return;
 
         const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, (state.status as any).durationMillis));
         const ratio = targetPos / (state.status as any).durationMillis;
         seekToPosition?.(ratio, true);
       });
 
-    return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap)).runOnJS(true);
+    // 确保 Exclusive 和 Race 方法可用
+    try {
+      const exclusiveTap = Gesture.Exclusive(doubleTap, singleTap);
+      return Gesture.Race(panGesture, exclusiveTap).runOnJS(true);
+    } catch (e) {
+      return Gesture.Exclusive(doubleTap, singleTap).runOnJS(true);
+    }
   }, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
 
   useEffect(() => {
