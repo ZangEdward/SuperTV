@@ -138,11 +138,11 @@ export const useTVRemoteHandler = () => {
   const onScreenPress = () => {
     // 切换控件的显示状态
     const newShowControls = !showControls;
-    setShowControls(newShowControls);
+    setShowControls?.(newShowControls);
 
     // 如果控件变为显示状态，则重置定时器
     if (newShowControls) {
-      resetTimer();
+      resetTimer?.();
     }
   };
 

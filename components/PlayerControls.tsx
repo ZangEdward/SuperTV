@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform, GestureResponderEvent } from "react-native";
 import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2, Cast } from "lucide-react-native";
 import { useRouter } from "expo-router";
@@ -13,7 +13,6 @@ import usePlayerStore from "@/stores/playerStore";
 import useDetailStore from "@/stores/detailStore";
 import { useSources } from "@/stores/sourceStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import Colors from "@/constants/Colors";
 
 interface PlayerControlsProps {
   showControls: boolean;
@@ -25,14 +24,13 @@ const safeCall = (fn: any, ...args: any[]) => {
   if (typeof fn === 'function') {
     return fn(...args);
   }
-  console.warn('[PlayerControls] Attempted to call undefined function:', fn?.name || 'anonymous');
+  console.warn('[PlayerControls] Attempted to call undefined function');
 };
 
 export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, setShowControls }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { deviceType, isPortrait } = useResponsiveLayout();
-  const isMobileLandscape = deviceType === 'mobile' && !isPortrait;
 
   const {
     currentEpisodeIndex,
@@ -83,10 +81,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const onPlayNextEpisode = () => {
     if (hasNextEpisode && typeof playEpisode === 'function') {
       safeCall(playEpisode, currentEpisodeIndex + 1);
-    } else if (!hasNextEpisode) {
-      console.warn('[PlayerControls] No next episode available');
-    } else {
-      console.warn('[PlayerControls] playEpisode is not a function');
     }
   };
 
@@ -96,7 +90,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const onProgressGesture = useCallback((x: number, isFinalize: boolean) => {
     if (barWidth > 0) {
       const now = Date.now();
-      // 限流：如果不是最终交卷，且距离上次更新不足 32ms，则跳过 UI 刷新
       if (!isFinalize && now - lastUpdateTime.current < 32) return;
       lastUpdateTime.current = now;
 
@@ -121,23 +114,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       .runOnJS(true);
   }, [onProgressGesture]);
 
-  const handleProgressTouch = (e: GestureResponderEvent) => {
-    // GestureDetector is used instead
-  };
-
   const toggleOrientation = async () => {
     try {
       if (typeof ScreenOrientation?.lockAsync === 'function') {
         if (isPortrait) {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-          setIsFullscreen(true);
+          setIsFullscreen?.(true);
         } else {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-          // If we were already in fullscreen, we might want to stay in fullscreen but portrait
-          // The user said "切换播放器横竖屏", so we stay in "fullscreen mode" but change orientation
         }
-      } else {
-        console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
       }
     } catch (e) {
       console.warn("Failed to toggle orientation:", e);
@@ -148,7 +133,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     try {
       if (typeof ScreenOrientation?.lockAsync === 'function') {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-        setIsFullscreen(true);
+        setIsFullscreen?.(true);
       }
     } catch (e) {
       console.warn("Failed to enter fullscreen:", e);
@@ -159,9 +144,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     try {
       if (typeof ScreenOrientation?.lockAsync === 'function') {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-        setIsFullscreen(false);
-      } else {
-        console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
+        setIsFullscreen?.(false);
       }
     } catch (e) {
       console.warn("Failed to exit fullscreen:", e);
@@ -202,7 +185,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
           <View style={[styles.mobileBottomRow, isPortrait && { flexWrap: 'wrap', gap: 10 }]}>
             <View style={[styles.mobileBottomLeft, isPortrait && { gap: 8, flex: 1 }]}>
               <MediaButton onPress={() => safeCall(togglePlayPause)} style={styles.mobileMediaBtn}>
-                {status?.isLoaded && status.isPlaying ? (
+                {status?.isLoaded && (status as any).isPlaying ? (
                   <Pause color="white" size={24} />
                 ) : (
                   <Play color="white" size={24} />
@@ -227,7 +210,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
               <ThemedText style={[styles.timeText, isPortrait && { fontSize: 10 }]}>
                 {status?.isLoaded
-                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
+                  ? `${formatTime((status as any).positionMillis)} / ${formatTime((status as any).durationMillis || 0)}`
                   : "00:00 / 00:00"}
               </ThemedText>
             </View>
@@ -266,7 +249,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     return (
       <View style={styles.controlsOverlay}>
         <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={[styles.centerPlayBtn, { padding: 10, borderRadius: 30 }]}>
-          {status?.isLoaded && status.isPlaying ? (
+          {status?.isLoaded && (status as any).isPlaying ? (
             <Pause color="white" size={32} />
           ) : (
             <Play color="white" size={32} />
@@ -296,7 +279,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   }
 
   return (
-    <Pressable style={styles.controlsOverlay} onPress={() => setShowControls(false)}>
+    <Pressable style={styles.controlsOverlay} onPress={() => setShowControls?.(false)}>
       <View style={styles.topControls}>
         <Text style={styles.controlTitle}>
           {videoTitle} {currentEpisodeTitle ? `- ${currentEpisodeTitle}` : ""}{" "}
@@ -319,7 +302,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
         <ThemedText style={{ color: "white", marginTop: 5 }}>
           {status?.isLoaded
-            ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
+            ? `${formatTime((status as any).positionMillis)} / ${formatTime((status as any).durationMillis || 0)}`
             : "00:00 / 00:00"}
         </ThemedText>
 
@@ -329,7 +312,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
           </MediaButton>
 
           <MediaButton onPress={() => safeCall(togglePlayPause)} hasTVPreferredFocus={showControls}>
-            {status?.isLoaded && status.isPlaying ? (
+            {status?.isLoaded && (status as any).isPlaying ? (
               <Pause color="white" size={24} />
             ) : (
               <Play color="white" size={24} />
