@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, memo, useMemo, useState } from "react";
+﻿import React, { useEffect, useRef, useCallback, memo, useMemo, useState } from "react";
 import { StyleSheet, TouchableOpacity, BackHandler, View, ScrollView, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
@@ -60,7 +60,7 @@ export default function PlayScreen() {
   const title = params.title || detail?.title;
 
   const playerStore = usePlayerStore();
-  const tvRemoteHandler = useTVRemoteHandler();
+  useTVRemoteHandler(); // 仅用于注册 TV 事件，不使用返回值
 
   const {
     status: playbackStatus,
@@ -85,9 +85,7 @@ export default function PlayScreen() {
 
   const panStartPos = useRef<number>(0);
 
-  // ---------------------------
   // 切换选集/切换源前安全卸载视频
-  // ---------------------------
   const safeUnload = async () => {
     try {
       await videoRef.current?.unloadAsync();
@@ -96,15 +94,10 @@ export default function PlayScreen() {
     }
   };
 
-  // ---------------------------
   // 手势（只初始化一次）
-  // ---------------------------
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
     const hasPan = typeof Gesture?.Pan === "function";
-    const hasExclusive = typeof Gesture?.Exclusive === "function";
-    const hasRace = typeof Gesture?.Race === "function";
-
     if (!hasTap && !hasPan) return null;
 
     try {
@@ -159,23 +152,31 @@ export default function PlayScreen() {
           }
         });
 
-      return Gesture.Race(
-        panGesture,
-        Gesture.Exclusive(doubleTap, singleTap)
-      ).runOnJS(true);
-
+      // 使用 Race 让滑动手势优先，同时排除单击与双击冲突
+      if (typeof Gesture.Race === 'function' && typeof Gesture.Exclusive === 'function') {
+        return Gesture.Race(
+          panGesture,
+          Gesture.Exclusive(doubleTap, singleTap)
+        ).runOnJS(true);
+      } else {
+        // 降级：只使用单击
+        return singleTap;
+      }
     } catch (err) {
       console.warn("gesture init failed:", err);
       return null;
     }
-  }, []); // ← 关键：只初始化一次
-  const [gestureEnabled, setGestureEnabled] = useState(false);
+  }, []);
 
-  useEffect(() => {
-    setGestureEnabled(!!gesture);
-  }, [gesture]);
+  // 后备点击处理（当手势不可用时）
+  const handleTapFallback = useCallback(() => {
+    const { setShowControls, showControls } = usePlayerStore.getState();
+    if (typeof setShowControls === 'function') {
+      setShowControls(!showControls);
+    }
+  }, []);
 
-  // ========== 修复：keepAwake 安全调用 ==========
+  // KeepAwake 安全调用
   useEffect(() => {
     const doKeepAwake = async () => {
       try {
@@ -238,7 +239,7 @@ export default function PlayScreen() {
     }
   }, []);
 
-  // ========== 修复：清理时屏幕方向安全调用 ==========
+  // 清理：屏幕方向恢复
   useEffect(() => {
     return () => {
       reset?.();
@@ -246,7 +247,7 @@ export default function PlayScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
       }
     };
-  }, [isMobile]); // 依赖 isMobile 确保闭包最新
+  }, [isMobile]);
 
   useEffect(() => {
     if (!isLocalFile && !detail && !detailLoading && !detailError) {
@@ -259,7 +260,6 @@ export default function PlayScreen() {
     }
   }, [detail, detailLoading, detailError, isLocalFile]);
 
-  // ========== 修复：BackHandler 中屏幕方向安全调用 ==========
   useEffect(() => {
     const backAction = () => {
       if (showCastModal) {
@@ -290,18 +290,12 @@ export default function PlayScreen() {
     return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
-  // ---------------------------
-  // 切换选集（已修复崩溃）
-  // ---------------------------
   const handleEpisodePress = async (idx: number) => {
     if (idx === currentEpisodeIndex || !source || !id || !title) return;
     await safeUnload();
     loadVideo?.({ source, id, episodeIndex: idx, title });
   };
 
-  // ---------------------------
-  // 切换源（已修复崩溃）
-  // ---------------------------
   const handleSourcePress = async (item: any) => {
     if (item.source === source) return;
     await safeUnload();
@@ -313,6 +307,7 @@ export default function PlayScreen() {
       title: item.title,
     });
   };
+
   if (!isLocalFile && !detail && isInitFailed) {
     return (
       <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: deviceType === "tv" ? "black" : "#151718" }]}>
@@ -332,6 +327,23 @@ export default function PlayScreen() {
     );
   }
 
+  // 公共的视频内容区域
+  const VideoContent = () => (
+    <View style={styles.videoWrapper}>
+      {currentEpisode?.url ? (
+        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
+      ) : (
+        <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+      )}
+      <SeekingBar />
+      {currentEpisode?.url && isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#00bb5e" />
+        </View>
+      )}
+    </View>
+  );
+
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
@@ -347,37 +359,15 @@ export default function PlayScreen() {
       )}
 
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
-        {gestureEnabled && gesture ? (
+        {gesture ? (
           <GestureDetector gesture={gesture}>
-            <View style={styles.videoWrapper}>
-              {currentEpisode?.url ? (
-                <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
-              ) : (
-                <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-              )}
-              <SeekingBar />
-              {currentEpisode?.url && isLoading && (
-                <View style={styles.loadingOverlay}>
-                  <ActivityIndicator size="large" color="#00bb5e" />
-                </View>
-              )}
-            </View>
+            <VideoContent />
           </GestureDetector>
         ) : (
-          <View style={styles.videoWrapper}>
-            {currentEpisode?.url ? (
-              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
-            ) : (
-              <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-            )}
-            <SeekingBar />
-            {currentEpisode?.url && isLoading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#00bb5e" />
-                </View>
-              )}
-            </View>
-          )}
+          <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
+            <VideoContent />
+          </TouchableOpacity>
+        )}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
       </View>
 
@@ -417,37 +407,16 @@ export default function PlayScreen() {
 
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      {gestureEnabled && gesture ? (
+      {gesture ? (
         <GestureDetector gesture={gesture}>
-          <View style={styles.videoWrapper}>
-            {currentEpisode?.url ? (
-              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
-            ) : (
-              <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-            )}
-            <SeekingBar />
-            {currentEpisode?.url && isLoading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#00bb5e" />
-              </View>
-            )}
-          </View>
+          <VideoContent />
         </GestureDetector>
       ) : (
-        <View style={styles.videoWrapper}>
-          {currentEpisode?.url ? (
-            <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
-          ) : (
-            <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-          )}
-          <SeekingBar />
-          {currentEpisode?.url && isLoading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color="#00bb5e" />
-            </View>
-          )}
-        </View>
+        <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
+          <VideoContent />
+        </TouchableOpacity>
       )}
+      {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
     </ThemedView>
   );
 
@@ -509,7 +478,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-loadingOverlay: {
+  loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
