@@ -38,7 +38,7 @@ export const useTVRemoteHandler = () => {
     }
     // 设置新的定时器
     controlsTimer.current = setTimeout(() => {
-      setShowControls(false);
+      setShowControls?.(false);
     }, CONTROLS_TIMEOUT);
   }, [setShowControls]);
 
