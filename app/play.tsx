@@ -109,6 +109,9 @@ export default function PlayScreen() {
   const lastUpdateTime = useRef<number>(0);
 
   const gesture = useMemo(() => {
+    // 如果控制栏已显示，禁用底层的全屏手势，防止冲突
+    if (showControls) return Gesture.Tap(); // 返回一个不触发任何逻辑的空手势
+
     const singleTap = Gesture.Tap()
       .runOnJS(true)
       .onEnd((_event, success) => {
@@ -134,18 +137,15 @@ export default function PlayScreen() {
       })
       .onUpdate((event) => {
         const now = Date.now();
-        // 限流：每 32ms 更新一次 UI（约 30fps）
+        // 限流：每 32ms 更新一次 UI
         if (now - lastUpdateTime.current < 32) return;
         lastUpdateTime.current = now;
 
         const state = usePlayerStore.getState();
         if (!state.status?.isLoaded || !state.status.durationMillis) return;
 
-        // 计算目标进度：1px = 200ms
         const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, state.status.durationMillis));
         const ratio = targetPos / state.status.durationMillis;
-
-        // 仅做轻量状态更新，不触发底层 seek
         seekToPosition(ratio, false);
       })
       .onEnd((event) => {
@@ -154,13 +154,11 @@ export default function PlayScreen() {
 
         const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, state.status.durationMillis));
         const ratio = targetPos / state.status.durationMillis;
-
-        // 松手瞬间：统一交卷，触发真实 seek
         seekToPosition(ratio, true);
       });
 
     return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap));
-  }, [onScreenPress, togglePlayPause, seekToPosition]);
+  }, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
 
   // 根据播放状态控制屏幕常亮
   useEffect(() => {
@@ -479,7 +477,12 @@ export default function PlayScreen() {
         <GestureDetector gesture={gesture}>
           <View style={styles.videoWrapper}>
             {currentEpisode?.url ? (
-              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+              <Video
+                ref={videoRef}
+                style={styles.videoPlayer}
+                {...videoProps}
+                pointerEvents="none" // 💡 核心修复：防止底层视频表面截获点击导致闪退
+              />
             ) : isLoading ? (
               <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
             ) : (
@@ -491,13 +494,13 @@ export default function PlayScreen() {
                 />
               </View>
             )}
-            {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
             <SeekingBar />
             {currentEpisode?.url && isLoading && (
               <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
             )}
           </View>
         </GestureDetector>
+        {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
       </View>
 
       {/* 底部简化的选集 + 换源 - 仅在非全屏显示，方便快速切换 */}

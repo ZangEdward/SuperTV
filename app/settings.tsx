@@ -149,7 +149,7 @@ export default function SettingsScreen() {
           <View style={{ padding: 16 }}>
             <ThemedText style={{ fontSize: 18, fontWeight: 'bold' }}>盘搜</ThemedText>
             <ThemedText style={{ fontSize: 14, color: '#888', marginTop: 4 }}>
-              搜索全网网盘资源（夸克、磁力、百度）
+              搜索全网网盘资源
             </ThemedText>
           </View>
         </SettingsSection>

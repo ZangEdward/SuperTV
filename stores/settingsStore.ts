@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { SettingsManager } from "@/services/storage";
 import { api, ServerConfig } from "@/services/api";
 import { storageConfig } from "@/services/storageConfig";
-import { API_NODES as GLOBAL_NODES } from "@/services/apiNodes";
+import { API_NODES as GLOBAL_NODES, HAS_PRESET_NODES } from "@/services/apiNodes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Logger from "@/utils/Logger";
 
@@ -29,7 +29,7 @@ interface SettingsState {
 
   loadSettings: () => Promise<void>;
   fetchServerConfig: () => Promise<void>;
-  setApiBaseUrl: (url: string) => Promise<void>;
+  setApiBaseUrl: (url: string) => void;
   setM3uUrl: (url: string) => void;
   setRemoteInputEnabled: (enabled: boolean) => void;
   saveSettings: () => Promise<void>;
@@ -49,7 +49,7 @@ let _allowNodeTest = false;
 export function __allowNodeTestOnce() { _allowNodeTest = true; }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  apiBaseUrl: API_NODES[0] || "", // 核心修复：初始状态即使用第一个节点，避免首次打开为空
+  apiBaseUrl: HAS_PRESET_NODES ? (API_NODES[0] || "") : "", // 初始值优化
   nodeLatencies: {},
   m3uUrl: "",
   remoteInputEnabled: true,
@@ -71,12 +71,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
       let targetApiUrl = settings.apiBaseUrl;
 
-      // 如果存储中没有 API URL，或者为空，则尝试使用预设的首选节点
-      if (!targetApiUrl && API_NODES.length > 0) {
+      // 如果存储中没有 API URL，且有预设节点，则使用第一个预设节点
+      if (!targetApiUrl && HAS_PRESET_NODES && API_NODES.length > 0) {
         targetApiUrl = API_NODES[0];
-        logger.info("No API URL in storage, using default node:", targetApiUrl);
+        logger.info("No API URL in storage, using default preset node:", targetApiUrl);
 
-        // 立即保存默认节点，防止丢失
         await SettingsManager.save({
           ...settings,
           apiBaseUrl: targetApiUrl,
@@ -84,16 +83,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       }
 
       set({
-        apiBaseUrl: targetApiUrl || API_NODES[0] || "",
+        apiBaseUrl: targetApiUrl || (HAS_PRESET_NODES ? (API_NODES[0] || "") : ""),
         m3uUrl: settings.m3uUrl || "",
         remoteInputEnabled: settings.remoteInputEnabled !== false,
         videoSource: settings.videoSource || { enabledAll: true, sources: {} },
       });
 
-      if (targetApiUrl || API_NODES[0]) {
-        const finalUrl = targetApiUrl || API_NODES[0];
-        api.setBaseUrl(finalUrl);
-        // 静默获取服务器配置
+      if (targetApiUrl) {
+        api.setBaseUrl(targetApiUrl);
         get().fetchServerConfig().catch(e => logger.warn("Failed to fetch server config during init:", e));
       }
     } catch (e) {
@@ -253,24 +250,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  setApiBaseUrl: async (url: string) => {
+  setApiBaseUrl: (url: string) => {
     const processedUrl = url.trim().replace(/\/$/, "");
-    if (!processedUrl) return;
-
     set({ apiBaseUrl: processedUrl });
-    api.setBaseUrl(processedUrl);
-
-    // 立即保存，解决退出重进后丢失的问题
-    const currentSettings = await SettingsManager.get();
-    await SettingsManager.save({
-      ...currentSettings,
-      apiBaseUrl: processedUrl,
-    });
-
-    // 切换节点后通常需要清除旧的登录状态
-    await AsyncStorage.setItem("authCookies", "");
-
-    await get().fetchServerConfig();
   },
   setM3uUrl: (url) => set({ m3uUrl: url }),
   setRemoteInputEnabled: (enabled) => set({ remoteInputEnabled: enabled }),

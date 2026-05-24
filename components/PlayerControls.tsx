@@ -296,7 +296,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   }
 
   return (
-    <View style={styles.controlsOverlay}>
+    <Pressable style={styles.controlsOverlay} onPress={() => setShowControls(false)}>
       <View style={styles.topControls}>
         <Text style={styles.controlTitle}>
           {videoTitle} {currentEpisodeTitle ? `- ${currentEpisodeTitle}` : ""}{" "}
@@ -304,7 +304,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
         </Text>
       </View>
 
-      <View style={styles.bottomControlsContainer}>
+      <Pressable style={styles.bottomControlsContainer} onPress={(e) => e.stopPropagation()}>
         <GestureDetector gesture={progressGesture}>
           <View
             style={styles.progressBarContainer}
@@ -356,8 +356,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             <Tv color="white" size={24} />
           </MediaButton>
         </View>
-      </View>
-    </View>
+      </Pressable>
+    </Pressable>
   );
 };
 

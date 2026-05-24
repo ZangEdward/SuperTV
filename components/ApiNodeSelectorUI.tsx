@@ -6,10 +6,15 @@ import { StyledButton } from "./StyledButton";
 import { ThemedText } from "./ThemedText";
 import { Colors } from "@/constants/Colors";
 
-export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
+export function ApiNodeSelectorUI({ onFocus, onSelect }: { onFocus?: () => void, onSelect?: () => void }) {
   const apiBaseUrl = useSettingsStore((s) => s.apiBaseUrl);
   const nodeLatencies = useSettingsStore((s) => s.nodeLatencies || {});
   const setApiBaseUrl = useSettingsStore((s) => s.setApiBaseUrl);
+
+  const handleSelect = (url: string) => {
+    setApiBaseUrl(url);
+    onSelect?.();
+  };
 
   const getLatencyText = (url: string) => {
     const ms = nodeLatencies[url];
@@ -27,7 +32,7 @@ export function ApiNodeSelectorUI({ onFocus }: { onFocus?: () => void }) {
           return (
             <StyledButton
               key={node.key}
-              onPress={() => setApiBaseUrl(node.url)}
+              onPress={() => handleSelect(node.url)}
               onFocus={onFocus}
               isSelected={isSelected}
               style={[
