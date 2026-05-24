@@ -443,4 +443,10 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
   mobileContainer: { flex: 1 },
-  customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 40},
+customHeader: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  paddingHorizontal: 12,
+  paddingTop: 40,
+},
