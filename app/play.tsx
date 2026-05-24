@@ -31,7 +31,7 @@ const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) =
 export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
-  const { deviceType, isPortrait } = useResponsiveLayout();
+  const { deviceType } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
 
   const params = useLocalSearchParams<{
@@ -84,20 +84,20 @@ export default function PlayScreen() {
   } = playerStore;
 
   const panStartPos = useRef<number>(0);
-  const lastUpdateTime = useRef<number>(0);
-
-  const onScreenPress = useCallback(() => {
-    if (deviceType === "tv") {
-      tvRemoteHandler?.onScreenPress?.();
-    } else {
-      setShowControls?.(!showControls);
-    }
-  }, [deviceType, setShowControls, showControls, tvRemoteHandler]);
-
-  const [gestureEnabled, setGestureEnabled] = useState(false);
 
   // ---------------------------
-  // 手势 useMemo（无 setState）
+  // 切换选集/切换源前安全卸载视频
+  // ---------------------------
+  const safeUnload = async () => {
+    try {
+      await videoRef.current?.unloadAsync();
+    } catch (e) {
+      console.warn("safeUnload error:", e);
+    }
+  };
+
+  // ---------------------------
+  // 手势（只初始化一次）
   // ---------------------------
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
@@ -108,87 +108,64 @@ export default function PlayScreen() {
     if (!hasTap && !hasPan) return null;
 
     try {
-      // 单击：显示/隐藏控制条
-      const singleTap = hasTap
-        ? Gesture.Tap()
-            .runOnJS(true)
-            .onEnd((_e, ok) => ok && onScreenPress?.())
-        : null;
+      const singleTap = Gesture.Tap()
+        .runOnJS(true)
+        .onEnd(() => {
+          const { showControls, setShowControls } = usePlayerStore.getState();
+          setShowControls(!showControls);
+        });
 
-      // 双击：播放/暂停
-      const doubleTap = hasTap
-        ? Gesture.Tap()
-            .numberOfTaps(2)
-            .runOnJS(true)
-            .onEnd((_e, ok) => ok && togglePlayPause?.())
-        : null;
+      const doubleTap = Gesture.Tap()
+        .numberOfTaps(2)
+        .runOnJS(true)
+        .onEnd(() => {
+          const { togglePlayPause } = usePlayerStore.getState();
+          togglePlayPause();
+        });
 
-      // 粗略拖动快进
-      const panGesture = hasPan
-        ? Gesture.Pan()
-            .runOnJS(true)
-            .onStart(() => {
-              const s = usePlayerStore.getState();
-              panStartPos.current = s?.status?.positionMillis || 0;
-            })
-            .onUpdate((e) => {
-              const s = usePlayerStore.getState();
-              if (!s?.status?.durationMillis) return;
+      const panGesture = Gesture.Pan()
+        .runOnJS(true)
+        .onStart(() => {
+          const s = usePlayerStore.getState();
+          panStartPos.current = s.status?.positionMillis || 0;
+        })
+        .onUpdate((e) => {
+          const s = usePlayerStore.getState();
+          if (!s.status?.durationMillis) return;
 
-              const now = Date.now();
-              if (now - lastUpdateTime.current < 32) return;
-              lastUpdateTime.current = now;
+          const duration = s.status.durationMillis;
+          const target = Math.max(
+            0,
+            Math.min(panStartPos.current + e.translationX * 200, duration)
+          );
 
-              const duration = s.status.durationMillis;
-              const target = Math.max(
-                0,
-                Math.min(panStartPos.current + e.translationX * 200, duration)
-              );
-              seekToPosition?.(target / duration, false);
-            })
-            .onEnd((e) => {
-              const s = usePlayerStore.getState();
-              if (!s?.status?.durationMillis) return;
+          s.seekToPosition(target / duration, false);
+        })
+        .onEnd(() => {
+          const s = usePlayerStore.getState();
+          if (!s.status?.durationMillis) return;
 
-              const duration = s.status.durationMillis;
-              const target = Math.max(
-                0,
-                Math.min(panStartPos.current + e.translationX * 200, duration)
-              );
-              seekToPosition?.(target / duration, true);
-            })
-        : null;
+          const duration = s.status.durationMillis;
+          const target = Math.max(0, Math.min(panStartPos.current, duration));
 
-      // 组合
-      if (doubleTap && singleTap && panGesture && hasExclusive && hasRace) {
-        return Gesture.Race(
-          panGesture,
-          Gesture.Exclusive(doubleTap, singleTap)
-        ).runOnJS(true);
-      }
+          s.seekToPosition(target / duration, true);
+        });
 
-      if (doubleTap && singleTap && hasExclusive) {
-        return Gesture.Exclusive(doubleTap, singleTap).runOnJS(true);
-      }
+      return Gesture.Race(
+        panGesture,
+        Gesture.Exclusive(doubleTap, singleTap)
+      ).runOnJS(true);
 
-      if (singleTap) return singleTap.runOnJS(true);
-      if (panGesture) return panGesture.runOnJS(true);
-
-      return null;
     } catch (err) {
-      console.warn("[PlayScreen] gesture init failed:", err);
+      console.warn("gesture init failed:", err);
       return null;
     }
-  }, [showControls, onScreenPress, togglePlayPause, seekToPosition]);
+  }, []); // ← 关键：只初始化一次
+  const [gestureEnabled, setGestureEnabled] = useState(false);
 
-  // 自动同步 gestureEnabled
   useEffect(() => {
     setGestureEnabled(!!gesture);
   }, [gesture]);
-
-  // ---------------------------
-  // 其他逻辑保持不变
-  // ---------------------------
 
   useEffect(() => {
     try {
@@ -288,13 +265,21 @@ export default function PlayScreen() {
     return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
-  const handleEpisodePress = (idx: number) => {
+  // ---------------------------
+  // 切换选集（已修复崩溃）
+  // ---------------------------
+  const handleEpisodePress = async (idx: number) => {
     if (idx === currentEpisodeIndex || !source || !id || !title) return;
+    await safeUnload();
     loadVideo?.({ source, id, episodeIndex: idx, title });
   };
 
-  const handleSourcePress = (item: any) => {
+  // ---------------------------
+  // 切换源（已修复崩溃）
+  // ---------------------------
+  const handleSourcePress = async (item: any) => {
     if (item.source === source) return;
+    await safeUnload();
     setDetail?.(item);
     loadVideo?.({
       source: item.source,
@@ -303,19 +288,9 @@ export default function PlayScreen() {
       title: item.title,
     });
   };
-
   if (!isLocalFile && !detail && isInitFailed) {
     return (
-      <ThemedView
-        style={[
-          styles.tvContainer,
-          {
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: deviceType === "tv" ? "black" : "#151718",
-          },
-        ]}
-      >
+      <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: deviceType === "tv" ? "black" : "#151718" }]}>
         <View style={{ alignItems: "center", paddingHorizontal: 20 }}>
           <Text style={{ color: "#ff4444", fontSize: 18, marginBottom: 12 }}>无法加载播放源</Text>
           <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
@@ -326,16 +301,7 @@ export default function PlayScreen() {
 
   if (!isLocalFile && (!detail || !isDetailMatching)) {
     return (
-      <ThemedView
-        style={[
-          styles.tvContainer,
-          {
-            backgroundColor: deviceType === "tv" ? "black" : "#151718",
-            justifyContent: "center",
-            alignItems: "center",
-          },
-        ]}
-      >
+      <ThemedView style={[styles.tvContainer, { backgroundColor: deviceType === "tv" ? "black" : "#151718", justifyContent: "center", alignItems: "center" }]}>
         <VideoLoadingAnimation showProgressBar />
       </ThemedView>
     );
@@ -348,9 +314,7 @@ export default function PlayScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {detail?.title || title || "播放"}
-          </Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || "播放"}</Text>
           <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal?.(true)}>
             <Cast size={20} color="white" />
           </TouchableOpacity>
@@ -385,10 +349,10 @@ export default function PlayScreen() {
             {currentEpisode?.url && isLoading && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="large" color="#00bb5e" />
-              </View>
-            )}
-          </View>
-        )}
+                </View>
+              )}
+            </View>
+          )}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
       </View>
 
@@ -415,10 +379,7 @@ export default function PlayScreen() {
                 style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
                 onPress={() => handleSourcePress(item)}
               >
-                <Text
-                  style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
                   {item.source_name}
                 </Text>
               </TouchableOpacity>
@@ -523,7 +484,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  loadingOverlay: {
+loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
