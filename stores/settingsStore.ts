@@ -29,7 +29,7 @@ interface SettingsState {
 
   loadSettings: () => Promise<void>;
   fetchServerConfig: () => Promise<void>;
-  setApiBaseUrl: (url: string) => void;
+  setApiBaseUrl: (url: string) => Promise<void>;
   setM3uUrl: (url: string) => void;
   setRemoteInputEnabled: (enabled: boolean) => void;
   saveSettings: () => Promise<void>;
@@ -77,8 +77,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     if (settings.apiBaseUrl) {
       api.setBaseUrl(settings.apiBaseUrl);
       await get().fetchServerConfig();
-    } else {
-      // 首次启动：使用默认节点，保存到存储，绝不测速
+    } else if (API_NODES.length > 0) {
+      // 首次启动或配置为空：使用默认节点，保存到存储，绝不测速
       const defaultUrl = API_NODES[0];
       set({ apiBaseUrl: defaultUrl });
       api.setBaseUrl(defaultUrl);
@@ -242,7 +242,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  setApiBaseUrl: (url) => set({ apiBaseUrl: url }),
+  setApiBaseUrl: async (url: string) => {
+    const processedUrl = url.trim().replace(/\/$/, "");
+    if (!processedUrl) return;
+
+    set({ apiBaseUrl: processedUrl });
+    api.setBaseUrl(processedUrl);
+
+    // 立即保存，解决退出重进后丢失的问题
+    const currentSettings = await SettingsManager.get();
+    await SettingsManager.save({
+      ...currentSettings,
+      apiBaseUrl: processedUrl,
+    });
+
+    // 切换节点后通常需要清除旧的登录状态
+    await AsyncStorage.setItem("authCookies", "");
+
+    await get().fetchServerConfig();
+  },
   setM3uUrl: (url) => set({ m3uUrl: url }),
   setRemoteInputEnabled: (enabled) => set({ remoteInputEnabled: enabled }),
   setVideoSource: (config) => set({ videoSource: config }),

@@ -135,16 +135,20 @@ export default function RootLayout() {
   }, [apiBaseUrl, checkLoginStatus]);
 
   useEffect(() => {
-    // 只有当字体加载完成且初始化设置（如 apiBaseUrl 加载）完成后才关闭开屏
+    const hideSplash = () => {
+      SplashScreen.hideAsync().catch(() => {});
+    };
+
+    // 只要资源加载完成（loaded && appIsReady）就尝试隐藏
+    // 或者达到 1.5 秒的强制上限（对应用户需求：1.5秒够了）
     if (loaded && appIsReady) {
-      // 稍微延迟 100ms 确保 React 已经完成了第一帧渲染
-      setTimeout(() => {
-        SplashScreen.hideAsync();
-      }, 100);
+      hideSplash();
     } else if (error) {
-      SplashScreen.hideAsync();
-      logger.warn(`Error in loading fonts: ${error}`);
+      hideSplash();
     }
+
+    const timer = setTimeout(hideSplash, 1500);
+    return () => clearTimeout(timer);
   }, [loaded, error, appIsReady]);
 
   // 检查更新
