@@ -67,29 +67,27 @@ export default function PlayScreen() {
   const id = params.id || detail?.id?.toString();
   const title = params.title || detail?.title;
 
-  const playerStore = usePlayerStore();
   useTVRemoteHandler(); // 仅用于注册 TV 事件，移动端也会初始化但无负面影响
 
-  const {
-    status: playbackStatus,
-    isLoading,
-    showControls,
-    showCastModal,
-    initialPosition,
-    introEndTime,
-    playbackRate,
-    currentEpisodeIndex,
-    setVideoRef,
-    handlePlaybackStatusUpdate,
-    setShowControls,
-    setShowCastModal,
-    reset,
-    loadVideo,
-    isFullscreen,
-    setIsFullscreen,
-    togglePlayPause,
-    seekToPosition,
-  } = playerStore;
+  // [FIX] 使用 zustand 选择器稳定获取每个状态和函数引用，避免解构导致每次渲染引用变化
+  const status = usePlayerStore(state => state.status);
+  const isLoading = usePlayerStore(state => state.isLoading);
+  const showControls = usePlayerStore(state => state.showControls);
+  const showCastModal = usePlayerStore(state => state.showCastModal);
+  const initialPosition = usePlayerStore(state => state.initialPosition);
+  const introEndTime = usePlayerStore(state => state.introEndTime);
+  const playbackRate = usePlayerStore(state => state.playbackRate);
+  const currentEpisodeIndex = usePlayerStore(state => state.currentEpisodeIndex);
+  const isFullscreen = usePlayerStore(state => state.isFullscreen);
+  const setVideoRef = usePlayerStore(state => state.setVideoRef);
+  const handlePlaybackStatusUpdate = usePlayerStore(state => state.handlePlaybackStatusUpdate);
+  const setShowControls = usePlayerStore(state => state.setShowControls);
+  const setShowCastModal = usePlayerStore(state => state.setShowCastModal);
+  const reset = usePlayerStore(state => state.reset);
+  const loadVideo = usePlayerStore(state => state.loadVideo);
+  const setIsFullscreen = usePlayerStore(state => state.setIsFullscreen);
+  const togglePlayPause = usePlayerStore(state => state.togglePlayPause);
+  const seekToPosition = usePlayerStore(state => state.seekToPosition);
 
   const panStartPos = useRef<number>(0);
 
@@ -183,7 +181,7 @@ export default function PlayScreen() {
   useEffect(() => {
     const doKeepAwake = async () => {
       try {
-        if (playbackStatus?.isLoaded && playbackStatus?.isPlaying) {
+        if (status?.isLoaded && status?.isPlaying) {
           if (typeof activateKeepAwakeAsync === 'function') {
             await activateKeepAwakeAsync();
           }
@@ -201,7 +199,7 @@ export default function PlayScreen() {
         deactivateKeepAwakeAsync().catch(() => {});
       }
     };
-  }, [playbackStatus?.isLoaded, playbackStatus?.isPlaying]);
+  }, [status?.isLoaded, status?.isPlaying]);
 
   const currentEpisode = usePlayerStore(selectCurrentEpisode);
   const [isReverse, setIsReverse] = useState(false);
