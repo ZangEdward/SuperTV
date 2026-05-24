@@ -66,6 +66,8 @@ export default function PlayScreen() {
   const title = params.title || detail?.title;
 
   const playerStore = usePlayerStore();
+  const tvRemoteHandler = useTVRemoteHandler();
+
   const {
     status: playbackStatus,
     isLoading,
@@ -96,7 +98,7 @@ export default function PlayScreen() {
     } else {
       setShowControls?.(!showControls);
     }
-  }, [deviceType, setShowControls, showControls]);
+  }, [deviceType, setShowControls, showControls, tvRemoteHandler]);
 
   const gesture = useMemo(() => {
     if (showControls) return Gesture.Tap().runOnJS(true);
@@ -171,8 +173,6 @@ export default function PlayScreen() {
     deviceType,
     detail: detail || undefined,
   });
-
-  const tvRemoteHandler = useTVRemoteHandler();
 
   useEffect(() => {
     setVideoRef?.(videoRef);

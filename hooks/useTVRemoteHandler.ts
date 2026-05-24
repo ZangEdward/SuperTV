@@ -96,42 +96,46 @@ export const useTVRemoteHandler = () => {
 
       switch (event.eventType) {
         case "select":
-          togglePlayPause();
-          setShowControls(true);
+          togglePlayPause?.();
+          setShowControls?.(true);
           break;
         case "left":
-          seek(-SEEK_STEP); // 快退
+          seek?.(-SEEK_STEP); // 快退
           break;
         case "longLeft":
           if (!fastForwardIntervalRef.current && event.eventKeyAction === 0) {
             fastForwardIntervalRef.current = setInterval(() => {
-              seek(-SEEK_STEP); 
+              seek?.(-SEEK_STEP);
             }, 200);
           }
           break;
         case "right":
-          seek(SEEK_STEP);
+          seek?.(SEEK_STEP);
           break;
         case "longRight":
           // 长按开始: 启动连续快进
           if (!fastForwardIntervalRef.current && event.eventKeyAction === 0) {
             fastForwardIntervalRef.current = setInterval(() => {
-              seek(SEEK_STEP); 
+              seek?.(SEEK_STEP);
             }, 200);
           }
           break;
         case "down":
-          setShowControls(true);
+          setShowControls?.(true);
           break;
       }
     },
     [setShowControls, resetTimer, togglePlayPause, seek]
   );
 
-  // 只有在 TV 模式下才挂载遥控器监听，彻底解决手机端 undefined 崩溃
-  if (deviceType === 'tv' && typeof useTVEventHandler === 'function') {
+  // 始终挂载 hook，但在内部判断逻辑，符合 Rules of Hooks
+  if (typeof useTVEventHandler === 'function') {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useTVEventHandler(handleTVEvent);
+    useTVEventHandler((event) => {
+      if (deviceType === 'tv') {
+        handleTVEvent(event);
+      }
+    });
   }
 
   // 处理屏幕点击事件
