@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 import RNFetchBlob from 'react-native-blob-util';
 import Logger from '@/utils/Logger';
 
+import { filterM3U8Ads } from './m3u8';
+
 const logger = Logger.withTag('TCPHttpServer');
 
 const PORT = 12346;
@@ -125,6 +127,8 @@ export class TCPHttpServer {
                   // 处理文件服务请求：路径以 /video/ 开头
                   if (request.url.startsWith('/video/')) {
                     await this.serveFile(request, socket);
+                  } else if (request.url.startsWith('/proxy/')) {
+                    await this.serveProxy(request, socket);
                   } else if (this.requestHandler) {
                     const response = await this.requestHandler(request);
                     this.sendJsonResponse(response, socket);
@@ -254,11 +258,50 @@ export class TCPHttpServer {
     }
   }
 
+  private async serveProxy(request: HttpRequest, socket: TcpSocket.Socket) {
+    try {
+      const targetUrl = decodeURIComponent(request.url.replace('/proxy/', ''));
+      logger.debug(`[Proxy] Fetching and filtering: ${targetUrl}`);
+
+      const response = await fetch(targetUrl);
+      if (!response.ok) {
+        socket.write(this.formatStatusLine(response.status) + 'Content-Length: 0\r\n\r\n');
+        socket.end();
+        return;
+      }
+
+      let content = await response.text();
+
+      // 如果是 M3U8，执行广告过滤
+      if (targetUrl.toLowerCase().includes('.m3u8') || content.includes('#EXTM3U')) {
+        content = filterM3U8Ads(content);
+      }
+
+      let headerStr = this.formatStatusLine(200);
+      headerStr += `Content-Type: ${response.headers.get('content-type') || 'application/vnd.apple.mpegurl'}\r\n`;
+      headerStr += `Content-Length: ${new TextEncoder().encode(content).length}\r\n`;
+      headerStr += `Access-Control-Allow-Origin: *\r\n`;
+      headerStr += `Connection: close\r\n\r\n`;
+
+      socket.write(headerStr + content);
+      socket.end();
+
+    } catch (error) {
+      logger.error('[TCPHttpServer] serveProxy error:', error);
+      socket.end();
+    }
+  }
+
   public getLocalUrl(fileUri: string): string | null {
     if (!this.localIp) return null;
     const fileName = fileUri.split('/').pop();
     if (!fileName) return null;
     return `http://${this.localIp}:${this.port}/video/${encodeURIComponent(fileName)}`;
+  }
+
+  public getProxyUrl(targetUrl: string): string | null {
+    if (!this.localIp) return null;
+    return `http://${this.localIp}:${this.port}/proxy/${encodeURIComponent(targetUrl)}`;
   }
 
   public stop() {

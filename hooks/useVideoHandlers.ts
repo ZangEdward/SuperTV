@@ -2,6 +2,7 @@ import { useCallback, RefObject, useMemo } from 'react';
 import { Video, ResizeMode } from 'expo-av';
 import Toast from 'react-native-toast-message';
 import usePlayerStore from '@/stores/playerStore';
+import { tcpHttpServer } from '@/services/tcpHttpServer';
 
 interface UseVideoHandlersProps {
   videoRef: RefObject<Video>;
@@ -102,18 +103,31 @@ export const useVideoHandlers = ({
   // 优化的Video组件props
   const isCasting = usePlayerStore(state => state.isCasting);
 
-  const videoProps = useMemo(() => ({
-    source: (!isCasting && currentEpisode?.url && currentEpisode.url.trim() !== "") ? { uri: currentEpisode.url } : undefined,
-    posterSource: detail?.poster ? { uri: detail.poster } : undefined,
-    resizeMode: ResizeMode.CONTAIN,
-    rate: playbackRate,
-    onPlaybackStatusUpdate: handlePlaybackStatusUpdate,
-    onLoad,
-    onLoadStart,
-    onError,
-    useNativeControls: false,
-    shouldPlay: !isCasting,
-  }), [
+  const videoProps = useMemo(() => {
+    let videoUrl = currentEpisode?.url || "";
+
+    // 如果是 M3U8 且不是本地文件，通过本地服务器代理进行广告过滤
+    if (videoUrl && videoUrl.toLowerCase().includes('.m3u8') && !videoUrl.startsWith('file://')) {
+      const proxyUrl = tcpHttpServer.getProxyUrl(videoUrl);
+      if (proxyUrl) {
+        console.log(`[AD_FILTER] Using proxy for ad filtering: ${proxyUrl}`);
+        videoUrl = proxyUrl;
+      }
+    }
+
+    return {
+      source: (!isCasting && videoUrl && videoUrl.trim() !== "") ? { uri: videoUrl } : undefined,
+      posterSource: detail?.poster ? { uri: detail.poster } : undefined,
+      resizeMode: ResizeMode.CONTAIN,
+      rate: playbackRate,
+      onPlaybackStatusUpdate: handlePlaybackStatusUpdate,
+      onLoad,
+      onLoadStart,
+      onError,
+      useNativeControls: false,
+      shouldPlay: !isCasting,
+    };
+  }, [
     currentEpisode?.url,
     detail?.poster,
     playbackRate,
