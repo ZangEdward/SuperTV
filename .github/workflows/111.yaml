@@ -1,0 +1,56 @@
+name: Export Repository Secrets
+
+on:
+  workflow_dispatch: # 允许你在 GitHub 网页上收到手动点击运行
+
+jobs:
+  export-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Code
+        uses: actions/checkout@v4
+
+      - name: Convert Secrets to Base64
+        id: encode_secrets
+        run: |
+          echo "=================================================="
+          echo "开始安全转换，请复制下方输出的 Base64 密文："
+          echo "=================================================="
+          echo ""
+          
+          # 【核心配置区】按需把这里的 MY_SECRET_XX 换成你通过 API 查到的真实名字
+          
+          if [ ! -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
+            echo "ANDROID_KEYSTORE (Base64):"
+            echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -w 0
+            echo -e "\n----------------------------------------"
+          fi
+
+          if [ ! -z "${{ secrets.RELEASE_SIGNING_PASSWORD }}" ]; then
+            echo "RELEASE_SIGNING_PASSWORD (Base64):"
+            echo -n "${{ secrets.RELEASE_SIGNING_PASSWORD }}" | base64
+            echo -e "\n----------------------------------------"
+          fi
+
+          if [ ! -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "EXPO_TOKEN (Base64):"
+            echo -n "${{ secrets.EXPO_TOKEN }}" | base64
+            echo -e "\n----------------------------------------"
+          fi
+
+          if [ ! -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "DOCKER_PASSWORD (Base64):"
+            echo -n "${{ secrets.DOCKER_PASSWORD }}" | base64
+            echo -e "\n----------------------------------------"
+          fi
+          
+          # 💡 如果还有别的 Secret，照着上面的格式复制粘贴即可：
+          # if [ ! -z "${{ secrets.你的变量名 }}" ]; then
+          #   echo "你的变量名 (Base64):"
+          #   echo -n "${{ secrets.你的变量名 }}" | base64
+          #   echo -e "\n----------------------------------------"
+          # fi
+
+          echo "=================================================="
+          echo "转换结束。拿到密文后，请务必删除此 Action 运行记录！"
+          echo "=================================================="
