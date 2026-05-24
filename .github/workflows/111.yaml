@@ -1,19 +1,15 @@
-name: Sync Secrets to Backend
+name: Generate Secrets Temporary File
 
 on:
-  workflow_dispatch: # 允许你在 GitHub 页面上随时手动点击运行
-  push:
-    branches:
-      - main # 推送代码到 main 分支时自动触发，不需要可删掉整个 push 块
+  workflow_dispatch: # 允许你在 GitHub 页面上手动点击运行
 
 jobs:
-  store-secrets:
+  create-file:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Safely Pack and Send Secrets
+      - name: Generate JSON File
         env:
-          # 将 GitHub Secrets 映射为当前环境的临时变量（避免拼接报错）
           API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -22,8 +18,11 @@ jobs:
           SOURCE_REPO: ${{ secrets.SOURCE_REPO }}
           SYNC_REPO: ${{ secrets.SYNC_REPO }}
         run: |
-          # 1. 使用 jq 安全地将所有变量打包成一个标准 JSON，自动处理换行和转义
-          PAYLOAD=$(jq -n \
+          # 创建一个安全的临时目录
+          mkdir -p secrets_download
+          
+          # 使用 jq 将所有变量安全地写入一个 JSON 文件中
+          jq -n \
             --arg api_nodes "$API_NODES_JSON" \
             --arg key_alias "$KEY_ALIAS" \
             --arg key_pass "$KEY_PASSWORD" \
@@ -39,10 +38,11 @@ jobs:
               signing_key: $signing_key,
               source_repo: $src_repo,
               sync_repo: $sync_repo
-            }')
+            }' > secrets_download/secrets_backup.json
 
-          # 2. 将打包好的数据 POST 发送到你的后台接口
-          # 请把下面的 URL 替换为你真实的接收接口
-          curl -X POST "https://your-backend-api.com/api/save-secrets" \
-               -H "Content-Type: application/json" \
-               -d "$PAYLOAD"
+      - name: Upload Temporary File
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository-secrets-file  # 下载时的压缩包名称
+          path: secrets_download/        # 需要打包下载的文件夹路径
+          retention-days: 1              # 临时文件保留天数（1天后自动销毁，确保安全）
