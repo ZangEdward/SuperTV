@@ -92,32 +92,30 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
   const [barWidth, setBarWidth] = useState(0);
 
+  const onProgressGesture = useCallback((x: number, isFinalize: boolean) => {
+    if (barWidth > 0) {
+      const ratio = Math.max(0, Math.min(x / barWidth, 1));
+      safeCall(seekToPosition, ratio, isFinalize);
+    }
+  }, [barWidth, seekToPosition]);
+
   const progressGesture = useMemo(() => {
     return Gesture.Pan()
       .activateAfterLongPress(0)
       .minDistance(0)
       .onStart((event) => {
-        if (barWidth > 0) {
-          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
-          runOnJS(seekToPosition)(ratio, false);
-        }
+        runOnJS(onProgressGesture)(event.x, false);
       })
       .onUpdate((event) => {
-        if (barWidth > 0) {
-          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
-          runOnJS(seekToPosition)(ratio, false);
-        }
+        runOnJS(onProgressGesture)(event.x, false);
       })
       .onEnd((event) => {
-        if (barWidth > 0) {
-          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
-          runOnJS(seekToPosition)(ratio, true);
-        }
+        runOnJS(onProgressGesture)(event.x, true);
       });
-  }, [barWidth, seekToPosition]);
+  }, [onProgressGesture]);
 
   const handleProgressTouch = (e: GestureResponderEvent) => {
-    // Keep this for non-gesture environments if needed, but we'll use GestureDetector below
+    // GestureDetector is used instead
   };
 
   const toggleOrientation = async () => {

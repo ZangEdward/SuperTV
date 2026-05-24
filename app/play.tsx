@@ -131,7 +131,7 @@ export default function PlayScreen() {
         }
       });
 
-    return Gesture.Exclusive(doubleTap, singleTap, panGesture);
+    return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap));
   }, [onScreenPress, togglePlayPause, seek]);
 
   // 根据播放状态控制屏幕常亮
