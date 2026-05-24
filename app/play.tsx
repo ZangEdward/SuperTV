@@ -1,11 +1,9 @@
-// --- PlayScreen 最终稳定版（不会闪退） ---
-
 import React, { useEffect, useRef, useCallback, memo, useMemo, useState } from "react";
 import { StyleSheet, TouchableOpacity, BackHandler, View, ScrollView, Text, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
 import { activateKeepAwakeAsync, deactivateKeepAwakeAsync } from "expo-keep-awake";
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { ThemedView } from "@/components/ThemedView";
 import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
@@ -22,7 +20,7 @@ import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
 import { StyledButton } from "@/components/StyledButton";
-import * as ScreenOrientation from 'expo-screen-orientation';
+import * as ScreenOrientation from "expo-screen-orientation";
 
 const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) => (
   <View style={style}>
@@ -34,7 +32,7 @@ export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
   const { deviceType, isPortrait } = useResponsiveLayout();
-  const isMobile = deviceType === 'mobile';
+  const isMobile = deviceType === "mobile";
 
   const params = useLocalSearchParams<{
     episodeIndex: string;
@@ -54,7 +52,7 @@ export default function PlayScreen() {
   const isDetailMatching = useMemo(() => {
     if (!detail) return false;
     if (isLocalFile) return true;
-    return String(detail.id || '') === params.id && detail.source === params.source;
+    return String(detail.id || "") === params.id && detail.source === params.source;
   }, [detail, params.id, params.source, isLocalFile]);
 
   const source = params.source || detail?.source;
@@ -110,18 +108,14 @@ export default function PlayScreen() {
     if (!hasTap && !hasPan) return null;
 
     try {
-      if (showControls && hasTap) {
-        return Gesture.Tap()
-          .runOnJS(true)
-          .onEnd((_e, ok) => ok && onScreenPress?.());
-      }
-
+      // 单击：显示/隐藏控制条
       const singleTap = hasTap
         ? Gesture.Tap()
             .runOnJS(true)
             .onEnd((_e, ok) => ok && onScreenPress?.())
         : null;
 
+      // 双击：播放/暂停
       const doubleTap = hasTap
         ? Gesture.Tap()
             .numberOfTaps(2)
@@ -129,6 +123,7 @@ export default function PlayScreen() {
             .onEnd((_e, ok) => ok && togglePlayPause?.())
         : null;
 
+      // 粗略拖动快进
       const panGesture = hasPan
         ? Gesture.Pan()
             .runOnJS(true)
@@ -164,6 +159,7 @@ export default function PlayScreen() {
             })
         : null;
 
+      // 组合
       if (doubleTap && singleTap && panGesture && hasExclusive && hasRace) {
         return Gesture.Race(
           panGesture,
@@ -185,9 +181,7 @@ export default function PlayScreen() {
     }
   }, [showControls, onScreenPress, togglePlayPause, seekToPosition]);
 
-  // ---------------------------
-  // gestureEnabled 自动同步
-  // ---------------------------
+  // 自动同步 gestureEnabled
   useEffect(() => {
     setGestureEnabled(!!gesture);
   }, [gesture]);
@@ -228,15 +222,21 @@ export default function PlayScreen() {
 
     if (params.fileUri) {
       loadVideo?.({
-        source: params.source || 'local',
-        id: params.id || 'local',
+        source: params.source || "local",
+        id: params.id || "local",
         episodeIndex: initialEpIndex,
         position,
-        title: params.title || '离线播放',
-        fileUri: params.fileUri
+        title: params.title || "离线播放",
+        fileUri: params.fileUri,
       });
     } else if (params.source && params.id && params.title) {
-      loadVideo?.({ source: params.source, id: params.id, episodeIndex: initialEpIndex, position, title: params.title });
+      loadVideo?.({
+        source: params.source,
+        id: params.id,
+        episodeIndex: initialEpIndex,
+        position,
+        title: params.title,
+      });
     }
   }, []);
 
@@ -271,7 +271,7 @@ export default function PlayScreen() {
         setIsFullscreen?.(false);
         return true;
       }
-      if (showControls && deviceType === 'tv') {
+      if (showControls && deviceType === "tv") {
         setShowControls?.(false);
         return true;
       }
@@ -296,14 +296,28 @@ export default function PlayScreen() {
   const handleSourcePress = (item: any) => {
     if (item.source === source) return;
     setDetail?.(item);
-    loadVideo?.({ source: item.source, id: item.id.toString(), episodeIndex: currentEpisodeIndex, title: item.title });
+    loadVideo?.({
+      source: item.source,
+      id: item.id.toString(),
+      episodeIndex: currentEpisodeIndex,
+      title: item.title,
+    });
   };
 
   if (!isLocalFile && !detail && isInitFailed) {
     return (
-      <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: deviceType === 'tv' ? 'black' : '#151718' }]}>
-        <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
-          <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 12 }}>无法加载播放源</Text>
+      <ThemedView
+        style={[
+          styles.tvContainer,
+          {
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: deviceType === "tv" ? "black" : "#151718",
+          },
+        ]}
+      >
+        <View style={{ alignItems: "center", paddingHorizontal: 20 }}>
+          <Text style={{ color: "#ff4444", fontSize: 18, marginBottom: 12 }}>无法加载播放源</Text>
           <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
         </View>
       </ThemedView>
@@ -312,7 +326,16 @@ export default function PlayScreen() {
 
   if (!isLocalFile && (!detail || !isDetailMatching)) {
     return (
-      <ThemedView style={[styles.tvContainer, { backgroundColor: deviceType === 'tv' ? 'black' : '#151718', justifyContent: 'center', alignItems: 'center' }]}>
+      <ThemedView
+        style={[
+          styles.tvContainer,
+          {
+            backgroundColor: deviceType === "tv" ? "black" : "#151718",
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
         <VideoLoadingAnimation showProgressBar />
       </ThemedView>
     );
@@ -322,9 +345,15 @@ export default function PlayScreen() {
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
         <View style={styles.customHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><ArrowLeft size={22} color="white" /></TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || '播放'}</Text>
-          <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal?.(true)}><Cast size={20} color="white" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={22} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {detail?.title || title || "播放"}
+          </Text>
+          <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal?.(true)}>
+            <Cast size={20} color="white" />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -372,10 +401,13 @@ export default function PlayScreen() {
                 style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
                 onPress={() => handleEpisodePress(ep.index)}
               >
-                <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>{(ep.index + 1).toString()}</Text>
+                <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
+                  {ep.index + 1}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
             {(searchResults || []).map((item, idx) => (
               <TouchableOpacity
@@ -383,7 +415,12 @@ export default function PlayScreen() {
                 style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
                 onPress={() => handleSourcePress(item)}
               >
-                <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>{item.source_name}</Text>
+                <Text
+                  style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]}
+                  numberOfLines={1}
+                >
+                  {item.source_name}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -429,13 +466,13 @@ export default function PlayScreen() {
   );
 
   return (
-    <ThemedView style={{ flex: 1, backgroundColor: (isFullscreen || deviceType === 'tv') ? 'black' : '#151718' }}>
+    <ThemedView style={{ flex: 1, backgroundColor: isFullscreen || deviceType === "tv" ? "black" : "#151718" }}>
       <StatusBar hidden={isFullscreen ? !showControls : false} animated={true} />
-      {deviceType === 'tv' ? renderTVLayout() : renderMobileLayout()}
+      {deviceType === "tv" ? renderTVLayout() : renderMobileLayout()}
       <EpisodeSelectionModal />
       <SourceSelectionModal />
       <SpeedSelectionModal />
-      {deviceType !== 'tv' && <CastModal />}
+      {deviceType !== "tv" && <CastModal />}
     </ThemedView>
   );
 }
@@ -443,10 +480,93 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
   mobileContainer: { flex: 1 },
-customHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  paddingHorizontal: 12,
-  paddingTop: 40,
-},
+
+  customHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingTop: 40,
+  },
+
+  backBtn: { padding: 4 },
+  headerTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#00bb5e",
+    marginHorizontal: 8,
+  },
+  overlayIcon: {
+    padding: 6,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 20,
+  },
+
+  playerSection: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "transparent",
+  },
+
+  playerSectionFullscreen: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+
+  videoWrapper: { flex: 1 },
+  videoPlayer: { flex: 1 },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(21, 23, 24, 0.7)",
+  },
+
+  mobileBottomBar: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+  },
+
+  episodeScroll: { maxHeight: 40, marginBottom: 10 },
+
+  mobileEpItem: {
+    backgroundColor: "#1a1a1a",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  mobileEpItemActive: { backgroundColor: "#00bb5e" },
+
+  mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600" },
+  mobileEpTextActive: { color: "#fff" },
+
+  sourceScroll: { maxHeight: 38 },
+
+  mobileSourceItem: {
+    backgroundColor: "#1a1a1a",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  mobileSourceItemActive: {
+    borderColor: "#00bb5e",
+    borderWidth: 1,
+    backgroundColor: "rgba(0,187,94,0.08)",
+  },
+
+  mobileSourceText: { color: "#bbb", fontSize: 12, maxWidth: 90 },
+  mobileSourceTextActive: { color: "#00bb5e", fontWeight: "700" },
+
+  fullscreenContainer: { paddingTop: 0, paddingHorizontal: 0 },
+});
