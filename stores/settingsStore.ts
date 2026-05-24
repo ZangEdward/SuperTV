@@ -49,10 +49,10 @@ let _allowNodeTest = false;
 export function __allowNodeTestOnce() { _allowNodeTest = true; }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  apiBaseUrl: "",
+  apiBaseUrl: API_NODES[0] || "", // 核心修复：初始状态即使用第一个节点，避免首次打开为空
   nodeLatencies: {},
   m3uUrl: "",
-  remoteInputEnabled: false,
+  remoteInputEnabled: true,
   isModalVisible: false,
   serverConfig: null,
   isLoadingServerConfig: false,
@@ -65,28 +65,39 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoadingSources: false,
 
   loadSettings: async () => {
-    const settings = await SettingsManager.get();
+    try {
+      const settings = await SettingsManager.get();
+      logger.info("Loading settings from storage:", JSON.stringify(settings));
 
-    set({
-      apiBaseUrl: settings.apiBaseUrl,
-      m3uUrl: settings.m3uUrl,
-      remoteInputEnabled: settings.remoteInputEnabled || false,
-      videoSource: settings.videoSource || { enabledAll: true, sources: {} },
-    });
+      let targetApiUrl = settings.apiBaseUrl;
 
-    if (settings.apiBaseUrl) {
-      api.setBaseUrl(settings.apiBaseUrl);
-      await get().fetchServerConfig();
-    } else if (API_NODES.length > 0) {
-      // 首次启动或配置为空：使用默认节点，保存到存储，绝不测速
-      const defaultUrl = API_NODES[0];
-      set({ apiBaseUrl: defaultUrl });
-      api.setBaseUrl(defaultUrl);
-      await SettingsManager.save({
-        ...settings,
-        apiBaseUrl: defaultUrl,
+      // 如果存储中没有 API URL，或者为空，则尝试使用预设的首选节点
+      if (!targetApiUrl && API_NODES.length > 0) {
+        targetApiUrl = API_NODES[0];
+        logger.info("No API URL in storage, using default node:", targetApiUrl);
+
+        // 立即保存默认节点，防止丢失
+        await SettingsManager.save({
+          ...settings,
+          apiBaseUrl: targetApiUrl,
+        });
+      }
+
+      set({
+        apiBaseUrl: targetApiUrl || API_NODES[0] || "",
+        m3uUrl: settings.m3uUrl || "",
+        remoteInputEnabled: settings.remoteInputEnabled !== false,
+        videoSource: settings.videoSource || { enabledAll: true, sources: {} },
       });
-      await get().fetchServerConfig();
+
+      if (targetApiUrl || API_NODES[0]) {
+        const finalUrl = targetApiUrl || API_NODES[0];
+        api.setBaseUrl(finalUrl);
+        // 静默获取服务器配置
+        get().fetchServerConfig().catch(e => logger.warn("Failed to fetch server config during init:", e));
+      }
+    } catch (e) {
+      logger.error("Error during loadSettings:", e);
     }
   },
 

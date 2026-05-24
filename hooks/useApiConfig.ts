@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { api } from '@/services/api';
+import Logger from '@/utils/Logger';
+
+const logger = Logger.withTag('useApiConfig');
 
 export interface ApiConfigStatus {
   isConfigured: boolean;
@@ -13,7 +16,7 @@ export interface ApiConfigStatus {
 export const useApiConfig = () => {
   const { apiBaseUrl, serverConfig, isLoadingServerConfig } = useSettingsStore();
   const [validationState, setValidationState] = useState({
-    isValidating: true,
+    isValidating: false, // 初始设为 false，防止在 apiBaseUrl 为空时一直显示验证中
     isValid: null,
     error: null,
   });
@@ -25,14 +28,28 @@ export const useApiConfig = () => {
   }, [apiBaseUrl]);
 
   useEffect(() => {
-    if (!apiBaseUrl) return;
-
-    const validateConfig = async () => {
+    // 如果没有 API URL，不需要验证
+    if (!apiBaseUrl) {
       setValidationState({
-        isValidating: true,
+        isValidating: false,
         isValid: null,
         error: null,
       });
+      return;
+    }
+
+    const validateConfig = async () => {
+      // 如果已经有 serverConfig 且当前 apiBaseUrl 匹配，可以跳过验证或直接设为有效
+      if (serverConfig && !isLoadingServerConfig) {
+        setValidationState({
+          isValidating: false,
+          isValid: true,
+          error: null,
+        });
+        return;
+      }
+
+      setValidationState(prev => ({ ...prev, isValidating: true }));
 
       try {
         await api.getServerConfig();
@@ -41,23 +58,23 @@ export const useApiConfig = () => {
           isValid: true,
           error: null,
         });
-      } catch {
+      } catch (err) {
+        // 只有在确定失败时才报错，网络波动可能导致临时失败
+        logger.warn("[useApiConfig] Validation failed:", err);
         setValidationState({
           isValidating: false,
           isValid: false,
-          error: "服务器连接失败",
+          error: "服务器连接失败，请检查网络或节点设置",
         });
       }
     };
 
-    if (!isLoadingServerConfig) {
-      validateConfig();
-    }
-  }, [apiBaseUrl, isLoadingServerConfig]);
+    validateConfig();
+  }, [apiBaseUrl, serverConfig, isLoadingServerConfig]);
 
   return {
-    isConfigured: true,
-    needsConfiguration: false,
+    isConfigured: !!apiBaseUrl,
+    needsConfiguration: !apiBaseUrl,
     isValidating: validationState.isValidating || isLoadingServerConfig,
     isValid: validationState.isValid,
     error: validationState.error,

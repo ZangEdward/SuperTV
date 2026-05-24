@@ -172,8 +172,12 @@ export default function RootLayout() {
     }
   }, [remoteInputEnabled, startServer, stopServer, responsiveConfig.deviceType]);
 
-  if (!loaded && !error) {
+  if (!loaded || !appIsReady) {
     return <View style={{ flex: 1, backgroundColor: DARK_BG }} />;
+  }
+
+  if (error) {
+    logger.warn(`Error in loading fonts: ${error}`);
   }
 
   return (
