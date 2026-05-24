@@ -146,6 +146,7 @@ export default function PlayScreen() {
           const s = usePlayerStore.getState();
           if (!s.status?.durationMillis) return;
           const duration = s.status.durationMillis;
+          // [FIX] 灵敏度调整为 1px = 200ms
           const target = Math.max(
             0,
             Math.min(panStartPos.current + e.translationX * 200, duration)
@@ -158,7 +159,6 @@ export default function PlayScreen() {
           const s = usePlayerStore.getState();
           if (!s.status?.durationMillis) return;
           const duration = s.status.durationMillis;
-          // [FIX] 计算最终位置并执行 finalize seek
           const target = Math.max(
             0,
             Math.min(panStartPos.current + e.translationX * 200, duration)
@@ -377,7 +377,9 @@ export default function PlayScreen() {
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
         {gesture ? (
           <GestureDetector gesture={gesture}>
-            {videoContent}
+            <View style={{ flex: 1 }}>
+              {videoContent}
+            </View>
           </GestureDetector>
         ) : (
           <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
@@ -424,7 +426,10 @@ export default function PlayScreen() {
   // TV 端布局：不使用手势，仅依靠遥控器按键
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      {videoContent}
+      <View style={styles.videoWrapper}>
+        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+        <SeekingBar />
+      </View>
       {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
     </ThemedView>
   );

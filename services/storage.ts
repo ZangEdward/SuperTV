@@ -324,7 +324,7 @@ export class SettingsManager {
         sources: {},
       },
       m3uUrl: "",
-      adFilterEnabled: true,
+      adFilterEnabled: false,
       downloadAdFilterEnabled: false,
     };
     try {

@@ -246,17 +246,19 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   if (deviceType === 'mobile' && isPortrait) {
     return (
       <View style={styles.controlsOverlay}>
-        <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={[styles.centerPlayBtn, { padding: 10, borderRadius: 30 }]}>
-          {status?.isLoaded && status.isPlaying ? (
-            <Pause color="white" size={32} />
-          ) : (
-            <Play color="white" size={32} />
-          )}
-        </TouchableOpacity>
+        <View style={styles.centerControlArea}>
+           <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtnSmall}>
+            {status?.isLoaded && status.isPlaying ? (
+              <Pause color="white" size={24} />
+            ) : (
+              <Play color="white" size={24} />
+            )}
+          </TouchableOpacity>
+        </View>
 
-        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 15) }]}>
+        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <View
-            style={styles.progressBarContainer}
+            style={styles.progressBarContainerSmall}
             onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
             onStartShouldSetResponder={() => true}
             onMoveShouldSetResponder={() => true}
@@ -264,14 +266,21 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
             onResponderMove={handleProgressTouch}
             onResponderRelease={handleProgressTouch}
           >
-            <View style={styles.progressBarBackground} />
+            <View style={styles.progressBarBackgroundSmall} />
             <View
-              style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
+              style={[styles.progressBarFilledSmall, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
             />
           </View>
-          <View style={[styles.mobileBottomRow, { justifyContent: 'flex-end' }]}>
-            <TouchableOpacity onPress={enterFullscreen} style={[styles.iconBtn, { padding: 5 }]}>
-              <Maximize2 color="white" size={24} />
+
+          <View style={styles.mobileNonFullscreenBottomRow}>
+             <ThemedText style={styles.timeTextSmall}>
+                {status?.isLoaded
+                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
+                  : "00:00 / 00:00"}
+              </ThemedText>
+
+            <TouchableOpacity onPress={enterFullscreen} style={styles.iconBtnSmall}>
+              <Maximize2 color="white" size={20} />
             </TouchableOpacity>
           </View>
         </View>
@@ -376,7 +385,15 @@ const styles = StyleSheet.create({
   mobileMediaBtn: { minWidth: 44, padding: 8 },
   mobileIconBtn: { padding: 8 },
   timeText: { color: 'white', fontSize: 12, marginLeft: 5 },
+  timeTextSmall: { color: 'white', fontSize: 11, opacity: 0.8 },
   mobileTextBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   mobileTextBtnLabel: { color: 'white', fontSize: 13, fontWeight: '600' },
   centerPlayBtn: { position: 'absolute', top: '40%', left: '45%', backgroundColor: 'rgba(21, 23, 24, 0.6)', padding: 15, borderRadius: 40 },
+  centerControlArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  centerPlayBtnSmall: { backgroundColor: 'rgba(21, 23, 24, 0.5)', padding: 12, borderRadius: 30 },
+  progressBarContainerSmall: { width: "100%", height: 20, position: "relative", justifyContent: 'center' },
+  progressBarBackgroundSmall: { position: "absolute", left: 0, right: 0, height: 3, backgroundColor: "rgba(255, 255, 255, 0.2)", borderRadius: 1.5 },
+  progressBarFilledSmall: { position: "absolute", left: 0, height: 3, backgroundColor: "#00bb5e", borderRadius: 1.5 },
+  mobileNonFullscreenBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, paddingHorizontal: 4 },
+  iconBtnSmall: { padding: 8 },
 });
