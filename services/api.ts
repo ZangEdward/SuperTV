@@ -278,6 +278,12 @@ export class API {
     const response = await this._fetch(url);
     return response.json();
   }
+
+  async searchNetDisk(query: string): Promise<any> {
+    const url = `/api/netdisk/search?q=${encodeURIComponent(query)}`;
+    const response = await this._fetch(url);
+    return response.json();
+  }
 }
 
 // 默认实例

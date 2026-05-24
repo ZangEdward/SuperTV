@@ -144,17 +144,17 @@ export default function SettingsScreen() {
       component: (
         <SettingsSection
           focusable={true}
-          onPress={() => router.push("/source-management")}
+          onPress={() => router.push("/netdisk-search")}
         >
           <View style={{ padding: 16 }}>
-            <ThemedText style={{ fontSize: Platform.isTV ? 22 : 18, fontWeight: 'bold' }}>播放源管理</ThemedText>
+            <ThemedText style={{ fontSize: Platform.isTV ? 22 : 18, fontWeight: 'bold' }}>盘搜</ThemedText>
             <ThemedText style={{ fontSize: Platform.isTV ? 16 : 14, color: '#888', marginTop: 4 }}>
-              查看并配置可用数据源
+              搜索全网网盘资源（夸克、磁力、百度）
             </ThemedText>
           </View>
         </SettingsSection>
       ),
-      key: "source_management",
+      key: "netdisk_search",
     },
     Platform.OS === "android" && {
       component: <UpdateSection />,
