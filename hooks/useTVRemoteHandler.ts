@@ -1,7 +1,10 @@
 import { useEffect, useRef, useCallback } from "react";
-import { useTVEventHandler, HWEvent } from "react-native";
+import { useTVEventHandler as useTVEventHandlerRN, HWEvent } from "react-native";
 import usePlayerStore from "@/stores/playerStore";
 import { useResponsiveLayout } from "./useResponsiveLayout";
+
+// 安全地获取 useTVEventHandler，兼容非 TV 平台
+const useTVEventHandler = typeof useTVEventHandlerRN === 'function' ? useTVEventHandlerRN : (() => {}) as typeof useTVEventHandlerRN;
 
 const SEEK_STEP = 20 * 1000; // 快进/快退的时间步长（毫秒）
 
@@ -141,14 +144,13 @@ export const useTVRemoteHandler = () => {
   );
 
   // 始终挂载 hook，但在内部判断逻辑，符合 Rules of Hooks
-  if (typeof useTVEventHandler === 'function') {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useTVEventHandler((event) => {
-      if (deviceType === 'tv') {
-        handleTVEvent(event);
-      }
-    });
-  }
+  const handleTVEventCallback = useCallback((event: HWEvent) => {
+    if (deviceType === 'tv') {
+      handleTVEvent(event);
+    }
+  }, [deviceType, handleTVEvent]);
+
+  useTVEventHandler(handleTVEventCallback);
 
   // 处理屏幕点击事件
   const onScreenPress = () => {

@@ -55,7 +55,12 @@ export default function PlayScreen() {
   const position = params.position ? parseInt(params.position, 10) : undefined;
   const isLocalFile = !!params.fileUri;
 
-  const { detail, searchResults, setDetail, error: detailError, loading: detailLoading } = useDetailStore();
+  // [FIX] 使用 zustand 选择器稳定获取每个状态，减少不必要的 re-render
+  const detail = useDetailStore(state => state.detail);
+  const searchResults = useDetailStore(state => state.searchResults);
+  const setDetail = useDetailStore(state => state.setDetail);
+  const detailError = useDetailStore(state => state.error);
+  const detailLoading = useDetailStore(state => state.loading);
 
   const isDetailMatching = useMemo(() => {
     if (!detail) return false;
@@ -309,6 +314,28 @@ export default function PlayScreen() {
     });
   };
 
+  // [FIX] 将所有 Hooks 移到任何 return 语句之前，确保渲染顺序一致
+  // [FIX] 分离 Video 组件和 Loading 遮罩，避免 isLoading 变化导致 Video 重新挂载引发闪烁/无限循环
+  const videoElement = useMemo(() => (
+    currentEpisode?.url ? (
+      <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+    ) : (
+      <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+    )
+  ), [currentEpisode?.url, videoProps]);
+
+  const videoContent = useMemo(() => (
+    <View style={styles.videoWrapper}>
+      {videoElement}
+      <SeekingBar />
+      {currentEpisode?.url && isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#00bb5e" />
+        </View>
+      )}
+    </View>
+  ), [videoElement, currentEpisode?.url, isLoading]);
+
   if (!isLocalFile && !detail && isInitFailed) {
     return (
       <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: deviceType === "tv" ? "black" : "#151718" }]}>
@@ -327,23 +354,6 @@ export default function PlayScreen() {
       </ThemedView>
     );
   }
-
-  // [FIX] 使用 useMemo 缓存视频内容，避免每次渲染重建 Video 组件
-  const videoContent = useMemo(() => (
-    <View style={styles.videoWrapper}>
-      {currentEpisode?.url ? (
-        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-      ) : (
-        <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-      )}
-      <SeekingBar />
-      {currentEpisode?.url && isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#00bb5e" />
-        </View>
-      )}
-    </View>
-  ), [currentEpisode?.url, isLoading, videoProps]);
 
   // 移动端布局：使用手势
   const renderMobileLayout = () => (
