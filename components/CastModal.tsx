@@ -55,10 +55,9 @@ function convertToHttpUrl(url: string): string {
 }
 
 export const CastModal: React.FC = () => {
-  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, pause } = usePlayerStore();
+  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, pause, setCastingDevice, castingDevice, stopCast } = usePlayerStore();
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [castingDevice, setCastingDevice] = useState<DLNADevice | null>(null);
   const searchTimerRef = useRef<any>(null);
 
   /** 开始搜索 */
@@ -110,7 +109,7 @@ export const CastModal: React.FC = () => {
       // 1. 投屏成功后暂停手机端播放
       await pause();
 
-      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放，手机端已暂停' });
+      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放，您可以使用播放页进度条和按键控制电视' });
 
     } catch (error) {
       if (retry < 2) {
@@ -158,15 +157,14 @@ export const CastModal: React.FC = () => {
 
     try {
       // 2. 发送停止指令
-      await dlnaService.stopCast(castingDevice);
+      await stopCast();
       Toast.show({ type: 'success', text1: '已断开投屏', text2: '电视已停止播放' });
     } catch (e) {
       // 即使发送失败（可能是网络断开），也允许手机端恢复状态
       logger.warn('[Cast] stopCast command failed:', e);
       Toast.show({ type: 'info', text1: '已断开连接', text2: '无法通知电视停止，请手动关闭' });
-    } finally {
-      // 手机端恢复到重新搜索投屏的状态
       setCastingDevice(null);
+    } finally {
       startSearch();
     }
   };

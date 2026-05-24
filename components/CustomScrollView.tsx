@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from "react";
+import React, { useCallback, useRef, useState, useEffect, useImperativeHandle, forwardRef } from "react";
 import { View, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, BackHandler } from "react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
@@ -17,7 +17,7 @@ interface CustomScrollViewProps {
   ListFooterComponent?: React.ComponentType<any> | React.ReactElement | null;
 }
 
-const CustomScrollView: React.FC<CustomScrollViewProps> = ({
+const CustomScrollView = forwardRef<any, CustomScrollViewProps>(({
   data,
   renderItem,
   numColumns,
@@ -28,13 +28,19 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
   loadMoreThreshold = 200,
   emptyMessage = "暂无内容",
   ListFooterComponent,
-}) => {
+}, ref) => {
   const scrollViewRef = useRef<ScrollView>(null);
   const firstCardRef = useRef<any>(null); // <--- 新增
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType } = responsiveConfig;
+
+  useImperativeHandle(ref, () => ({
+    scrollToTop: () => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+  }));
 
   // 添加返回键处理逻辑
   useEffect(() => {
@@ -220,6 +226,6 @@ const CustomScrollView: React.FC<CustomScrollViewProps> = ({
       )}
     </View>
   );
-};
+});
 
 export default CustomScrollView;

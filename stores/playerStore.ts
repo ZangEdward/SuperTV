@@ -4,6 +4,7 @@ import { AVPlaybackStatus, Video } from "expo-av";
 import { RefObject } from "react";
 import { PlayRecord, PlayRecordManager, PlayerSettingsManager } from "@/services/storage";
 import useDetailStore, { episodesSelectorBySource } from "./detailStore";
+import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('PlayerStore');
@@ -33,6 +34,12 @@ interface PlayerState {
   playbackRate: number;
   introEndTime?: number;
   outroStartTime?: number;
+
+  // 投屏相关状态
+  castingDevice: DLNADevice | null;
+  isCasting: boolean;
+  _castSyncTimer?: NodeJS.Timeout;
+
   setVideoRef: (ref: RefObject<Video>) => void;
   setIsFullscreen: (full: boolean) => void;
   loadVideo: (options: {
@@ -62,6 +69,12 @@ interface PlayerState {
   reset: () => void;
   _seekTimeout?: NodeJS.Timeout;
   _isRecordSaveThrottled: boolean;
+
+  // 投屏动作
+  setCastingDevice: (device: DLNADevice | null) => void;
+  syncCastProgress: () => Promise<void>;
+  stopCast: () => Promise<void>;
+
   // Internal helper
   _savePlayRecord: (updates?: Partial<PlayRecord>, options?: { immediate?: boolean }) => void;
   handleVideoError: (errorType: 'ssl' | 'network' | 'other', failedUrl: string) => Promise<void>;
@@ -90,8 +103,89 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   _seekTimeout: undefined,
   _isRecordSaveThrottled: false,
 
+  castingDevice: null,
+  isCasting: false,
+  _castSyncTimer: undefined,
+
   setVideoRef: (ref) => set({ videoRef: ref }),
   setIsFullscreen: (full) => set({ isFullscreen: full }),
+
+  setCastingDevice: (device) => {
+    const prevTimer = get()._castSyncTimer;
+    if (prevTimer) clearInterval(prevTimer);
+
+    if (device) {
+      set({ castingDevice: device, isCasting: true });
+      // 启动同步定时器
+      const timer = setInterval(() => {
+        get().syncCastProgress();
+      }, 3000);
+      set({ _castSyncTimer: timer });
+    } else {
+      set({ castingDevice: null, isCasting: false, _castSyncTimer: undefined });
+    }
+  },
+
+  syncCastProgress: async () => {
+    const { castingDevice, isCasting, currentEpisodeIndex, episodes, playEpisode } = get();
+    if (!isCasting || !castingDevice) return;
+
+    try {
+      const posInfo = await dlnaService.getPositionInfo(castingDevice);
+      const transportState = await dlnaService.getTransportInfo(castingDevice);
+
+      if (posInfo && posInfo.duration > 0) {
+        const progress = posInfo.relTime / posInfo.duration;
+        const isPlaying = transportState === 'PLAYING';
+
+        // 更新状态，模拟本地 AVPlaybackStatus
+        set({
+          status: {
+            isLoaded: true,
+            isPlaying: isPlaying,
+            positionMillis: posInfo.relTime * 1000,
+            durationMillis: posInfo.duration * 1000,
+            shouldPlay: true,
+            rate: 1,
+            volume: 1,
+            isMuted: false,
+            isLooping: false,
+            didJustFinish: false,
+          } as any,
+          progressPosition: progress,
+        });
+
+        // 自动换集逻辑
+        if (posInfo.duration > 0 && posInfo.duration - posInfo.relTime < 10) {
+           // 剩余不足10秒且未显示过下一集提示
+           if (currentEpisodeIndex < episodes.length - 1 && !get().showNextEpisodeOverlay) {
+             set({ showNextEpisodeOverlay: true });
+           }
+        }
+
+        if (transportState === 'STOPPED' || (posInfo.duration > 0 && posInfo.relTime >= posInfo.duration - 1)) {
+           // 播放结束，自动下一集
+           if (currentEpisodeIndex < episodes.length - 1) {
+             playEpisode(currentEpisodeIndex + 1);
+           }
+        }
+
+        get()._savePlayRecord();
+      }
+    } catch (e) {
+      logger.warn('[CastSync] Failed:', e);
+    }
+  },
+
+  stopCast: async () => {
+    const { castingDevice } = get();
+    if (castingDevice) {
+      try {
+        await dlnaService.stopCast(castingDevice);
+      } catch (e) {}
+    }
+    get().setCastingDevice(null);
+  },
 
   loadVideo: async ({ source, id, episodeIndex, position, title, fileUri }) => {
     // 关键修复：开始加载新视频前，先重置当前播放状态，防止旧视频残留导致崩溃
@@ -296,6 +390,17 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         outroStartTime: playRecord?.outroStartTime || playerSettings?.outroStartTime,
       });
 
+      // 如果正在投屏，同步下发投屏指令给电视
+      const { isCasting, castingDevice } = get();
+      if (isCasting && castingDevice) {
+        const episode = mappedEpisodes[episodeIndex];
+        if (episode) {
+          dlnaService.castVideo(castingDevice, episode.url, episode.title).catch(err => {
+            logger.error('[Cast] Initial load cast failed:', err);
+          });
+        }
+      }
+
       const perfEnd = performance.now();
       logger.info(`[PERF] PlayerStore.loadVideo COMPLETE - total time: ${(perfEnd - perfStart).toFixed(2)}ms`);
 
@@ -309,8 +414,10 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   playEpisode: async (index) => {
-    const { episodes, videoRef } = get();
+    const { episodes, videoRef, isCasting, castingDevice } = get();
     if (index >= 0 && index < episodes.length) {
+      const episode = episodes[index];
+
       set({
         currentEpisodeIndex: index,
         showNextEpisodeOverlay: false,
@@ -318,6 +425,17 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         progressPosition: 0,
         seekPosition: 0,
       });
+
+      if (isCasting && castingDevice) {
+        try {
+          await dlnaService.castVideo(castingDevice, episode.url, episode.title);
+          return;
+        } catch (error) {
+          logger.error("Failed to cast next episode:", error);
+          Toast.show({ type: "error", text1: "投屏换集失败" });
+        }
+      }
+
       try {
         await videoRef?.current?.replayAsync();
       } catch (error) {
@@ -328,7 +446,15 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   pause: async () => {
-    const { status, videoRef } = get();
+    const { status, videoRef, isCasting, castingDevice } = get();
+
+    if (isCasting && castingDevice) {
+      try {
+        await dlnaService.pauseCast(castingDevice);
+        return;
+      } catch (e) {}
+    }
+
     if (status?.isLoaded && status.isPlaying) {
       try {
         await videoRef?.current?.pauseAsync();
@@ -339,7 +465,21 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   togglePlayPause: async () => {
-    const { status, videoRef } = get();
+    const { status, videoRef, isCasting, castingDevice } = get();
+
+    if (isCasting && castingDevice) {
+      try {
+        if (status?.isLoaded && status.isPlaying) {
+          await dlnaService.pauseCast(castingDevice);
+        } else {
+          await dlnaService.playCast(castingDevice);
+        }
+        return;
+      } catch (e) {
+        logger.error("Failed to toggle cast play/pause:", e);
+      }
+    }
+
     if (status?.isLoaded) {
       try {
         if (status.isPlaying) {
@@ -355,10 +495,18 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   seek: async (duration) => {
-    const { status, videoRef } = get();
+    const { status, videoRef, isCasting, castingDevice } = get();
     if (!status?.isLoaded || !status.durationMillis) return;
 
     const newPosition = Math.max(0, Math.min(status.positionMillis + duration, status.durationMillis));
+
+    if (isCasting && castingDevice) {
+      try {
+        await dlnaService.seekCast(castingDevice, newPosition / 1000);
+        return;
+      } catch (e) {}
+    }
+
     try {
       await videoRef?.current?.setPositionAsync(newPosition);
     } catch (error) {
@@ -379,7 +527,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   seekToPosition: async (ratio, finalize = true) => {
-    const { status, videoRef } = get();
+    const { status, videoRef, isCasting, castingDevice } = get();
     if (!status?.isLoaded || !status.durationMillis) return;
 
     set({
@@ -389,6 +537,15 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (finalize) {
       const newPosition = Math.max(0, Math.min(ratio * status.durationMillis, status.durationMillis));
+
+      if (isCasting && castingDevice) {
+        try {
+          await dlnaService.seekCast(castingDevice, newPosition / 1000);
+          set({ isSeeking: false });
+          return;
+        } catch (e) {}
+      }
+
       try {
         await videoRef?.current?.setPositionAsync(newPosition);
       } catch (error) {

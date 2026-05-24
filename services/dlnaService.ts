@@ -249,6 +249,145 @@ class DLNAService {
       throw error;
     }
   }
+
+  // -------------------------
+  // 暂停
+  // -------------------------
+  public async pauseCast(device: DLNADevice) {
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+    try {
+      const body = bodyWrap('Pause', '');
+      await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Pause"'
+        },
+        body,
+      });
+      return true;
+    } catch (error) {
+      logger.error('[DLNA] Pause error:', error);
+      throw error;
+    }
+  }
+
+  // -------------------------
+  // 恢复播放
+  // -------------------------
+  public async playCast(device: DLNADevice) {
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+    try {
+      const body = bodyWrap('Play', '<Speed>1</Speed>');
+      await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Play"'
+        },
+        body,
+      });
+      return true;
+    } catch (error) {
+      logger.error('[DLNA] Play error:', error);
+      throw error;
+    }
+  }
+
+  // -------------------------
+  // 跳转进度
+  // -------------------------
+  public async seekCast(device: DLNADevice, timeInSeconds: number) {
+    const formatTime = (s: number) => {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = Math.floor(s % 60);
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    };
+
+    const targetTime = formatTime(timeInSeconds);
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+
+    try {
+      const body = bodyWrap('Seek', `<Unit>REL_TIME</Unit><Target>${targetTime}</Target>`);
+      await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Seek"'
+        },
+        body,
+      });
+      return true;
+    } catch (error) {
+      logger.error('[DLNA] Seek error:', error);
+      throw error;
+    }
+  }
+
+  // -------------------------
+  // 获取播放进度信息
+  // -------------------------
+  public async getPositionInfo(device: DLNADevice) {
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+
+    try {
+      const body = bodyWrap('GetPositionInfo', '');
+      const res = await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#GetPositionInfo"'
+        },
+        body,
+      });
+
+      const xml = await res.text();
+
+      const parseTime = (timeStr: string) => {
+        if (!timeStr || timeStr === 'NOT_IMPLEMENTED') return 0;
+        const parts = timeStr.split(':');
+        if (parts.length !== 3) return 0;
+        return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+      };
+
+      const relTimeMatch = xml.match(/<RelTime>(.*?)<\/RelTime>/i);
+      const durationMatch = xml.match(/<TrackDuration>(.*?)<\/duration>/i) || xml.match(/<TrackDuration>(.*?)<\/TrackDuration>/i);
+
+      return {
+        relTime: parseTime(relTimeMatch ? relTimeMatch[1] : '00:00:00'),
+        duration: parseTime(durationMatch ? durationMatch[1] : '00:00:00'),
+      };
+    } catch (error) {
+      // logger.error('[DLNA] GetPositionInfo error:', error);
+      return null;
+    }
+  }
+
+  // -------------------------
+  // 获取传输状态 (PLAYING, PAUSED_PLAYBACK, STOPPED, etc.)
+  // -------------------------
+  public async getTransportInfo(device: DLNADevice) {
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+
+    try {
+      const body = bodyWrap('GetTransportInfo', '');
+      const res = await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo"'
+        },
+        body,
+      });
+
+      const xml = await res.text();
+      const stateMatch = xml.match(/<CurrentTransportState>(.*?)<\/CurrentTransportState>/i);
+      return stateMatch ? stateMatch[1] : 'UNKNOWN';
+    } catch (error) {
+      return 'ERROR';
+    }
+  }
 }
 
 export const dlnaService = new DLNAService();

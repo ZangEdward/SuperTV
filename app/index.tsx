@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef, useState } from "react";
-import { View, StyleSheet, ActivityIndicator, FlatList, Pressable, Animated, StatusBar, Platform, BackHandler, ToastAndroid } from "react-native";
+import { View, StyleSheet, ActivityIndicator, FlatList, Pressable, Animated, StatusBar, Platform, BackHandler, ToastAndroid, findNodeHandle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -56,9 +56,28 @@ export default function HomeScreen() {
     // 双击返回退出逻辑（只限当前页面）
   const backPressTimeRef = useRef<number | null>(null);
 
+  const selectedTagRef = useRef<any>(null);
+  const selectedCategoryRef = useRef<any>(null);
+  const favoritesButtonRef = useRef<any>(null);
+  const liveButtonRef = useRef<any>(null);
+  const scrollRef = useRef<any>(null);
+
   useFocusEffect(
     useCallback(() => {
     const handleBackPress = () => {
+      if (deviceType === 'tv') {
+        // 如果当前不在顶部导航/分类区域，则按返回键回到顶部并聚焦分类
+        if (selectedCategory && selectedCategory.tags && selectedTagRef.current) {
+          scrollRef.current?.scrollToTop?.();
+          selectedTagRef.current.focus();
+          return true;
+        } else if (selectedCategoryRef.current) {
+          scrollRef.current?.scrollToTop?.();
+          selectedCategoryRef.current.focus();
+          return true;
+        }
+      }
+
       const now = Date.now();
 
       // 如果还没按过返回键，或距离上次超过2秒
@@ -154,6 +173,7 @@ export default function HomeScreen() {
     const isSelected = selectedCategory?.title === item.title;
     return (
       <StyledButton
+        ref={isSelected ? selectedCategoryRef : undefined}
         text={item.title}
         onPress={() => handleCategorySelect(item)}
         isSelected={isSelected}
@@ -208,6 +228,8 @@ export default function HomeScreen() {
             onPress={() => {}}
           />
           <StyledButton
+            ref={liveButtonRef}
+            nextFocusRight={findNodeHandle(favoritesButtonRef.current)}
             variant="ghost"
             isSelected={false}
             text="直播"
@@ -216,7 +238,13 @@ export default function HomeScreen() {
           />
         </View>
         <View style={dynamicStyles.rightHeaderButtons}>
-          <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push("/favorites")} variant="ghost">
+          <StyledButton
+            ref={favoritesButtonRef}
+            nextFocusLeft={findNodeHandle(liveButtonRef.current)}
+            style={dynamicStyles.iconButton}
+            onPress={() => router.push("/favorites")}
+            variant="ghost"
+          >
             <Heart color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
           <StyledButton
@@ -318,6 +346,7 @@ export default function HomeScreen() {
               const isSelected = selectedTag === item;
               return (
                 <StyledButton
+                  ref={isSelected ? selectedTagRef : undefined}
                   hasTVPreferredFocus={index === 0}
                   text={item}
                   onPress={() => handleTagSelect(item)}
@@ -370,6 +399,7 @@ export default function HomeScreen() {
       ) : (
         <Animated.View style={[dynamicStyles.contentContainer, { opacity: fadeAnim }]}>
           <CustomScrollView
+            ref={scrollRef}
             data={contentData}
             renderItem={renderContentItem}
             loading={loading}

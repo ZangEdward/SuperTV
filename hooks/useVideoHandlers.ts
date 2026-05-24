@@ -100,8 +100,10 @@ export const useVideoHandlers = ({
   }, [currentEpisode?.url]);
 
   // 优化的Video组件props
+  const isCasting = usePlayerStore(state => state.isCasting);
+
   const videoProps = useMemo(() => ({
-    source: (currentEpisode?.url && currentEpisode.url.trim() !== "") ? { uri: currentEpisode.url } : undefined,
+    source: (!isCasting && currentEpisode?.url && currentEpisode.url.trim() !== "") ? { uri: currentEpisode.url } : undefined,
     posterSource: detail?.poster ? { uri: detail.poster } : undefined,
     resizeMode: ResizeMode.CONTAIN,
     rate: playbackRate,
@@ -110,7 +112,7 @@ export const useVideoHandlers = ({
     onLoadStart,
     onError,
     useNativeControls: false,
-    shouldPlay: true,
+    shouldPlay: !isCasting,
   }), [
     currentEpisode?.url,
     detail?.poster,
@@ -120,6 +122,7 @@ export const useVideoHandlers = ({
     onLoadStart,
     onError,
     deviceType,
+    isCasting,
   ]);
 
   return {
