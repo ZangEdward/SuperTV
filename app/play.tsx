@@ -112,7 +112,9 @@ export default function PlayScreen() {
         .runOnJS(true)
         .onEnd(() => {
           const { showControls, setShowControls } = usePlayerStore.getState();
-          setShowControls?.(!showControls);
+          if (typeof setShowControls === 'function') {
+            setShowControls(!showControls);
+          }
         });
 
       const doubleTap = Gesture.Tap()
@@ -120,7 +122,9 @@ export default function PlayScreen() {
         .runOnJS(true)
         .onEnd(() => {
           const { togglePlayPause } = usePlayerStore.getState();
-          togglePlayPause?.();
+          if (typeof togglePlayPause === 'function') {
+            togglePlayPause();
+          }
         });
 
       const panGesture = Gesture.Pan()
@@ -139,7 +143,9 @@ export default function PlayScreen() {
             Math.min(panStartPos.current + e.translationX * 200, duration)
           );
 
-          s.seekToPosition?.(target / duration, false);
+          if (typeof s.seekToPosition === 'function') {
+            s.seekToPosition(target / duration, false);
+          }
         })
         .onEnd(() => {
           const s = usePlayerStore.getState();
@@ -148,7 +154,9 @@ export default function PlayScreen() {
           const duration = s.status.durationMillis;
           const target = Math.max(0, Math.min(panStartPos.current, duration));
 
-          s.seekToPosition?.(target / duration, true);
+          if (typeof s.seekToPosition === 'function') {
+            s.seekToPosition(target / duration, true);
+          }
         });
 
       return Gesture.Race(
