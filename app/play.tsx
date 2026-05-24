@@ -101,125 +101,104 @@ export default function PlayScreen() {
     }
   }, [deviceType, setShowControls, showControls, tvRemoteHandler]);
 
-const gesture = useMemo(() => {
-  // 安全包装器：只有在 g.runOnJS 存在时才调用
-  const safeRun = (g: any) => {
-    return g && typeof g.runOnJS === "function" ? g.runOnJS(true) : g;
-  };
+const [gestureEnabled, setGestureEnabled] = useState(false);
 
+const gesture = useMemo(() => {
   const hasTap = typeof Gesture?.Tap === "function";
   const hasPan = typeof Gesture?.Pan === "function";
+  const hasExclusive = typeof Gesture?.Exclusive === "function";
+  const hasRace = typeof Gesture?.Race === "function";
 
-  // 基础能力都不存在 → 返回空手势
+  // 基础能力检测
   if (!hasTap && !hasPan) {
-    return Gesture?.Tap?.() ? safeRun(Gesture.Tap()) : ({} as any);
+    setGestureEnabled(false);
+    return null;
   }
 
-  // 显示控制栏时只允许单击
-  if (showControls) {
-    return hasTap ? safeRun(Gesture.Tap()) : ({} as any);
-  }
-
-  // 单击
-  const singleTap = hasTap
-    ? Gesture.Tap()
-        .runOnJS(true)
-        .onEnd((_event, success) => {
-          if (success) onScreenPress?.();
-        })
-    : null;
-
-  // 双击
-  const doubleTap = hasTap
-    ? Gesture.Tap()
-        .numberOfTaps(2)
-        .runOnJS(true)
-        .onEnd((_event, success) => {
-          if (success) togglePlayPause?.();
-        })
-    : null;
-
-  // 拖动手势
-  const panGesture = hasPan
-    ? Gesture.Pan()
-        .runOnJS(true)
-        .onStart(() => {
-          const state = usePlayerStore.getState?.();
-          if (!state) return;
-          panStartPos.current = state.status?.isLoaded
-            ? (state.status as any).positionMillis
-            : 0;
-        })
-        .onUpdate((event) => {
-          const now = Date.now();
-          if (now - lastUpdateTime.current < 32) return;
-          lastUpdateTime.current = now;
-
-          const state = usePlayerStore.getState?.();
-          if (
-            !state ||
-            !state.status?.isLoaded ||
-            !(state.status as any).durationMillis
-          )
-            return;
-
-          const targetPos = Math.max(
-            0,
-            Math.min(
-              panStartPos.current + event.translationX * 200,
-              (state.status as any).durationMillis
-            )
-          );
-          const ratio = targetPos / (state.status as any).durationMillis;
-          seekToPosition?.(ratio, false);
-        })
-        .onEnd((event) => {
-          const state = usePlayerStore.getState?.();
-          if (
-            !state ||
-            !state.status?.isLoaded ||
-            !(state.status as any).durationMillis
-          )
-            return;
-
-          const targetPos = Math.max(
-            0,
-            Math.min(
-              panStartPos.current + event.translationX * 200,
-              (state.status as any).durationMillis
-            )
-          );
-          const ratio = targetPos / (state.status as any).durationMillis;
-          seekToPosition?.(ratio, true);
-        })
-    : null;
+  setGestureEnabled(true);
 
   try {
-    const hasExclusive = typeof Gesture.Exclusive === "function";
-    const hasRace = typeof Gesture.Race === "function";
+    // 控制条显示时只允许单击
+    if (showControls && hasTap) {
+      return Gesture.Tap()
+        .runOnJS(true)
+        .onEnd((_e, ok) => ok && onScreenPress?.());
+    }
 
-    // 完整组合：双击 + 单击 + 拖动
+    // 单击
+    const singleTap = hasTap
+      ? Gesture.Tap()
+          .runOnJS(true)
+          .onEnd((_e, ok) => ok && onScreenPress?.())
+      : null;
+
+    // 双击
+    const doubleTap = hasTap
+      ? Gesture.Tap()
+          .numberOfTaps(2)
+          .runOnJS(true)
+          .onEnd((_e, ok) => ok && togglePlayPause?.())
+      : null;
+
+    // 拖动
+    const panGesture = hasPan
+      ? Gesture.Pan()
+          .runOnJS(true)
+          .onStart(() => {
+            const s = usePlayerStore.getState?.();
+            panStartPos.current = s?.status?.positionMillis || 0;
+          })
+          .onUpdate((e) => {
+            const s = usePlayerStore.getState?.();
+            if (!s?.status?.durationMillis) return;
+
+            const now = Date.now();
+            if (now - lastUpdateTime.current < 32) return;
+            lastUpdateTime.current = now;
+
+            const duration = s.status.durationMillis;
+            const target = Math.max(
+              0,
+              Math.min(panStartPos.current + e.translationX * 200, duration)
+            );
+            seekToPosition?.(target / duration, false);
+          })
+          .onEnd((e) => {
+            const s = usePlayerStore.getState?.();
+            if (!s?.status?.durationMillis) return;
+
+            const duration = s.status.durationMillis;
+            const target = Math.max(
+              0,
+              Math.min(panStartPos.current + e.translationX * 200, duration)
+            );
+            seekToPosition?.(target / duration, true);
+          })
+      : null;
+
+    // 组合
     if (doubleTap && singleTap && panGesture && hasExclusive && hasRace) {
-      const exclusiveTap = Gesture.Exclusive(doubleTap, singleTap);
-      return safeRun(Gesture.Race(panGesture, exclusiveTap));
+      return Gesture.Race(
+        panGesture,
+        Gesture.Exclusive(doubleTap, singleTap)
+      ).runOnJS(true);
     }
 
-    // 只有双击 + 单击
     if (doubleTap && singleTap && hasExclusive) {
-      return safeRun(Gesture.Exclusive(doubleTap, singleTap));
+      return Gesture.Exclusive(doubleTap, singleTap).runOnJS(true);
     }
 
-    // 只有单击
-    if (singleTap) {
-      return safeRun(singleTap);
-    }
-  } catch (e) {
-    console.warn("[PlayScreen] Gesture composition failed:", e);
+    if (singleTap) return singleTap.runOnJS(true);
+    if (panGesture) return panGesture.runOnJS(true);
+
+    return null;
+  } catch (err) {
+    console.warn("[PlayScreen] gesture init failed:", err);
+    setGestureEnabled(false);
+    return null;
   }
+}, [showControls, onScreenPress, togglePlayPause, seekToPosition]);
 
-  // 最终兜底
-  return safeRun(singleTap || panGesture || ({} as any));
-}, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
 
 
   useEffect(() => {
@@ -357,19 +336,37 @@ const gesture = useMemo(() => {
       )}
 
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
-        <GestureDetector gesture={gesture}>
-          <View style={styles.videoWrapper}>
-            {currentEpisode?.url ? (
-              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
-            ) : (
-              <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-            )}
-            <SeekingBar />
-            {currentEpisode?.url && isLoading && (
-              <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
-            )}
-          </View>
-        </GestureDetector>
+{gestureEnabled && gesture ? (
+  <GestureDetector gesture={gesture}>
+    <View style={styles.videoWrapper}>
+      {currentEpisode?.url ? (
+        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
+      ) : (
+        <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+      )}
+      <SeekingBar />
+      {currentEpisode?.url && isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#00bb5e" />
+        </View>
+      )}
+    </View>
+  </GestureDetector>
+) : (
+  <View style={styles.videoWrapper}>
+    {currentEpisode?.url ? (
+      <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
+    ) : (
+      <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+    )}
+    <SeekingBar />
+    {currentEpisode?.url && isLoading && (
+      <View style={styles.loadingOverlay}>
+        <ActivityIndicator size="large" color="#00bb5e" />
+      </View>
+    )}
+  </View>
+)}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
       </View>
 
@@ -404,20 +401,37 @@ const gesture = useMemo(() => {
 
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      <GestureDetector gesture={gesture}>
+      {gestureEnabled && gesture ? (
+        <GestureDetector gesture={gesture}>
+          <View style={styles.videoWrapper}>
+            {currentEpisode?.url ? (
+              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
+            ) : (
+              <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+            )}
+            <SeekingBar />
+            {currentEpisode?.url && isLoading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color="#00bb5e" />
+              </View>
+            )}
+          </View>
+        </GestureDetector>
+      ) : (
         <View style={styles.videoWrapper}>
           {currentEpisode?.url ? (
             <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} pointerEvents="none" />
           ) : (
             <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
           )}
-          {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
           <SeekingBar />
           {currentEpisode?.url && isLoading && (
-            <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="#00bb5e" />
+            </View>
           )}
         </View>
-      </GestureDetector>
+      )}
     </ThemedView>
   );
 
