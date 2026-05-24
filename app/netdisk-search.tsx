@@ -98,7 +98,7 @@ export default function NetDiskSearchScreen() {
     <ResponsiveNavigation>
       <ResponsiveHeader
         title="盘搜"
-        showBackButton
+        showBackButton={false}
         rightElement={
           <TouchableOpacity onPress={() => router.push("/settings")}>
             <Settings size={22} color="#888" />

@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform, GestureResponderEvent } from "react-native";
 import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2, Cast } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { ThemedText } from "@/components/ThemedText";
 import { MediaButton } from "@/components/MediaButton";
 
@@ -90,17 +92,32 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
   const [barWidth, setBarWidth] = useState(0);
 
+  const progressGesture = useMemo(() => {
+    return Gesture.Pan()
+      .activateAfterLongPress(0)
+      .minDistance(0)
+      .onStart((event) => {
+        if (barWidth > 0) {
+          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
+          runOnJS(seekToPosition)(ratio, false);
+        }
+      })
+      .onUpdate((event) => {
+        if (barWidth > 0) {
+          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
+          runOnJS(seekToPosition)(ratio, false);
+        }
+      })
+      .onEnd((event) => {
+        if (barWidth > 0) {
+          const ratio = Math.max(0, Math.min(event.x / barWidth, 1));
+          runOnJS(seekToPosition)(ratio, true);
+        }
+      });
+  }, [barWidth, seekToPosition]);
+
   const handleProgressTouch = (e: GestureResponderEvent) => {
-    if (barWidth > 0 && e.nativeEvent) {
-      const touchX = e.nativeEvent.locationX;
-      const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
-
-      // Safety check for touches array
-      const touches = e.nativeEvent.touches || [];
-      const isFinalize = touches.length === 0;
-
-      safeCall(seekToPosition, ratio, isFinalize);
-    }
+    // Keep this for non-gesture environments if needed, but we'll use GestureDetector below
   };
 
   const toggleOrientation = async () => {
@@ -162,23 +179,20 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
         </View>
 
         <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <View
-            style={styles.progressBarContainer}
-            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={handleProgressTouch}
-            onResponderMove={handleProgressTouch}
-            onResponderRelease={handleProgressTouch}
-          >
-            <View style={styles.progressBarBackground} />
+          <GestureDetector gesture={progressGesture}>
             <View
-              style={[
-                styles.progressBarFilled,
-                { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` },
-              ]}
-            />
-          </View>
+              style={styles.progressBarContainer}
+              onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+            >
+              <View style={styles.progressBarBackground} />
+              <View
+                style={[
+                  styles.progressBarFilled,
+                  { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` },
+                ]}
+              />
+            </View>
+          </GestureDetector>
 
           <View style={[styles.mobileBottomRow, isPortrait && { flexWrap: 'wrap', gap: 10 }]}>
             <View style={[styles.mobileBottomLeft, isPortrait && { gap: 8, flex: 1 }]}>
@@ -255,20 +269,17 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
         </TouchableOpacity>
 
         <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 15) }]}>
-          <View
-            style={styles.progressBarContainer}
-            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={handleProgressTouch}
-            onResponderMove={handleProgressTouch}
-            onResponderRelease={handleProgressTouch}
-          >
-            <View style={styles.progressBarBackground} />
+          <GestureDetector gesture={progressGesture}>
             <View
-              style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
-            />
-          </View>
+              style={styles.progressBarContainer}
+              onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+            >
+              <View style={styles.progressBarBackground} />
+              <View
+                style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
+              />
+            </View>
+          </GestureDetector>
           <View style={[styles.mobileBottomRow, { justifyContent: 'flex-end' }]}>
             <TouchableOpacity onPress={enterFullscreen} style={[styles.iconBtn, { padding: 5 }]}>
               <Maximize2 color="white" size={24} />
@@ -289,20 +300,17 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       </View>
 
       <View style={styles.bottomControlsContainer}>
-        <View
-          style={styles.progressBarContainer}
-          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-          onStartShouldSetResponder={() => deviceType !== 'tv'} // TV doesn't use touch to seek here usually
-          onMoveShouldSetResponder={() => deviceType !== 'tv'}
-          onResponderGrant={handleProgressTouch}
-          onResponderMove={handleProgressTouch}
-          onResponderRelease={handleProgressTouch}
-        >
-          <View style={styles.progressBarBackground} />
+        <GestureDetector gesture={progressGesture}>
           <View
-            style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
-          />
-        </View>
+            style={styles.progressBarContainer}
+            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+          >
+            <View style={styles.progressBarBackground} />
+            <View
+              style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
+            />
+          </View>
+        </GestureDetector>
 
         <ThemedText style={{ color: "white", marginTop: 5 }}>
           {status?.isLoaded

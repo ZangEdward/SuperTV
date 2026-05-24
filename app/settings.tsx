@@ -140,15 +140,15 @@ export default function SettingsScreen() {
       ),
       key: "livestream",
     },
-    {
+    deviceType !== "tv" && {
       component: (
         <SettingsSection
           focusable={true}
           onPress={() => router.push("/netdisk-search")}
         >
           <View style={{ padding: 16 }}>
-            <ThemedText style={{ fontSize: Platform.isTV ? 22 : 18, fontWeight: 'bold' }}>盘搜</ThemedText>
-            <ThemedText style={{ fontSize: Platform.isTV ? 16 : 14, color: '#888', marginTop: 4 }}>
+            <ThemedText style={{ fontSize: 18, fontWeight: 'bold' }}>盘搜</ThemedText>
+            <ThemedText style={{ fontSize: 14, color: '#888', marginTop: 4 }}>
               搜索全网网盘资源（夸克、磁力、百度）
             </ThemedText>
           </View>
@@ -225,7 +225,7 @@ export default function SettingsScreen() {
 
   return (
     <ResponsiveNavigation>
-      <ResponsiveHeader title="设置" showBackButton />
+      <ResponsiveHeader title="设置" showBackButton={false} />
       {renderSettingsContent()}
     </ResponsiveNavigation>
   );

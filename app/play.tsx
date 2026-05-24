@@ -4,6 +4,8 @@ import { StyleSheet, TouchableOpacity, BackHandler, View, ScrollView, Text, Dime
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
 import { useKeepAwake, activateKeepAwakeAsync, deactivateKeepAwakeAsync } from "expo-keep-awake";
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import { PlayerControls } from "@/components/PlayerControls";
@@ -98,7 +100,39 @@ export default function PlayScreen() {
     loadVideo,
     isFullscreen,
     setIsFullscreen,
+    togglePlayPause,
+    seek,
   } = usePlayerStore();
+
+  const gesture = useMemo(() => {
+    const singleTap = Gesture.Tap()
+      .onEnd((_event, success) => {
+        if (success) {
+          runOnJS(onScreenPress)();
+        }
+      });
+
+    const doubleTap = Gesture.Tap()
+      .numberOfTaps(2)
+      .onEnd((_event, success) => {
+        if (success) {
+          runOnJS(togglePlayPause)();
+        }
+      });
+
+    const panGesture = Gesture.Pan()
+      .activeCursor('grabbing')
+      .onEnd((event) => {
+        const { translationX } = event;
+        if (Math.abs(translationX) > 40) {
+          // Adjust progress based on swipe distance: 1px = 200ms (10s per 50px)
+          const seekAmount = translationX * 200;
+          runOnJS(seek)(seekAmount);
+        }
+      });
+
+    return Gesture.Exclusive(doubleTap, singleTap, panGesture);
+  }, [onScreenPress, togglePlayPause, seek]);
 
   // 根据播放状态控制屏幕常亮
   useEffect(() => {
@@ -414,26 +448,28 @@ export default function PlayScreen() {
 
       {/* 视频播放区 */}
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
-        <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
-          {currentEpisode?.url ? (
-            <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-          ) : isLoading ? (
-            <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-          ) : (
-            <View style={styles.loadingContainer}>
-              <Text style={{ color: 'white', marginBottom: 12 }}>无法获取播放链接</Text>
-              <StyledButton
-                text="重试"
-                onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
-              />
-            </View>
-          )}
-          {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
-          <SeekingBar />
-          {currentEpisode?.url && isLoading && (
-            <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
-          )}
-        </TouchableOpacity>
+        <GestureDetector gesture={gesture}>
+          <View style={styles.videoWrapper}>
+            {currentEpisode?.url ? (
+              <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+            ) : isLoading ? (
+              <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+            ) : (
+              <View style={styles.loadingContainer}>
+                <Text style={{ color: 'white', marginBottom: 12 }}>无法获取播放链接</Text>
+                <StyledButton
+                  text="重试"
+                  onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
+                />
+              </View>
+            )}
+            {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
+            <SeekingBar />
+            {currentEpisode?.url && isLoading && (
+              <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
+            )}
+          </View>
+        </GestureDetector>
       </View>
 
       {/* 底部简化的选集 + 换源 - 仅在非全屏显示，方便快速切换 */}
@@ -493,26 +529,28 @@ export default function PlayScreen() {
 
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      <TouchableOpacity activeOpacity={1} style={styles.videoWrapper} onPress={onScreenPress}>
-        {currentEpisode?.url ? (
-          <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-        ) : isLoading ? (
-          <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-        ) : (
-          <View style={styles.loadingContainer}>
-            <Text style={{ color: 'white', marginBottom: 20, fontSize: 24 }}>无法获取播放链接</Text>
-            <StyledButton
-              text="重试"
-              onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
-            />
-          </View>
-        )}
-        {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
-        <SeekingBar />
-        {currentEpisode?.url && isLoading && (
-          <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
-        )}
-      </TouchableOpacity>
+      <GestureDetector gesture={gesture}>
+        <View style={styles.videoWrapper}>
+          {currentEpisode?.url ? (
+            <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+          ) : isLoading ? (
+            <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+          ) : (
+            <View style={styles.loadingContainer}>
+              <Text style={{ color: 'white', marginBottom: 20, fontSize: 24 }}>无法获取播放链接</Text>
+              <StyledButton
+                text="重试"
+                onPress={() => loadVideo({ source: source || '', id: id || '', episodeIndex: initialEpIndex, position, title: title || '' })}
+              />
+            </View>
+          )}
+          {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
+          <SeekingBar />
+          {currentEpisode?.url && isLoading && (
+            <View style={styles.loadingOverlay}><ActivityIndicator size="large" color="#00bb5e" /></View>
+          )}
+        </View>
+      </GestureDetector>
     </ThemedView>
   );
 
