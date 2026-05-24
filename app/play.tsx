@@ -101,38 +101,66 @@ export default function PlayScreen() {
     isFullscreen,
     setIsFullscreen,
     togglePlayPause,
-    seek,
+    seekToPosition,
   } = usePlayerStore();
+
+  // 手势状态暂存
+  const panStartPos = useRef<number>(0);
+  const lastUpdateTime = useRef<number>(0);
 
   const gesture = useMemo(() => {
     const singleTap = Gesture.Tap()
+      .runOnJS(true)
       .onEnd((_event, success) => {
         if (success) {
-          runOnJS(onScreenPress)();
+          onScreenPress();
         }
       });
 
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
+      .runOnJS(true)
       .onEnd((_event, success) => {
         if (success) {
-          runOnJS(togglePlayPause)();
+          togglePlayPause();
         }
       });
 
     const panGesture = Gesture.Pan()
-      .activeCursor('grabbing')
+      .runOnJS(true)
+      .onStart(() => {
+        const state = usePlayerStore.getState();
+        panStartPos.current = state.status?.isLoaded ? state.status.positionMillis : 0;
+      })
+      .onUpdate((event) => {
+        const now = Date.now();
+        // 限流：每 32ms 更新一次 UI（约 30fps）
+        if (now - lastUpdateTime.current < 32) return;
+        lastUpdateTime.current = now;
+
+        const state = usePlayerStore.getState();
+        if (!state.status?.isLoaded || !state.status.durationMillis) return;
+
+        // 计算目标进度：1px = 200ms
+        const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, state.status.durationMillis));
+        const ratio = targetPos / state.status.durationMillis;
+
+        // 仅做轻量状态更新，不触发底层 seek
+        seekToPosition(ratio, false);
+      })
       .onEnd((event) => {
-        const { translationX } = event;
-        if (Math.abs(translationX) > 40) {
-          // Adjust progress based on swipe distance: 1px = 200ms (10s per 50px)
-          const seekAmount = translationX * 200;
-          runOnJS(seek)(seekAmount);
-        }
+        const state = usePlayerStore.getState();
+        if (!state.status?.isLoaded || !state.status.durationMillis) return;
+
+        const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, state.status.durationMillis));
+        const ratio = targetPos / state.status.durationMillis;
+
+        // 松手瞬间：统一交卷，触发真实 seek
+        seekToPosition(ratio, true);
       });
 
     return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap));
-  }, [onScreenPress, togglePlayPause, seek]);
+  }, [onScreenPress, togglePlayPause, seekToPosition]);
 
   // 根据播放状态控制屏幕常亮
   useEffect(() => {

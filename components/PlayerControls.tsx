@@ -91,9 +91,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   };
 
   const [barWidth, setBarWidth] = useState(0);
+  const lastUpdateTime = useRef<number>(0);
 
   const onProgressGesture = useCallback((x: number, isFinalize: boolean) => {
     if (barWidth > 0) {
+      const now = Date.now();
+      // 限流：如果不是最终交卷，且距离上次更新不足 32ms，则跳过 UI 刷新
+      if (!isFinalize && now - lastUpdateTime.current < 32) return;
+      lastUpdateTime.current = now;
+
       const ratio = Math.max(0, Math.min(x / barWidth, 1));
       safeCall(seekToPosition, ratio, isFinalize);
     }
@@ -101,16 +107,17 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
   const progressGesture = useMemo(() => {
     return Gesture.Pan()
+      .runOnJS(true)
       .activateAfterLongPress(0)
       .minDistance(0)
       .onStart((event) => {
-        runOnJS(onProgressGesture)(event.x, false);
+        onProgressGesture(event.x, false);
       })
       .onUpdate((event) => {
-        runOnJS(onProgressGesture)(event.x, false);
+        onProgressGesture(event.x, false);
       })
       .onEnd((event) => {
-        runOnJS(onProgressGesture)(event.x, true);
+        onProgressGesture(event.x, true);
       });
   }, [onProgressGesture]);
 

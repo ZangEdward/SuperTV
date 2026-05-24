@@ -533,6 +533,7 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     const { status, videoRef, isCasting, castingDevice } = get();
     if (!status?.isLoaded || !status.durationMillis) return;
 
+    // 滑动期间只做轻量状态更新
     set({
       isSeeking: true,
       seekPosition: ratio,
@@ -558,8 +559,11 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       if (get()._seekTimeout) {
         clearTimeout(get()._seekTimeout);
       }
-      const timeoutId = setTimeout(() => set({ isSeeking: false }), 1500);
+      const timeoutId = setTimeout(() => set({ isSeeking: false }), 800);
       set({ _seekTimeout: timeoutId });
+
+      // 停止滑动后延迟保存一次记录
+      get()._savePlayRecord({ immediate: true });
     }
   },
 
