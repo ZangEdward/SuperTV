@@ -14,9 +14,7 @@ export interface NetDiskItem {
 }
 
 export interface NetDiskResults {
-  quark: NetDiskItem[];
-  magnet: NetDiskItem[];
-  baidu: NetDiskItem[];
+  [key: string]: NetDiskItem[];
 }
 
 interface NetDiskState {
@@ -31,7 +29,7 @@ interface NetDiskState {
 
 const useNetDiskStore = create<NetDiskState>((set, get) => ({
   keyword: "",
-  results: { quark: [], magnet: [], baidu: [] },
+  results: {},
   loading: false,
   error: null,
 
@@ -47,16 +45,22 @@ const useNetDiskStore = create<NetDiskState>((set, get) => ({
       const response = await api.searchNetDisk(searchKeyword);
       if (response.success && response.data) {
         const merged = response.data.merged_by_type || {};
+
+        // 严格过滤：只保留是非空数组且长度大于0的分类
+        const filteredResults: NetDiskResults = {};
+        Object.keys(merged).forEach(key => {
+          const items = merged[key];
+          if (Array.isArray(items) && items.length > 0) {
+            filteredResults[key] = items;
+          }
+        });
+
         set({
-          results: {
-            quark: merged.quark || [],
-            magnet: merged.magnet || [],
-            baidu: merged.baidu || [],
-          },
+          results: filteredResults,
           loading: false
         });
       } else {
-        set({ error: "未找到结果", loading: false });
+        set({ results: {}, error: "未找到结果", loading: false });
       }
     } catch (e) {
       logger.error("NetDisk search failed:", e);
@@ -64,7 +68,7 @@ const useNetDiskStore = create<NetDiskState>((set, get) => ({
     }
   },
 
-  clearResults: () => set({ results: { quark: [], magnet: [], baidu: [] }, error: null, keyword: "" }),
+  clearResults: () => set({ results: {}, error: null, keyword: "" }),
 }));
 
 export default useNetDiskStore;

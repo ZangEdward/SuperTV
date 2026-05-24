@@ -130,7 +130,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
             downloadProgress: written,
             totalSize: total > 0 ? total : 0
           });
-        }
+        },
+        get().totalSize // 传入总大小以开启多线程
       );
 
       set((state) => ({

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Linking, FlatList, Clipboard, Platform } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -19,10 +19,19 @@ import { useRouter } from "expo-router";
 
 export default function NetDiskSearchScreen() {
   const { keyword, results, loading, error, setKeyword, search } = useNetDiskStore();
-  const [activeTab, setActiveTab] = useState<'quark' | 'magnet' | 'baidu'>('quark');
+  const [activeTab, setActiveTab] = useState<string>('');
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const router = useRouter();
+
+  // 当结果更新时，如果没有选中的 Tab 或当前 Tab 已失效，默认选中第一个
+  useEffect(() => {
+    const keys = Object.keys(results);
+    if (keys.length > 0 && (!activeTab || !results[activeTab])) {
+      setActiveTab(keys[0]);
+    }
+  }, [results, activeTab]);
+
   const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
   const { remoteInputEnabled } = useSettingsStore();
 
@@ -64,6 +73,19 @@ export default function NetDiskSearchScreen() {
     Toast.show({ type: 'success', text1: '已复制到剪贴板' });
   };
 
+  const getTypeName = (type: string) => {
+    const map: Record<string, string> = {
+      quark: '夸克',
+      magnet: '磁力',
+      baidu: '百度',
+      aliyun: '阿里',
+      xunlei: '迅雷',
+      pikpak: 'PikPak',
+      uc: 'UC',
+    };
+    return map[type] || type.toUpperCase();
+  };
+
   const renderItem = ({ item }: { item: NetDiskItem }) => (
     <View style={styles.resultCard}>
       <View style={styles.cardHeader}>
@@ -92,7 +114,8 @@ export default function NetDiskSearchScreen() {
     </View>
   );
 
-  const currentData = results[activeTab];
+  const currentData = activeTab ? results[activeTab] || [] : [];
+  const tabs = Object.keys(results);
 
   return (
     <ResponsiveNavigation>
@@ -106,7 +129,6 @@ export default function NetDiskSearchScreen() {
         }
       />
       <ThemedView style={[commonStyles.container, { paddingTop: deviceType === 'tv' ? 20 : 0 }]}>
-        {/* 搜索栏 */}
         <View style={styles.searchBar}>
           <TouchableOpacity
             activeOpacity={1}
@@ -135,40 +157,29 @@ export default function NetDiskSearchScreen() {
           )}
         </View>
 
-        {/* 分类标签 */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'quark' && styles.activeTab]}
-            onPress={() => setActiveTab('quark')}
-          >
-            <ThemedText style={[styles.tabText, activeTab === 'quark' && styles.activeTabText]}>
-              夸克 ({results.quark.length})
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'magnet' && styles.activeTab]}
-            onPress={() => setActiveTab('magnet')}
-          >
-            <ThemedText style={[styles.tabText, activeTab === 'magnet' && styles.activeTabText]}>
-              磁力 ({results.magnet.length})
-            </ThemedText>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'baidu' && styles.activeTab]}
-            onPress={() => setActiveTab('baidu')}
-          >
-            <ThemedText style={[styles.tabText, activeTab === 'baidu' && styles.activeTabText]}>
-              百度 ({results.baidu.length})
-            </ThemedText>
-          </TouchableOpacity>
-        </View>
+        {tabs.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
+            <View style={styles.tabContainer}>
+              {tabs.map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, activeTab === tab && styles.activeTab]}
+                  onPress={() => setActiveTab(tab)}
+                >
+                  <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                    {getTypeName(tab)} ({results[tab].length})
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        )}
 
-        {/* 结果列表 */}
         {loading ? (
           <VideoLoadingAnimation />
         ) : error ? (
           <View style={styles.centerBox}><ThemedText style={{ color: '#888' }}>{error}</ThemedText></View>
-        ) : currentData.length === 0 ? (
+        ) : tabs.length === 0 ? (
           <View style={styles.centerBox}><ThemedText style={{ color: '#888' }}>暂无结果</ThemedText></View>
         ) : (
           <FlatList
@@ -211,17 +222,23 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 8,
   },
+  tabScroll: {
+    maxHeight: 50,
+    marginBottom: 8,
+  },
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    marginBottom: 12,
     gap: 12,
+    height: 40,
   },
   tab: {
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
     backgroundColor: '#1c1c1e',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   activeTab: {
     backgroundColor: Colors.dark.primary,
@@ -275,10 +292,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     minHeight: 36,
     gap: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionText: {
     fontSize: 12,
     fontWeight: 'bold',
+    color: Colors.dark.primary,
   },
   centerBox: {
     flex: 1,

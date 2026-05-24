@@ -1,7 +1,7 @@
 // UpdateService.ts
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
-// import * as Device from 'expo-device';
+import RNFetchBlob from 'react-native-blob-util';
 import Toast from 'react-native-toast-message';
 import { version as currentVersion } from '../package.json';
 import { UPDATE_CONFIG } from '../constants/UpdateConfig';
@@ -41,7 +41,7 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  1️⃣ 远程版本检查（保持不变，只是把 fetch 包装成 async/await）
+   *  1️⃣ 远程版本检查
    * --------------------------------------------------------------- */
   async checkVersion(): Promise<VersionInfo> {
     if (!UPDATE_CONFIG) {
@@ -57,7 +57,6 @@ class UpdateService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
-        // 并行获取 package.json 和 apksize.json
         const [pkgRes, sizeRes] = await Promise.all([
           fetch(pkgUrl, { signal: controller.signal }),
           fetch(sizeUrl, { signal: controller.signal }).catch(() => null),
@@ -111,15 +110,15 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  2️⃣ 清理旧的 APK 文件（使用 expo-file-system 的 API）
+   *  2️⃣ 清理旧的 APK 文件
    * --------------------------------------------------------------- */
   private async cleanOldApkFiles(): Promise<void> {
     try {
-      if (!FileSystem || !FileSystem.documentDirectory) {
-        logger.warn('FileSystem or documentDirectory is not available');
+      if (!FileSystem || !FileSystem.cacheDirectory) {
+        logger.warn('FileSystem or cacheDirectory is not available');
         return;
       }
-      const dirUri = FileSystem.documentDirectory;
+      const dirUri = FileSystem.cacheDirectory;
       const listing = await FileSystem.readDirectoryAsync(dirUri);
       const apkFiles = listing.filter(name => name.startsWith('SuperTV_v') && name.endsWith('.apk'));
 
@@ -128,10 +127,10 @@ class UpdateService {
       const sorted = apkFiles.sort((a, b) => {
         const numA = parseInt(a.replace(/[^0-9]/g, ''), 10);
         const numB = parseInt(b.replace(/[^0-9]/g, ''), 10);
-        return numB - numA; // 倒序（最新在前）
+        return numB - numA;
       });
 
-      const stale = sorted.slice(2); // 保留最新的两个
+      const stale = sorted.slice(2);
       for (const file of stale) {
         const path = `${dirUri}${file}`;
         try {
@@ -147,42 +146,67 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  3️⃣ 下载 APK（使用 expo-file-system 的下载 API）
+   *  3️⃣ 下载 APK（支持多线程下载）
    * --------------------------------------------------------------- */
   async downloadApk(
     url: string,
     onProgress?: (written: number, total: number) => void,
+    totalSize?: number
   ): Promise<string> {
     const maxRetries = 3;
     await this.cleanOldApkFiles();
 
-    let fileUri: string | null = null;
-    let downloadResumable: FileSystem.DownloadResumable | null = null;
+    const timestamp = Date.now();
+    const fileName = `SuperTV_v${timestamp}.apk`;
+    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+    const filePath = fileUri.replace('file://', '');
 
+    // 尝试多线程下载 (4线程)
+    if (totalSize && totalSize > 5 * 1024 * 1024) {
+      try {
+        logger.info(`Starting multi-threaded download for APK: ${url}, size: ${totalSize}`);
+        const segments = 4;
+        const segmentSize = Math.ceil(totalSize / segments);
+        const parts: string[] = [];
+
+        await Promise.all(
+          Array.from({ length: segments }).map(async (_, i) => {
+            const start = i * segmentSize;
+            const end = i === segments - 1 ? totalSize - 1 : (i + 1) * segmentSize - 1;
+            const partPath = `${filePath}.part${i}`;
+            parts.push(partPath);
+
+            await RNFetchBlob.config({ path: partPath })
+              .fetch('GET', url, {
+                Range: `bytes=${start}-${end}`,
+                'User-Agent': 'SuperTV-Updater/1.0'
+              });
+          })
+        );
+
+        // 合并文件
+        await RNFetchBlob.fs.createFile(filePath, '', 'utf8');
+        for (const part of parts) {
+          await RNFetchBlob.fs.appendFile(filePath, part, 'uri');
+          await RNFetchBlob.fs.unlink(part);
+        }
+
+        if (onProgress) onProgress(totalSize, totalSize);
+        return fileUri;
+      } catch (e) {
+        logger.warn('Multi-threaded download failed, falling back to standard download', e);
+      }
+    }
+
+    // 标准下载回退
+    let downloadResumable: FileSystem.DownloadResumable | null = null;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const timestamp = Date.now();
-        const fileName = `SuperTV_v${timestamp}.apk`;
-        fileUri = `${FileSystem.documentDirectory}${fileName}`;
-
-        // Try to resolve the final download URL (follow redirects) and validate headers
         let finalUrl = url;
         try {
           const probe = await fetch(url, { method: 'HEAD' });
-          if (probe && probe.ok && probe.url) {
-            finalUrl = probe.url;
-          }
-        } catch (e) {
-          logger.warn('Failed to probe download URL via HEAD, retrying GET probe', e);
-          try {
-            const probe = await fetch(url, { method: 'GET' });
-            if (probe && probe.ok && probe.url) {
-              finalUrl = probe.url;
-            }
-          } catch (inner) {
-            logger.warn('Failed to probe download URL via GET, proceeding with original URL', inner);
-          }
-        }
+          if (probe && probe.ok && probe.url) finalUrl = probe.url;
+        } catch (e) {}
 
         const headers = {
           Accept: 'application/vnd.android.package-archive, application/octet-stream, */*',
@@ -211,22 +235,8 @@ class UpdateService {
         }
       } catch (e) {
         this.currentDownloadResumable = null;
-        if (fileUri) {
-          try {
-            await FileSystem.deleteAsync(fileUri, { idempotent: true });
-          } catch (cleanupError) {
-            logger.warn('cleanup failed after download error', cleanupError);
-          }
-        }
         logger.warn(`downloadApk attempt ${attempt}/${maxRetries}`, e);
-        if (attempt === maxRetries) {
-          Toast.show({
-            type: 'error',
-            text1: '下载失败',
-            text2: 'APK 下载出现错误，请检查网络',
-          });
-          throw e;
-        }
+        if (attempt === maxRetries) throw e;
         await new Promise(r => setTimeout(r, 3_000 * attempt));
       }
     }
@@ -234,47 +244,46 @@ class UpdateService {
   }
 
   /** --------------------------------------------------------------
-   *  4️⃣ 安装 APK（只在 Android 可用，使用 expo-intent-launcher）
+   *  4️⃣ 安装 APK
    * --------------------------------------------------------------- */
   async installApk(fileUri: string): Promise<void> {
     try {
-      // ① 先确认文件存在
       const exists = await FileSystem.getInfoAsync(fileUri);
       if (!exists.exists) {
-        throw new Error(`APK not found at ${fileUri}`);
+        throw new Error(`安装包文件不存在: ${fileUri}`);
       }
 
-      // ② 只在 Android 里执行
       if (Platform.OS === 'android') {
-        // 把 file:// 转成 content://
         const contentUri = await FileSystem.getContentUriAsync(fileUri);
+        const flags = 1 | 0x10000000 | 0x04000000;
 
-        // Intent.FLAG_GRANT_READ_URI_PERMISSION = 1
-        // Intent.FLAG_ACTIVITY_NEW_TASK = 0x10000000
-        const flags = 1 | 0x10000000;
-
-        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-          data: contentUri,
-          type: ANDROID_MIME_TYPE,
-          flags: flags,
-        });
+        try {
+          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            type: ANDROID_MIME_TYPE,
+            flags: flags,
+          });
+        } catch (launcherError) {
+          await IntentLauncher.startActivityAsync('android.intent.action.INSTALL_PACKAGE', {
+            data: contentUri,
+            type: ANDROID_MIME_TYPE,
+            flags: 1,
+          });
+        }
       } else {
-        throw new Error('APK install not supported on this platform');
+        throw new Error('当前平台不支持 APK 安装');
       }
     } catch (e: any) {
       logger.error('installApk error', e);
       Toast.show({
         type: 'error',
-        text1: '安装失败',
-        text2: e.message || '未知错误',
+        text1: '无法唤起安装程序',
+        text2: e.message || '请手动在文件管理器中安装',
       });
       throw e;
     }
   }
 
-  /** --------------------------------------------------------------
-   *  5️⃣ 版本比对工具（保持原来的实现）
-   * --------------------------------------------------------------- */
   compareVersions(v1: string, v2: string): number {
     const p1 = v1.split('.').map(Number);
     const p2 = v2.split('.').map(Number);
@@ -294,5 +303,4 @@ class UpdateService {
   }
 }
 
-/* 单例导出 */
 export default UpdateService.getInstance();

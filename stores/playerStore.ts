@@ -78,6 +78,9 @@ interface PlayerState {
   // Internal helper
   _savePlayRecord: (updates?: Partial<PlayRecord>, options?: { immediate?: boolean }) => void;
   handleVideoError: (errorType: 'ssl' | 'network' | 'other', failedUrl: string) => Promise<void>;
+
+  // 多线程下载相关 (内部)
+  _downloadSegments: (url: string, dest: string, totalSize: number, onProgress: any) => Promise<void>;
 }
 
 const usePlayerStore = create<PlayerState>((set, get) => ({
