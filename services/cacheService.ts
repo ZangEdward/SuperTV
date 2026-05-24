@@ -210,7 +210,7 @@ export class CacheService {
   }
 
   /**
-   * 下载单个 TS 片段，带自动重试和指数退避
+   * 下载单个 TS 片段，保存到磁盘临时文件并返回文件路径
    */
   private static async downloadSegment(
     url: string,
@@ -262,7 +262,7 @@ export class CacheService {
           fetchHeaders['Origin'] = origin;
         }
 
-        // 使用 RNFetchBlob 下载到指定的临时文件（位于应用数据目录中）
+        // 1. 直接下载到指定的临时磁盘文件
         const res = await RNFetchBlob.config({
           path: normalizedTempPath,
           timeout: 60000,
@@ -278,8 +278,9 @@ export class CacheService {
           throw new Error(`HTTP ${status}`);
         }
 
-        try {
-          if (encryption) {
+        // 2. 如果有加密，执行磁盘文件解密（直接读写文件，不长期驻留内存）
+        if (encryption) {
+          try {
             const b64 = await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
             const contentWordArray = CryptoJS.enc.Base64.parse(b64);
 
@@ -295,13 +296,17 @@ export class CacheService {
                 padding: CryptoJS.pad.Pkcs7,
               }
             );
-            return CryptoJS.enc.Base64.stringify(decrypted);
-          } else {
-            return await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
+
+            // 将解密后的数据写回临时文件（磁盘同步）
+            await RNFetchBlob.fs.writeFile(normalizedTempPath, CryptoJS.enc.Base64.stringify(decrypted), 'base64');
+          } catch (decryptErr) {
+            logger.error(`Decryption failed for segment ${index}`, decryptErr);
+            throw decryptErr;
           }
-        } finally {
-          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
         }
+
+        // 返回分片的本地路径
+        return normalizedTempPath;
       } catch (err: any) {
         lastError = err;
         await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
@@ -655,7 +660,7 @@ export class CacheService {
     itemId?: string,
     signal?: AbortSignal,
     progressCb?: (progress: number, completedCount: number) => void,
-    options: { resumeIndex?: number; adFilter?: boolean } = {}
+    options: { resumeIndex?: number; adFilter?: boolean; concurrency?: number } = {}
   ): Promise<string> {
     const start = Date.now();
     let resumeIndex = options.resumeIndex || 0;
@@ -787,8 +792,11 @@ export class CacheService {
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
 
-      const CONCURRENCY = 4; // 提高并发数，加速下载
+      const CONCURRENCY = 2; // 默认并发数
       let completedCount = resumeIndex;
+
+      // 允许通过 options 覆盖并发数 (例如由 store 传入)
+      const poolSize = options.concurrency || CONCURRENCY;
 
       // 修复：react-native-blob-util 在某些版本上对 file:// 前缀处理不一
       let normalizedDestPath = destinationPath;
@@ -802,7 +810,7 @@ export class CacheService {
       const writeStream = await RNFetchBlob.fs.writeStream(normalizedDestPath, 'base64', resumeIndex > 0);
 
       const resultsBuffer: { [index: number]: string } = {};
-      const BUFFER_LIMIT = 6; // 限制缓冲中最大未写入片段数
+      const BUFFER_LIMIT = 10; // 磁盘缓存模式下可以容纳更多待写入的文件路径
       let nextIndexToWrite = resumeIndex;
       let isWriting = false;
       let writeError: Error | null = null;
@@ -812,17 +820,24 @@ export class CacheService {
         isWriting = true;
         try {
           while (resultsBuffer[nextIndexToWrite] !== undefined && !writeError) {
-            const data = resultsBuffer[nextIndexToWrite];
+            const segmentFilePath = resultsBuffer[nextIndexToWrite];
+
+            // 从磁盘读取当前分片，并追加写入主文件
+            const data = await RNFetchBlob.fs.readFile(segmentFilePath, 'base64');
             if (data) {
               await writeStream.write(data);
             }
+
+            // 写入完成后立即删除磁盘上的临时分片，释放空间
+            await RNFetchBlob.fs.unlink(segmentFilePath).catch(() => {});
+
             delete resultsBuffer[nextIndexToWrite];
             nextIndexToWrite++;
             completedCount++;
             progressCb?.(completedCount / total, completedCount);
           }
         } catch (err) {
-          logger.error("Sequentially writing failed", err);
+          logger.error("Sequentially writing from disk failed", err);
           writeError = err as Error;
         } finally {
           isWriting = false;
@@ -841,23 +856,22 @@ export class CacheService {
           const segUrl = segmentUrls[index];
           const encryption = encryptionKey && encryptionIV ? { key: encryptionKey, iv: encryptionIV } : null;
 
-          // 传参 retryCount=5，减少总等待时间
-          const b64 = await CacheService.downloadSegment(segUrl, index, encryption, 5, taskId);
-          resultsBuffer[index] = b64;
+          // 下载分片并保存到磁盘路径
+          const segmentPath = await CacheService.downloadSegment(segUrl, index, encryption, 5, taskId);
+          resultsBuffer[index] = segmentPath;
 
-          // 触发顺序写入
+          // 触发顺序合并
           await flushWriter();
 
-          // 如果缓冲区堆积超出限制，等待写入完成
+          // 磁盘缓存模式下，依然限制结果队列大小，防止下载过快导致大量分片堆积在磁盘
           while (Object.keys(resultsBuffer).length > BUFFER_LIMIT && !writeError && !mergeSignal.aborted) {
             await new Promise(r => setTimeout(r, 100));
             await flushWriter();
           }
         } catch (err) {
-          // 如果是写入错误或下载最终失败，提前终止整个下载
           if (!writeError) {
             writeError = err as Error;
-            logger.error(`片段 ${index} 下载/写入失败，终止下载并等待后续断点续传:`, err);
+            logger.error(`片段 ${index} 处理失败 (磁盘缓存模式):`, err);
             activeTask.controller.abort();
           }
           throw err;
@@ -868,8 +882,8 @@ export class CacheService {
       const indices = Array.from({ length: total - resumeIndex }, (_, i) => i + resumeIndex);
       const executePool = async () => {
         const workers = [];
-        const poolSize = Math.min(CONCURRENCY, indices.length);
-        for (let i = 0; i < poolSize; i++) {
+        const actualPoolSize = Math.min(poolSize, indices.length);
+        for (let i = 0; i < actualPoolSize; i++) {
           workers.push((async () => {
             while (indices.length > 0 && !mergeSignal.aborted) {
               const idx = indices.shift();

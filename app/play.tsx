@@ -106,7 +106,7 @@ export default function PlayScreen() {
   };
 
   // ---------------------------
-  // 修复后的手势（Simultaneous + maxDuration）
+  // 修复后的手势（YouTube 风格：双击前进/后退 + 滑动调节 + 单击显隐控制）
   // ---------------------------
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
@@ -128,15 +128,20 @@ export default function PlayScreen() {
         .numberOfTaps(2)
         .maxDuration(250)
         .runOnJS(true)
-        .onEnd(() => {
-          const { togglePlayPause } = usePlayerStore.getState();
-          if (typeof togglePlayPause === 'function') {
-            togglePlayPause();
+        .onEnd((e) => {
+          const { seek, status } = usePlayerStore.getState();
+          if (!status?.isLoaded) return;
+
+          // YouTube 风格：双击左侧后退 10s，双击右侧前进 10s
+          // e.x 是相对于手势容器的点击位置
+          const isRightSide = e.x > 250;
+          if (typeof seek === 'function') {
+            seek(isRightSide ? 10000 : -10000);
           }
         });
 
       const panGesture = Gesture.Pan()
-        .minDist(10)
+        .minDist(20) // 增加起始距离以防误触
         .runOnJS(true)
         .onStart(() => {
           const s = usePlayerStore.getState();
@@ -146,7 +151,7 @@ export default function PlayScreen() {
           const s = usePlayerStore.getState();
           if (!s.status?.durationMillis) return;
           const duration = s.status.durationMillis;
-          // [FIX] 灵敏度调整为 1px = 200ms
+          // 灵敏度 1px = 200ms
           const target = Math.max(
             0,
             Math.min(panStartPos.current + e.translationX * 200, duration)
@@ -168,10 +173,12 @@ export default function PlayScreen() {
           }
         });
 
-      return Gesture.Simultaneous(
-        panGesture,
-        Gesture.Exclusive(doubleTap, singleTap)
-      ).runOnJS(true);
+      // 组合手势逻辑：
+      // 1. DoubleTap 和 SingleTap 是互斥的 (Exclusive)，双击优先
+      // 2. PanGesture 和 Tap 可以同时识别 (Simultaneous)，允许滑动
+      const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
+
+      return Gesture.Simultaneous(tapGestures, panGesture).runOnJS(true);
     } catch (err) {
       console.warn("gesture init failed:", err);
       return null;

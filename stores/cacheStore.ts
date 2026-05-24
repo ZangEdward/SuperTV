@@ -74,7 +74,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
   currentDownloadId: null,
   downloadProgress: {},
   queue: [],
-  concurrency: 2,
+  concurrency: 1, // 降低默认并发数，减少 CPU 消耗
   activeCount: 0,
 
   setConcurrency: (value) => {
@@ -209,7 +209,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
           }
         }, {
           resumeIndex: ep.completedCount || 0,
-          adFilter: downloadAdFilterEnabled
+          adFilter: downloadAdFilterEnabled,
+          concurrency: 2 // 内部 M3U8 分片并发
         });
         delete (get() as any)._controllers[itemId];
       } else {
