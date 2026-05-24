@@ -13,7 +13,7 @@ const CONTROLS_TIMEOUT = 5000;
  * @returns onScreenPress - 一个函数，用于处理屏幕点击事件，以显示控件并重置定时器。
  */
 export const useTVRemoteHandler = () => {
-  const { showControls, setShowControls, showEpisodeModal, togglePlayPause, seek } = usePlayerStore();
+  const { showControls, setShowControls, showEpisodeModal } = usePlayerStore();
   const { deviceType } = useResponsiveLayout();
 
   const showControlsRef = useRef(showControls);
@@ -38,9 +38,10 @@ export const useTVRemoteHandler = () => {
     }
     // 设置新的定时器
     controlsTimer.current = setTimeout(() => {
-      setShowControls?.(false);
+      const { setShowControls } = usePlayerStore.getState();
+      if (typeof setShowControls === 'function') setShowControls(false);
     }, CONTROLS_TIMEOUT);
-  }, [setShowControls]);
+  }, []);
 
   // 当控件显示时，启动定时器
   useEffect(() => {
@@ -96,27 +97,38 @@ export const useTVRemoteHandler = () => {
 
       switch (event.eventType) {
         case "select":
-          togglePlayPause?.();
+          {
+            const { togglePlayPause } = usePlayerStore.getState();
+            if (typeof togglePlayPause === 'function') togglePlayPause();
+          }
           setShowControls?.(true);
           break;
         case "left":
-          seek?.(-SEEK_STEP); // 快退
+          {
+            const { seek } = usePlayerStore.getState();
+            if (typeof seek === 'function') seek(-SEEK_STEP);
+          }
           break;
         case "longLeft":
           if (!fastForwardIntervalRef.current && event.eventKeyAction === 0) {
             fastForwardIntervalRef.current = setInterval(() => {
-              seek?.(-SEEK_STEP);
+              const { seek } = usePlayerStore.getState();
+              if (typeof seek === 'function') seek(-SEEK_STEP);
             }, 200);
           }
           break;
         case "right":
-          seek?.(SEEK_STEP);
+          {
+            const { seek } = usePlayerStore.getState();
+            if (typeof seek === 'function') seek(SEEK_STEP);
+          }
           break;
         case "longRight":
           // 长按开始: 启动连续快进
           if (!fastForwardIntervalRef.current && event.eventKeyAction === 0) {
             fastForwardIntervalRef.current = setInterval(() => {
-              seek?.(SEEK_STEP);
+              const { seek } = usePlayerStore.getState();
+              if (typeof seek === 'function') seek(SEEK_STEP);
             }, 200);
           }
           break;

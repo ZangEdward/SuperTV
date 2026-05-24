@@ -175,15 +175,28 @@ export default function PlayScreen() {
     setGestureEnabled(!!gesture);
   }, [gesture]);
 
+  // ========== 修复：keepAwake 安全调用 ==========
   useEffect(() => {
-    try {
-      if (playbackStatus?.isLoaded && playbackStatus?.isPlaying) {
-        activateKeepAwakeAsync().catch(() => {});
-      } else {
+    const doKeepAwake = async () => {
+      try {
+        if (playbackStatus?.isLoaded && playbackStatus?.isPlaying) {
+          if (typeof activateKeepAwakeAsync === 'function') {
+            await activateKeepAwakeAsync();
+          }
+        } else {
+          if (typeof deactivateKeepAwakeAsync === 'function') {
+            await deactivateKeepAwakeAsync();
+          }
+        }
+      } catch (e) {}
+    };
+    doKeepAwake();
+
+    return () => {
+      if (typeof deactivateKeepAwakeAsync === 'function') {
         deactivateKeepAwakeAsync().catch(() => {});
       }
-    } catch (e) {}
-    return () => deactivateKeepAwakeAsync().catch(() => {});
+    };
   }, [playbackStatus?.isLoaded, playbackStatus?.isPlaying]);
 
   const currentEpisode = usePlayerStore(selectCurrentEpisode);
@@ -225,14 +238,15 @@ export default function PlayScreen() {
     }
   }, []);
 
+  // ========== 修复：清理时屏幕方向安全调用 ==========
   useEffect(() => {
     return () => {
       reset?.();
-      if (isMobile) {
+      if (isMobile && typeof ScreenOrientation?.lockAsync === 'function') {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
       }
     };
-  }, []);
+  }, [isMobile]); // 依赖 isMobile 确保闭包最新
 
   useEffect(() => {
     if (!isLocalFile && !detail && !detailLoading && !detailError) {
@@ -245,6 +259,7 @@ export default function PlayScreen() {
     }
   }, [detail, detailLoading, detailError, isLocalFile]);
 
+  // ========== 修复：BackHandler 中屏幕方向安全调用 ==========
   useEffect(() => {
     const backAction = () => {
       if (showCastModal) {
@@ -252,7 +267,9 @@ export default function PlayScreen() {
         return true;
       }
       if (isFullscreen) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        if (typeof ScreenOrientation?.lockAsync === 'function') {
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        }
         setIsFullscreen?.(false);
         return true;
       }
@@ -265,7 +282,7 @@ export default function PlayScreen() {
     };
     BackHandler.addEventListener("hardwareBackPress", backAction);
     return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
-  }, [showControls, showCastModal, isFullscreen]);
+  }, [showControls, showCastModal, isFullscreen, deviceType, router, setShowCastModal, setIsFullscreen, setShowControls]);
 
   const episodes = useMemo(() => {
     if (!detail || !Array.isArray(detail.episodes)) return [];
