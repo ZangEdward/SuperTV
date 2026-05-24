@@ -3,6 +3,7 @@ import { SearchResult, api } from "@/services/api";
 import { getResolutionFromM3U8 } from "@/services/m3u8";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { FavoriteManager } from "@/services/storage";
+import { SpeedTestService } from "@/services/speedTestService";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
@@ -10,6 +11,7 @@ const logger = Logger.withTag('DetailStore');
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
   latency?: number;
+  speed?: number;
 };
 
 interface DetailState {
@@ -208,18 +210,49 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   optimizeSources: async () => {
-    const { testSourceSpeeds, sourceLatencies } = useSettingsStore.getState();
-    await testSourceSpeeds();
+    const { searchResults, controller } = get();
+    if (searchResults.length === 0) return;
+
+    // 使用当前控制器的 signal，支持取消
+    const signal = controller?.signal;
+
+    // 并发对所有源的第一集进行深度测速
+    const results = await Promise.all(
+      searchResults.map(async (item) => {
+        // 优先使用已加载的 episodes，如果没有则尝试获取
+        let episodes = item.episodes;
+        if (!episodes || episodes.length === 0) {
+            try {
+                const detail = await api.getVideoDetail(item.source, item.id.toString());
+                episodes = detail.episodes || [];
+            } catch {
+                return { source: item.source, latency: Infinity, speed: 0 };
+            }
+        }
+
+        if (episodes.length === 0) return { source: item.source, latency: Infinity, speed: 0 };
+
+        // 测试第一集
+        const testUrl = episodes[0];
+        const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+        return { source: item.source, ...metrics };
+      })
+    );
 
     set((state) => {
-      const updatedResults = state.searchResults.map(result => ({
-        ...result,
-        latency: sourceLatencies[result.source] ?? result.latency
-      }));
+      const updatedResults = state.searchResults.map(result => {
+        const metric = results.find(r => r.source === result.source);
+        return {
+          ...result,
+          latency: metric?.latency ?? result.latency,
+          speed: metric?.speed ?? result.speed
+        };
+      });
 
       const finalResults = updatedResults.sort((a, b) => {
-        if (b.episodes.length !== a.episodes.length) {
-          return b.episodes.length - a.episodes.length;
+        // 速度优先，延迟其次
+        if (a.speed !== b.speed) {
+            return (b.speed || 0) - (a.speed || 0);
         }
         return (a.latency || Infinity) - (b.latency || Infinity);
       });
@@ -231,7 +264,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
           source_name: r.source_name,
           resolution: r.resolution,
         })),
-        // Update detail if current one is now considered "slow" or if we want to reprioritize
+        // 自动切换到测速最快的源
         detail: finalResults[0] || state.detail
       };
     });

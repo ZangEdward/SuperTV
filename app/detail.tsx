@@ -14,6 +14,7 @@ import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowUpDown, Zap, Info, List, Server, Cpu } from "lucide-react-native";
 import { Colors } from "@/constants/Colors";
+import { SpeedTestService } from "@/services/speedTestService";
 import useCacheStore from "@/stores/cacheStore";
 
 export default function DetailScreen() {
@@ -262,6 +263,7 @@ export default function DetailScreen() {
                             <Text style={styles.sourceMeta}>
                               {item.episodes.length} 集 · {item.resolution || '自动'}
                               {item.latency !== undefined && item.latency !== Infinity ? ` · ${Math.round(item.latency)}ms` : ''}
+                              {item.speed !== undefined && item.speed > 0 ? ` · ${SpeedTestService.formatSpeed(item.speed)}` : ''}
                             </Text>
                           </View>
                           {isSelected && <Zap size={14} color={Colors.dark.primary} />}
@@ -327,7 +329,15 @@ export default function DetailScreen() {
                 isSelected={detail.source === item.source}
                 style={styles.tvSourceBtn}
               >
-                <Text style={styles.tvSourceBtnText}>{item.source_name}</Text>
+                <View style={{ alignItems: 'center' }}>
+                    <Text style={styles.tvSourceBtnText}>{item.source_name}</Text>
+                    {(item.latency !== undefined || item.speed !== undefined) && (
+                        <Text style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
+                            {item.latency !== undefined && item.latency !== Infinity ? `${Math.round(item.latency)}ms` : ''}
+                            {item.speed !== undefined && item.speed > 0 ? ` · ${SpeedTestService.formatSpeed(item.speed)}` : ''}
+                        </Text>
+                    )}
+                </View>
               </StyledButton>
             ))}
           </ScrollView>

@@ -193,7 +193,7 @@ export default function LiveScreen() {
   );
 
   const content = (
-    <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
+    <ThemedView style={[commonStyles.container, dynamicStyles.container, deviceType === 'tv' && { backgroundColor: 'black' }]}>
       {renderLiveContent()}
     </ThemedView>
   );

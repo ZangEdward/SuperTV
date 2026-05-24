@@ -217,8 +217,8 @@ export default function HomeScreen() {
     }
 
     return (
-      <View style={dynamicStyles.headerContainer}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <View style={dynamicStyles.headerContainer} pointerEvents="box-none">
+        <View style={{ flexDirection: "row", alignItems: "center" }} pointerEvents="box-none">
           <StyledButton
             variant="ghost"
             isSelected={true}
@@ -229,7 +229,8 @@ export default function HomeScreen() {
           />
           <StyledButton
             ref={liveButtonRef}
-            nextFocusRight={findNodeHandle(favoritesButtonRef.current)}
+            nativeID="live_btn"
+            nextFocusRight={findNodeHandle(favoritesButtonRef.current) || undefined}
             variant="ghost"
             isSelected={false}
             text="直播"
@@ -237,10 +238,11 @@ export default function HomeScreen() {
             onPress={() => router.push("/live")}
           />
         </View>
-        <View style={dynamicStyles.rightHeaderButtons}>
+        <View style={dynamicStyles.rightHeaderButtons} pointerEvents="box-none">
           <StyledButton
             ref={favoritesButtonRef}
-            nextFocusLeft={findNodeHandle(liveButtonRef.current)}
+            nativeID="fav_btn"
+            nextFocusLeft={findNodeHandle(liveButtonRef.current) || undefined}
             style={dynamicStyles.iconButton}
             onPress={() => router.push("/favorites")}
             variant="ghost"
@@ -248,17 +250,28 @@ export default function HomeScreen() {
             <Heart color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
           <StyledButton
+            nativeID="search_btn"
             style={dynamicStyles.iconButton}
             onPress={() => router.push({ pathname: "/search" })}
             variant="ghost"
           >
             <Search color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
-          <StyledButton style={dynamicStyles.iconButton} onPress={() => router.push("/settings")} variant="ghost">
+          <StyledButton
+            nativeID="settings_btn"
+            style={dynamicStyles.iconButton}
+            onPress={() => router.push("/settings")}
+            variant="ghost"
+          >
             <Settings color={colorScheme === "dark" ? "white" : "black"} size={24} />
           </StyledButton>
           {isLoggedIn && (
-            <StyledButton style={dynamicStyles.iconButton} onPress={logout} variant="ghost">
+            <StyledButton
+              nativeID="logout_btn"
+              style={dynamicStyles.iconButton}
+              onPress={logout}
+              variant="ghost"
+            >
               <LogOut color={colorScheme === "dark" ? "white" : "black"} size={24} />
             </StyledButton>
           )}

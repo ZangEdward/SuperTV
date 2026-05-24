@@ -324,7 +324,7 @@ export default function PlayScreen() {
   // 如果初始化失败（detail为null且无法获取），显示错误页面
   if (!isLocalFile && !detail && isInitFailed) {
     return (
-      <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#151718' }]}>
+      <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: deviceType === 'tv' ? 'black' : '#151718' }]}>
         <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
           <Text style={{ color: '#ff4444', fontSize: 18, marginBottom: 12, fontWeight: '600' }}>无法加载播放源</Text>
           <Text style={{ color: '#aaa', fontSize: 14, marginBottom: 24, textAlign: 'center', lineHeight: 20 }}>
@@ -356,7 +356,7 @@ export default function PlayScreen() {
   if (!isLocalFile && (!detail || !isDetailMatching)) {
     if (detailError) {
       return (
-        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#151718' }]}>
+        <ThemedView style={[styles.tvContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: deviceType === 'tv' ? 'black' : '#151718' }]}>
           <Text style={{ color: 'white', marginBottom: 20, fontSize: 16 }}>{detailError}</Text>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
@@ -380,7 +380,7 @@ export default function PlayScreen() {
     }
 
     return (
-      <ThemedView style={[styles.tvContainer, { backgroundColor: '#151718', justifyContent: 'center', alignItems: 'center' }]}>
+      <ThemedView style={[styles.tvContainer, { backgroundColor: deviceType === 'tv' ? 'black' : '#151718', justifyContent: 'center', alignItems: 'center' }]}>
         <VideoLoadingAnimation showProgressBar />
         {/* TV端需要一个焦点元素防止切换页面时崩溃 */}
         {deviceType === 'tv' && (
@@ -517,7 +517,7 @@ export default function PlayScreen() {
   );
 
   return (
-    <ThemedView style={{ flex: 1, backgroundColor: '#151718' }}>
+    <ThemedView style={{ flex: 1, backgroundColor: (isFullscreen || deviceType === 'tv') ? 'black' : '#151718' }}>
       <StatusBar hidden={isFullscreen ? !showControls : false} animated={true} />
       {deviceType === 'tv' ? renderTVLayout() : renderMobileLayout()}
       <EpisodeSelectionModal />
@@ -530,13 +530,13 @@ export default function PlayScreen() {
 
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
-  mobileContainer: { flex: 1, backgroundColor: '#151718' },
+  mobileContainer: { flex: 1 },
   customHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 40, paddingBottom: 4 },
   backBtn: { padding: 4 },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#00bb5e', marginHorizontal: 8 },
   headerIcons: { flexDirection: 'row', gap: 4 },
   overlayIcon: { padding: 6, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20 },
-  playerSection: { width: '100%', aspectRatio: 16/9, backgroundColor: '#151718' },
+  playerSection: { width: '100%', aspectRatio: 16/9, backgroundColor: 'transparent' },
   videoWrapper: { flex: 1 },
   videoPlayer: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -570,6 +570,6 @@ const styles = StyleSheet.create({
   },
   playerSectionFullscreen: {
     flex: 1,
-    backgroundColor: '#151718',
+    backgroundColor: '#000',
   },
 });
