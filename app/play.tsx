@@ -110,7 +110,7 @@ export default function PlayScreen() {
 
   const gesture = useMemo(() => {
     // 如果控制栏已显示，禁用底层的全屏手势，防止冲突
-    if (showControls) return Gesture.Tap(); // 返回一个不触发任何逻辑的空手势
+    if (showControls) return Gesture.Tap().runOnJS(true); // 返回一个不触发任何逻辑的空手势
 
     const singleTap = Gesture.Tap()
       .runOnJS(true)
@@ -157,7 +157,7 @@ export default function PlayScreen() {
         seekToPosition(ratio, true);
       });
 
-    return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap));
+    return Gesture.Race(panGesture, Gesture.Exclusive(doubleTap, singleTap)).runOnJS(true);
   }, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
 
   // 根据播放状态控制屏幕常亮
@@ -563,7 +563,12 @@ export default function PlayScreen() {
       <GestureDetector gesture={gesture}>
         <View style={styles.videoWrapper}>
           {currentEpisode?.url ? (
-            <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+            <Video
+              ref={videoRef}
+              style={styles.videoPlayer}
+              {...videoProps}
+              pointerEvents="none"
+            />
           ) : isLoading ? (
             <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
           ) : (

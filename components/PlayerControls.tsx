@@ -107,7 +107,6 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
 
   const progressGesture = useMemo(() => {
     return Gesture.Pan()
-      .runOnJS(true)
       .activateAfterLongPress(0)
       .minDistance(0)
       .onStart((event) => {
@@ -118,7 +117,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
       })
       .onEnd((event) => {
         onProgressGesture(event.x, true);
-      });
+      })
+      .runOnJS(true);
   }, [onProgressGesture]);
 
   const handleProgressTouch = (e: GestureResponderEvent) => {
