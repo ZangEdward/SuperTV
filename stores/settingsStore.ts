@@ -20,6 +20,8 @@ interface SettingsState {
     enabledAll: boolean;
     sources: { [key: string]: boolean };
   };
+  adFilterEnabled: boolean;
+  downloadAdFilterEnabled: boolean;
   sourceLatencies: Record<string, number>;
   allSources: ApiSite[];
   isLoadingSources: boolean;
@@ -32,6 +34,8 @@ interface SettingsState {
   setApiBaseUrl: (url: string) => void;
   setM3uUrl: (url: string) => void;
   setRemoteInputEnabled: (enabled: boolean) => void;
+  setAdFilterEnabled: (enabled: boolean) => void;
+  setDownloadAdFilterEnabled: (enabled: boolean) => void;
   saveSettings: () => Promise<void>;
   setVideoSource: (config: { enabledAll: boolean; sources: { [key: string]: boolean } }) => void;
   showModal: () => void;
@@ -53,6 +57,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   nodeLatencies: {},
   m3uUrl: "",
   remoteInputEnabled: true,
+  adFilterEnabled: true,
+  downloadAdFilterEnabled: false,
   isModalVisible: false,
   serverConfig: null,
   isLoadingServerConfig: false,
@@ -86,6 +92,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         apiBaseUrl: targetApiUrl || (HAS_PRESET_NODES ? (API_NODES[0] || "") : ""),
         m3uUrl: settings.m3uUrl || "",
         remoteInputEnabled: settings.remoteInputEnabled !== false,
+        adFilterEnabled: settings.adFilterEnabled !== false,
+        downloadAdFilterEnabled: settings.downloadAdFilterEnabled === true,
         videoSource: settings.videoSource || { enabledAll: true, sources: {} },
       });
 
@@ -256,10 +264,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setM3uUrl: (url) => set({ m3uUrl: url }),
   setRemoteInputEnabled: (enabled) => set({ remoteInputEnabled: enabled }),
+  setAdFilterEnabled: (enabled) => set({ adFilterEnabled: enabled }),
+  setDownloadAdFilterEnabled: (enabled) => set({ downloadAdFilterEnabled: enabled }),
   setVideoSource: (config) => set({ videoSource: config }),
 
   saveSettings: async () => {
-    const { apiBaseUrl, m3uUrl, remoteInputEnabled, videoSource } = get();
+    const { apiBaseUrl, m3uUrl, remoteInputEnabled, videoSource, adFilterEnabled, downloadAdFilterEnabled } = get();
     const currentSettings = await SettingsManager.get();
     const currentApiBaseUrl = currentSettings.apiBaseUrl;
 
@@ -277,6 +287,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       m3uUrl,
       remoteInputEnabled,
       videoSource,
+      adFilterEnabled,
+      downloadAdFilterEnabled,
     });
 
     if (currentApiBaseUrl !== processedApiBaseUrl) {

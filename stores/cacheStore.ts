@@ -3,6 +3,7 @@ import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from "react-native-toast-message";
 import { CacheService, CachedVideoItem } from "@/services/cacheService";
+import { useSettingsStore } from "@/stores/settingsStore";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("CacheStore");
@@ -185,6 +186,9 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
       let downloadUri = fileUri;
       if (ep.url.toLowerCase().includes('.m3u8')) {
+        // 获取全局下载广告过滤设置
+        const { downloadAdFilterEnabled } = useSettingsStore.getState();
+
         // 传递 itemId 以支持暂停/继续，并支持断点续传 (completedCount)
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
         downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
@@ -203,7 +207,10 @@ const useCacheStore = create<CacheState>((set, get) => ({
               if (cc % 5 === 0) CacheService.saveQueue(q);
             }
           }
-        }, { resumeIndex: ep.completedCount || 0 });
+        }, {
+          resumeIndex: ep.completedCount || 0,
+          adFilter: downloadAdFilterEnabled
+        });
         delete (get() as any)._controllers[itemId];
       } else {
         // create DownloadResumable here so we can cancel later

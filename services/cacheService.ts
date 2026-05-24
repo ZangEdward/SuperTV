@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import Logger from "@/utils/Logger";
 import CryptoJS from 'crypto-js';
 import RNFetchBlob from 'react-native-blob-util';
+import { filterM3U8Ads } from './m3u8';
 
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
@@ -654,11 +655,12 @@ export class CacheService {
     itemId?: string,
     signal?: AbortSignal,
     progressCb?: (progress: number, completedCount: number) => void,
-    options: { resumeIndex?: number } = {}
+    options: { resumeIndex?: number; adFilter?: boolean } = {}
   ): Promise<string> {
     const start = Date.now();
     let resumeIndex = options.resumeIndex || 0;
-    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url} (resume from ${resumeIndex})`);
+    const adFilter = options.adFilter || false;
+    logger.info(`[CacheService] downloadM3U8AsMp4 START - ${url} (resume from ${resumeIndex}, adFilter: ${adFilter})`);
 
     const taskId = itemId || `m3u8_${Date.now()}`;
     const activeTask = CacheService.registerM3U8Task(taskId);
@@ -722,7 +724,15 @@ export class CacheService {
         await CacheService.waitIfPaused(taskId);
         if (mergeSignal.aborted) throw new Error("下载已取消");
         const mediaText = await fetchText(mediaPlaylistUrl);
-        mediaParsed = CacheService.parseM3U8Playlist(mediaText);
+
+        // 如果开启了广告过滤，对媒体播放列表进行过滤
+        const finalMediaText = adFilter ? filterM3U8Ads(mediaText) : mediaText;
+        mediaParsed = CacheService.parseM3U8Playlist(finalMediaText);
+      } else {
+        // 如果不是 master playlist，也可能需要过滤
+        if (adFilter) {
+          mediaParsed = CacheService.parseM3U8Playlist(filterM3U8Ads(playlistText));
+        }
       }
 
       if (mediaParsed.segments.length === 0) throw new Error("m3u8 中未找到可下载的片段");

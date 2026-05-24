@@ -154,11 +154,15 @@ export default function PlayScreen() {
             s.seekToPosition(target / duration, false);
           }
         })
-        .onEnd(() => {
+        .onEnd((e) => {
           const s = usePlayerStore.getState();
           if (!s.status?.durationMillis) return;
           const duration = s.status.durationMillis;
-          const target = Math.max(0, Math.min(panStartPos.current, duration));
+          // [FIX] 计算最终位置并执行 finalize seek
+          const target = Math.max(
+            0,
+            Math.min(panStartPos.current + e.translationX * 200, duration)
+          );
           if (typeof s.seekToPosition === 'function') {
             s.seekToPosition(target / duration, true);
           }

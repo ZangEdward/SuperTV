@@ -14,6 +14,7 @@ import { LiveStreamSection } from "../components/settings/LiveStreamSection";
 import { RemoteInputSection } from "../components/settings/RemoteInputSection";
 import { UpdateSection } from "../components/settings/UpdateSection";
 import { CacheSection } from "../components/settings/CacheSection";
+import { PlayerSettingsSection } from "../components/settings/PlayerSettingsSection";
 import { SettingsSection } from "../components/settings/SettingsSection";
 import Toast from "react-native-toast-message";
 import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
@@ -114,6 +115,17 @@ export default function SettingsScreen() {
     deviceType === "mobile" && {
       component: <CacheSection />,
       key: "cache",
+    },
+    {
+      component: (
+        <PlayerSettingsSection
+          onChanged={markAsChanged}
+          onFocus={() => {
+            setCurrentSection("player_settings");
+          }}
+        />
+      ),
+      key: "player_settings",
     },
     {
       component: (

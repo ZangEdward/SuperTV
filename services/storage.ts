@@ -39,6 +39,8 @@ export interface AppSettings {
     };
   };
   m3uUrl: string;
+  adFilterEnabled: boolean;
+  downloadAdFilterEnabled: boolean;
 }
 
 export interface LoginCredentials {
@@ -322,6 +324,8 @@ export class SettingsManager {
         sources: {},
       },
       m3uUrl: "",
+      adFilterEnabled: true,
+      downloadAdFilterEnabled: false,
     };
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);

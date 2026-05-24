@@ -3,6 +3,7 @@ import { Video, ResizeMode } from 'expo-av';
 import Toast from 'react-native-toast-message';
 import usePlayerStore from '@/stores/playerStore';
 import { tcpHttpServer } from '@/services/tcpHttpServer';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface UseVideoHandlersProps {
   videoRef: RefObject<Video>;
@@ -102,6 +103,7 @@ export const useVideoHandlers = ({
 
   // 优化的Video组件props
   const isCasting = usePlayerStore(state => state.isCasting);
+  const adFilterEnabled = useSettingsStore(state => state.adFilterEnabled);
 
   const videoProps = useMemo(() => {
     let videoUrl = currentEpisode?.url || "";
@@ -109,8 +111,8 @@ export const useVideoHandlers = ({
     // 安全检查：确保 videoUrl 是字符串再进行操作
     const isStringUrl = typeof videoUrl === 'string';
 
-    // 如果是 M3U8 且不是本地文件，通过本地服务器代理进行广告过滤
-    if (isStringUrl && videoUrl.toLowerCase().includes('.m3u8') && !videoUrl.startsWith('file://')) {
+    // 如果是 M3U8 且不是本地文件，且开启了广告过滤，通过本地服务器代理进行广告过滤
+    if (adFilterEnabled && isStringUrl && videoUrl.toLowerCase().includes('.m3u8') && !videoUrl.startsWith('file://')) {
       const proxyUrl = tcpHttpServer.getProxyUrl(videoUrl);
       if (proxyUrl) {
         console.log(`[AD_FILTER] Using proxy for ad filtering: ${proxyUrl}`);
