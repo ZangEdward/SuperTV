@@ -137,7 +137,7 @@ export const useTVRemoteHandler = () => {
           break;
       }
     },
-    [setShowControls, resetTimer, togglePlayPause, seek]
+    [setShowControls, resetTimer]
   );
 
   // 始终挂载 hook，但在内部判断逻辑，符合 Rules of Hooks
