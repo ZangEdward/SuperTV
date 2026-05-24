@@ -85,46 +85,6 @@ jobs:
           mkdir -p output
           cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
-      # -------------------------------
-      # 强更新：如果 SuperTV 仓库有同版本 Release，直接彻底删除
-      # -------------------------------
-      - name: Force delete old Release if conflicts (SuperTV repo)
-        run: |
-          VERSION="${{ env.VERSION }}"
-          REPO="${{ secrets.SOURCE_REPO }}"
-
-          # 1. 获取已存在的 Release ID
-          RELEASE_ID=$(curl -s \
-            -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
-            | jq -r '.id')
-
-          # 2. 如果找到了，彻底删除整个 Release 实体
-          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
-            echo "发现版本冲突！正在彻底删除原有的 SuperTV v$VERSION Release (ID: $RELEASE_ID)..."
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/releases/$RELEASE_ID
-          
-            # 3. 同时强行删除对应的 Git Tag
-            echo "正在清理远程 Tag: v$VERSION"
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
-          else
-            echo "未发现冲突版本，准备进行全新创建。"
-          fi
-
-      - name: Create or update Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ env.VERSION }}
-          name: "SuperTV v${{ env.VERSION }}"
-          files: output/SuperTV-${{ env.VERSION }}.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-
       - name: Upload APK artifact (for OTA job)
         if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
