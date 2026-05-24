@@ -101,63 +101,126 @@ export default function PlayScreen() {
     }
   }, [deviceType, setShowControls, showControls, tvRemoteHandler]);
 
-  const gesture = useMemo(() => {
-    // 基础安全检查：确保 Gesture 对象及其方法存在
-    if (typeof Gesture?.Tap !== 'function' || typeof Gesture?.Pan !== 'function') {
-      return Gesture.Tap().runOnJS(true); // 退回到最简单的点击
-    }
+const gesture = useMemo(() => {
+  // 安全包装器：只有在 g.runOnJS 存在时才调用
+  const safeRun = (g: any) => {
+    return g && typeof g.runOnJS === "function" ? g.runOnJS(true) : g;
+  };
 
-    if (showControls) return Gesture.Tap().runOnJS(true);
+  const hasTap = typeof Gesture?.Tap === "function";
+  const hasPan = typeof Gesture?.Pan === "function";
 
-    const singleTap = Gesture.Tap()
-      .runOnJS(true)
-      .onEnd((_event, success) => {
-        if (success) onScreenPress?.();
-      });
+  // 基础能力都不存在 → 返回空手势
+  if (!hasTap && !hasPan) {
+    return Gesture?.Tap?.() ? safeRun(Gesture.Tap()) : ({} as any);
+  }
 
-    const doubleTap = Gesture.Tap()
-      .numberOfTaps(2)
-      .runOnJS(true)
-      .onEnd((_event, success) => {
-        if (success) togglePlayPause?.();
-      });
+  // 显示控制栏时只允许单击
+  if (showControls) {
+    return hasTap ? safeRun(Gesture.Tap()) : ({} as any);
+  }
 
-    const panGesture = Gesture.Pan()
-      .runOnJS(true)
-      .onStart(() => {
-        const state = usePlayerStore.getState?.();
-        if (!state) return;
-        panStartPos.current = state.status?.isLoaded ? (state.status as any).positionMillis : 0;
-      })
-      .onUpdate((event) => {
-        const now = Date.now();
-        if (now - lastUpdateTime.current < 32) return;
-        lastUpdateTime.current = now;
+  // 单击
+  const singleTap = hasTap
+    ? Gesture.Tap()
+        .runOnJS(true)
+        .onEnd((_event, success) => {
+          if (success) onScreenPress?.();
+        })
+    : null;
 
-        const state = usePlayerStore.getState?.();
-        if (!state || !state.status?.isLoaded || !(state.status as any).durationMillis) return;
+  // 双击
+  const doubleTap = hasTap
+    ? Gesture.Tap()
+        .numberOfTaps(2)
+        .runOnJS(true)
+        .onEnd((_event, success) => {
+          if (success) togglePlayPause?.();
+        })
+    : null;
 
-        const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, (state.status as any).durationMillis));
-        const ratio = targetPos / (state.status as any).durationMillis;
-        seekToPosition?.(ratio, false);
-      })
-      .onEnd((event) => {
-        const state = usePlayerStore.getState?.();
-        if (!state || !state.status?.isLoaded || !(state.status as any).durationMillis) return;
+  // 拖动手势
+  const panGesture = hasPan
+    ? Gesture.Pan()
+        .runOnJS(true)
+        .onStart(() => {
+          const state = usePlayerStore.getState?.();
+          if (!state) return;
+          panStartPos.current = state.status?.isLoaded
+            ? (state.status as any).positionMillis
+            : 0;
+        })
+        .onUpdate((event) => {
+          const now = Date.now();
+          if (now - lastUpdateTime.current < 32) return;
+          lastUpdateTime.current = now;
 
-        const targetPos = Math.max(0, Math.min(panStartPos.current + event.translationX * 200, (state.status as any).durationMillis));
-        const ratio = targetPos / (state.status as any).durationMillis;
-        seekToPosition?.(ratio, true);
-      });
+          const state = usePlayerStore.getState?.();
+          if (
+            !state ||
+            !state.status?.isLoaded ||
+            !(state.status as any).durationMillis
+          )
+            return;
 
-    // 确保 Exclusive 和 Race 方法可用
-    try {
+          const targetPos = Math.max(
+            0,
+            Math.min(
+              panStartPos.current + event.translationX * 200,
+              (state.status as any).durationMillis
+            )
+          );
+          const ratio = targetPos / (state.status as any).durationMillis;
+          seekToPosition?.(ratio, false);
+        })
+        .onEnd((event) => {
+          const state = usePlayerStore.getState?.();
+          if (
+            !state ||
+            !state.status?.isLoaded ||
+            !(state.status as any).durationMillis
+          )
+            return;
+
+          const targetPos = Math.max(
+            0,
+            Math.min(
+              panStartPos.current + event.translationX * 200,
+              (state.status as any).durationMillis
+            )
+          );
+          const ratio = targetPos / (state.status as any).durationMillis;
+          seekToPosition?.(ratio, true);
+        })
+    : null;
+
+  try {
+    const hasExclusive = typeof Gesture.Exclusive === "function";
+    const hasRace = typeof Gesture.Race === "function";
+
+    // 完整组合：双击 + 单击 + 拖动
+    if (doubleTap && singleTap && panGesture && hasExclusive && hasRace) {
       const exclusiveTap = Gesture.Exclusive(doubleTap, singleTap);
-      return Gesture.Race(panGesture, exclusiveTap).runOnJS(true);
-    } catch (e) {
-      return Gesture.Exclusive(doubleTap, singleTap).runOnJS(true);
+      return safeRun(Gesture.Race(panGesture, exclusiveTap));
     }
-  }, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
+
+    // 只有双击 + 单击
+    if (doubleTap && singleTap && hasExclusive) {
+      return safeRun(Gesture.Exclusive(doubleTap, singleTap));
+    }
+
+    // 只有单击
+    if (singleTap) {
+      return safeRun(singleTap);
+    }
+  } catch (e) {
+    console.warn("[PlayScreen] Gesture composition failed:", e);
+  }
+
+  // 最终兜底
+  return safeRun(singleTap || panGesture || ({} as any));
+}, [onScreenPress, togglePlayPause, seekToPosition, showControls]);
+
 
   useEffect(() => {
     try {
