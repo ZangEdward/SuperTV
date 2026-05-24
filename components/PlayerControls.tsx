@@ -7,7 +7,7 @@ interface PlayerControlsProps {
   setShowControls: (show: boolean) => void;
 }
 
-export default function PlayerControls({ showControls, setShowControls }: PlayerControlsProps) {
+export function PlayerControls({ showControls, setShowControls }: PlayerControlsProps) {
   const {
     status: playbackStatus,
     togglePlayPause,
