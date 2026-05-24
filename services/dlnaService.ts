@@ -226,6 +226,29 @@ class DLNAService {
       throw error;
     }
   }
+
+  // -------------------------
+  // 停止投屏
+  // -------------------------
+  public async stopCast(device: DLNADevice) {
+    const bodyWrap = (action: string, content: string) => `<?xml version="1.0" encoding="utf-8"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:${action} xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID>${content}</u:${action}></s:Body></s:Envelope>`;
+
+    try {
+      const stopBody = bodyWrap('Stop', '');
+      await fetch(device.controlUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset="utf-8"',
+          'SOAPACTION': '"urn:schemas-upnp-org:service:AVTransport:1#Stop"'
+        },
+        body: stopBody,
+      });
+      return true;
+    } catch (error) {
+      logger.error('[DLNA] Stop error:', error);
+      throw error;
+    }
+  }
 }
 
 export const dlnaService = new DLNAService();

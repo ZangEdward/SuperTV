@@ -115,7 +115,7 @@ export default function DetailScreen() {
   if (loading && !detail) {
     return (
       <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#151718' }]}>
-        <VideoLoadingAnimation showProgressBar={false} />
+        <VideoLoadingAnimation />
         {deviceType === 'tv' && (
           <TouchableOpacity focusable={true} style={{ position: 'absolute', opacity: 0 }} />
         )}
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
 
   container: { flex: 1, backgroundColor: '#151718' },
   content: { flex: 1 },
-  posterWrapper: { width: '100%', height: 240, position: 'relative', backgroundColor: '#111' },
+  posterWrapper: { width: '100%', height: 240, position: 'relative', backgroundColor: '#151718' },
   mainPoster: { width: '100%', height: '100%', opacity: 0.6 },
   posterGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 100 },
   cacheAction: { position: 'absolute', bottom: 16, right: 16, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6 },
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   sourceName: { color: '#ccc', fontSize: 14, fontWeight: '600' },
   sourceNameActive: { color: 'white' },
   sourceMeta: { color: '#666', fontSize: 11, marginTop: 2 },
-  descSection: { padding: 16, borderTopWidth: 8, borderTopColor: '#0a0a0a' },
+  descSection: { padding: 16, borderTopWidth: 8, borderTopColor: '#1a1a1a' },
   descTitle: { color: 'white', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   descText: { color: '#888', fontSize: 14, lineHeight: 22 },
   metaInfo: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 8 },

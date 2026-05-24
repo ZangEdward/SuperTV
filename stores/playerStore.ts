@@ -44,6 +44,7 @@ interface PlayerState {
     fileUri?: string;
   }) => Promise<void>;
   playEpisode: (index: number) => void;
+  pause: () => Promise<void>;
   togglePlayPause: () => void;
   seek: (duration: number) => void;
   seekToPosition: (ratio: number, finalize?: boolean) => void;
@@ -322,6 +323,17 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       } catch (error) {
         logger.debug("Failed to replay video:", error);
         Toast.show({ type: "error", text1: "播放失败" });
+      }
+    }
+  },
+
+  pause: async () => {
+    const { status, videoRef } = get();
+    if (status?.isLoaded && status.isPlaying) {
+      try {
+        await videoRef?.current?.pauseAsync();
+      } catch (error) {
+        logger.debug("Failed to pause video:", error);
       }
     }
   },

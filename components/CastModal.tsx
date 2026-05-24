@@ -55,7 +55,7 @@ function convertToHttpUrl(url: string): string {
 }
 
 export const CastModal: React.FC = () => {
-  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex } = usePlayerStore();
+  const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, pause } = usePlayerStore();
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [castingDevice, setCastingDevice] = useState<DLNADevice | null>(null);
@@ -107,7 +107,10 @@ export const CastModal: React.FC = () => {
       await dlnaService.castVideo(device, url, title);
 
       setCastingDevice(device);
-      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放' });
+      // 1. 投屏成功后暂停手机端播放
+      await pause();
+
+      Toast.show({ type: 'success', text1: '投屏成功', text2: '正在电视上播放，手机端已暂停' });
 
     } catch (error) {
       if (retry < 2) {
@@ -150,6 +153,24 @@ export const CastModal: React.FC = () => {
     setShowCastModal(false);
   };
 
+  const handleStopCast = async () => {
+    if (!castingDevice) return;
+
+    try {
+      // 2. 发送停止指令
+      await dlnaService.stopCast(castingDevice);
+      Toast.show({ type: 'success', text1: '已断开投屏', text2: '电视已停止播放' });
+    } catch (e) {
+      // 即使发送失败（可能是网络断开），也允许手机端恢复状态
+      logger.warn('[Cast] stopCast command failed:', e);
+      Toast.show({ type: 'info', text1: '已断开连接', text2: '无法通知电视停止，请手动关闭' });
+    } finally {
+      // 手机端恢复到重新搜索投屏的状态
+      setCastingDevice(null);
+      startSearch();
+    }
+  };
+
   return (
     <Modal visible={showCastModal} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
@@ -176,15 +197,7 @@ export const CastModal: React.FC = () => {
 
               <StyledButton
                 text="断开投屏"
-                onPress={async () => {
-                  try {
-                    await dlnaService.stopCast(castingDevice);
-                    Toast.show({ type: 'success', text1: '已断开投屏', text2: '电视已停止播放' });
-                    setCastingDevice(null);
-                  } catch (e) {
-                    Toast.show({ type: 'error', text1: '断开失败', text2: '请重试' });
-                  }
-                }}
+                onPress={handleStopCast}
                 style={{ backgroundColor: '#aa0000' }}
               />
             </View>

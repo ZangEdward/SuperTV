@@ -119,7 +119,7 @@ export default function SearchScreen() {
       </View>
 
       {loading ? (
-        <VideoLoadingAnimation showProgressBar={false} />
+        <VideoLoadingAnimation />
       ) : error ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>

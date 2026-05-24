@@ -17,12 +17,6 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
   const progressAnim = useRef(new Animated.Value(0)).current;
   const gradientAnim = useRef(new Animated.Value(0)).current;
   const textFadeAnim = useRef(new Animated.Value(0)).current;
-  const shapeAnims = [
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-    useRef(new Animated.Value(0)).current,
-  ];
 
   useEffect(() => {
     const floatAnimation = Animated.loop(
@@ -83,7 +77,7 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       Animated.timing(progressAnim, {
         toValue: 1,
         duration: 4000,
-        useNativeDriver: false, // width animation not supported by native driver
+        useNativeDriver: false,
         easing: Easing.inOut(Easing.ease),
       })
     );
@@ -92,7 +86,7 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       Animated.timing(gradientAnim, {
         toValue: 1,
         duration: 2000,
-        useNativeDriver: false, // gradient animation not supported by native driver
+        useNativeDriver: false,
         easing: Easing.inOut(Easing.ease),
       })
     );
@@ -114,20 +108,6 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       ])
     );
 
-    const shapeAnimations = shapeAnims.map((anim, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 2000),
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-            easing: Easing.inOut(Easing.ease),
-          }),
-        ])
-      )
-    );
-
     const composite = Animated.parallel([
       floatAnimation,
       pulseAnimation,
@@ -135,7 +115,6 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
       progressAnimation,
       gradientAnimation,
       textFadeAnimation,
-      ...shapeAnimations,
     ]);
 
     composite.start();
@@ -176,44 +155,16 @@ const VideoLoadingAnimation: React.FC<VideoLoadingAnimationProps> = ({ showProgr
     textFade: {
       opacity: textFadeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
     },
-    shapes: shapeAnims.map((anim, i) => ({
-      transform: [
-        {
-          translateY: anim.interpolate({
-            inputRange: [0, 0.33, 0.66, 1],
-            outputRange: [0, -30, 10, 0],
-          }),
-        },
-        {
-          rotate: anim.interpolate({
-            inputRange: [0, 1],
-            outputRange: ["0deg", "360deg"],
-          }),
-        },
-      ],
-    })),
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.bgShapes}>
-        <Animated.View style={[styles.shape, styles.shape1, animatedStyles.shapes[0]]} />
-        <Animated.View style={[styles.shape, styles.shape2, animatedStyles.shapes[1]]} />
-        <Animated.View style={[styles.shape, styles.shape3, animatedStyles.shapes[2]]} />
-        <Animated.View style={[styles.shape, styles.shape4, animatedStyles.shapes[3]]} />
-      </View>
       <View style={styles.loadingContainer}>
         <Animated.View style={[styles.videoIcon, animatedStyles.float]}>
           <View style={styles.videoFrame}>
             <Animated.View style={[styles.playButton, animatedStyles.pulse]} />
           </View>
         </Animated.View>
-
-        {/* <View style={styles.loadingDots}>
-          <Animated.View style={[styles.dot, animatedStyles.bounce[0]]} />
-          <Animated.View style={[styles.dot, animatedStyles.bounce[1]]} />
-          <Animated.View style={[styles.dot, animatedStyles.bounce[2]]} />
-        </View> */}
 
         {showProgressBar && (
           <View style={styles.progressBar}>
@@ -240,7 +191,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-    backgroundColor: "#151718",
+    backgroundColor: "transparent",
   },
   loadingContainer: {
     alignItems: "center",
@@ -272,18 +223,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 15,
     borderBottomColor: "transparent",
   },
-  loadingDots: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 20,
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 6,
-  },
   progressBar: {
     width: 300,
     height: 6,
@@ -302,43 +241,6 @@ const styles = StyleSheet.create({
     fontWeight: "300",
     letterSpacing: 2,
     marginTop: 10,
-  },
-  bgShapes: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    zIndex: 1,
-  },
-  shape: {
-    position: "absolute",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    borderRadius: 50,
-  },
-  shape1: {
-    width: 80,
-    height: 80,
-    top: "20%",
-    left: "10%",
-  },
-  shape2: {
-    width: 60,
-    height: 60,
-    top: "60%",
-    right: "15%",
-  },
-  shape3: {
-    width: 100,
-    height: 100,
-    bottom: "20%",
-    left: "20%",
-  },
-  shape4: {
-    width: 40,
-    height: 40,
-    top: "30%",
-    right: "30%",
   },
 });
 
