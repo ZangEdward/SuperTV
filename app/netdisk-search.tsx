@@ -129,51 +129,53 @@ export default function NetDiskSearchScreen() {
         }
       />
       <ThemedView style={[commonStyles.container, { paddingTop: deviceType === 'tv' ? 20 : 0 }]}>
-        <View style={styles.searchBar}>
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[styles.inputContainer, isInputFocused && { borderColor: Colors.dark.primary }]}
-            onPress={() => textInputRef.current?.focus()}
-          >
-            <TextInput
-              ref={textInputRef}
-              style={styles.input}
-              placeholder="搜索网盘资源..."
-              placeholderTextColor="#888"
-              value={keyword}
-              onChangeText={setKeyword}
-              onSubmitEditing={handleSearch}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
-            />
-          </TouchableOpacity>
-          <StyledButton style={styles.iconBtn} onPress={handleSearch}>
-            <Search size={24} color="white" />
-          </StyledButton>
-          {deviceType !== 'mobile' && (
-            <StyledButton style={styles.iconBtn} onPress={handleQrPress}>
-              <QrCode size={24} color="white" />
+        <View style={styles.headerSection}>
+          <View style={styles.searchBar}>
+            <TouchableOpacity
+              activeOpacity={1}
+              style={[styles.inputContainer, isInputFocused && { borderColor: Colors.dark.primary }]}
+              onPress={() => textInputRef.current?.focus()}
+            >
+              <TextInput
+                ref={textInputRef}
+                style={styles.input}
+                placeholder="搜索网盘资源..."
+                placeholderTextColor="#888"
+                value={keyword}
+                onChangeText={setKeyword}
+                onSubmitEditing={handleSearch}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setIsInputFocused(false)}
+              />
+            </TouchableOpacity>
+            <StyledButton style={styles.iconBtn} onPress={handleSearch}>
+              <Search size={24} color="white" />
             </StyledButton>
+            {deviceType !== 'mobile' && (
+              <StyledButton style={styles.iconBtn} onPress={handleQrPress}>
+                <QrCode size={24} color="white" />
+              </StyledButton>
+            )}
+          </View>
+
+          {tabs.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
+              <View style={styles.tabContainer}>
+                {tabs.map((tab) => (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[styles.tab, activeTab === tab && styles.activeTab]}
+                    onPress={() => setActiveTab(tab)}
+                  >
+                    <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                      {getTypeName(tab)} ({results[tab].length})
+                    </ThemedText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
           )}
         </View>
-
-        {tabs.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
-            <View style={styles.tabContainer}>
-              {tabs.map((tab) => (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.tab, activeTab === tab && styles.activeTab]}
-                  onPress={() => setActiveTab(tab)}
-                >
-                  <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                    {getTypeName(tab)} ({results[tab].length})
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        )}
 
         {loading ? (
           <VideoLoadingAnimation />
@@ -188,6 +190,7 @@ export default function NetDiskSearchScreen() {
             keyExtractor={(item, index) => `${activeTab}-${index}`}
             contentContainerStyle={styles.listContent}
             numColumns={deviceType === 'mobile' ? 1 : 2}
+            style={styles.resultsList}
           />
         )}
       </ThemedView>
@@ -197,6 +200,11 @@ export default function NetDiskSearchScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerSection: {
+    zIndex: 10,
+    backgroundColor: '#151718', // 确保背景不透明，防止列表内容穿透
+    paddingBottom: 4,
+  },
   searchBar: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -225,6 +233,7 @@ const styles = StyleSheet.create({
   tabScroll: {
     maxHeight: 50,
     marginBottom: 8,
+    flexGrow: 0, // 确保不会撑开
   },
   tabContainer: {
     flexDirection: 'row',
@@ -251,8 +260,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
+  resultsList: {
+    flex: 1,
+  },
   listContent: {
     padding: 12,
+    paddingBottom: 30,
   },
   resultCard: {
     flex: 1,
