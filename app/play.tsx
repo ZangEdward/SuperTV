@@ -328,8 +328,8 @@ export default function PlayScreen() {
     );
   }
 
-  // 公共的视频内容区域
-  const VideoContent = () => (
+  // [FIX] 使用 useMemo 缓存视频内容，避免每次渲染重建 Video 组件
+  const videoContent = useMemo(() => (
     <View style={styles.videoWrapper}>
       {currentEpisode?.url ? (
         <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
@@ -343,7 +343,7 @@ export default function PlayScreen() {
         </View>
       )}
     </View>
-  );
+  ), [currentEpisode?.url, isLoading, videoProps]);
 
   // 移动端布局：使用手势
   const renderMobileLayout = () => (
@@ -363,11 +363,11 @@ export default function PlayScreen() {
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
         {gesture ? (
           <GestureDetector gesture={gesture}>
-            <VideoContent />
+            {videoContent}
           </GestureDetector>
         ) : (
           <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
-            <VideoContent />
+            {videoContent}
           </TouchableOpacity>
         )}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
@@ -410,7 +410,7 @@ export default function PlayScreen() {
   // TV 端布局：不使用手势，仅依靠遥控器按键
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      <VideoContent />
+      {videoContent}
       {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
     </ThemedView>
   );
