@@ -7,13 +7,11 @@ import {
   ScrollView,
   Text,
   ActivityIndicator,
-  PanResponder,
-  GestureResponderEvent,
-  PanResponderGestureState,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
 import { activateKeepAwakeAsync, deactivateKeepAwakeAsync } from "expo-keep-awake";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { ThemedView } from "@/components/ThemedView";
 import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
@@ -44,10 +42,6 @@ export default function PlayScreen() {
   const { deviceType } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
 
-  // 移动端手势相关 ref
-  const lastTap = useRef<number>(0);
-  const panStartPos = useRef<number>(0);
-
   const params = useLocalSearchParams<{
     episodeIndex: string;
     position?: string;
@@ -74,7 +68,7 @@ export default function PlayScreen() {
   const title = params.title || detail?.title;
 
   const playerStore = usePlayerStore();
-  useTVRemoteHandler(); // 注册 TV 遥控器事件（TV 端按键控制）
+  useTVRemoteHandler(); // 仅用于注册 TV 事件，移动端也会初始化但无负面影响
 
   const {
     status: playbackStatus,
@@ -97,9 +91,9 @@ export default function PlayScreen() {
     seekToPosition,
   } = playerStore;
 
-  // ---------------------------
+  const panStartPos = useRef<number>(0);
+
   // 切换选集/切换源前安全卸载视频
-  // ---------------------------
   const safeUnload = async () => {
     try {
       await videoRef.current?.unloadAsync();
@@ -109,71 +103,79 @@ export default function PlayScreen() {
   };
 
   // ---------------------------
-  // 移动端手势：PanResponder 实现滑动拖拽
+  // 修复后的手势（Simultaneous + maxDuration）
   // ---------------------------
-  const handlePanResponderMove = useCallback((_e: GestureResponderEvent, gestureState: PanResponderGestureState) => {
-    const s = usePlayerStore.getState();
-    if (!s.status?.durationMillis) return;
+  const gesture = useMemo(() => {
+    const hasTap = typeof Gesture?.Tap === "function";
+    const hasPan = typeof Gesture?.Pan === "function";
+    if (!hasTap && !hasPan) return null;
 
-    const duration = s.status.durationMillis;
-    const target = Math.max(
-      0,
-      Math.min(panStartPos.current + gestureState.dx * 200, duration)
-    );
-
-    if (typeof s.seekToPosition === 'function') {
-      s.seekToPosition(target / duration, false);
-    }
-  }, []);
-
-  const handlePanResponderRelease = useCallback(() => {
-    const s = usePlayerStore.getState();
-    if (!s.status?.durationMillis) return;
-
-    const duration = s.status.durationMillis;
-    const target = Math.max(0, Math.min(panStartPos.current, duration));
-
-    if (typeof s.seekToPosition === 'function') {
-      s.seekToPosition(target / duration, true);
-    }
-  }, []);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        const s = usePlayerStore.getState();
-        panStartPos.current = s.status?.positionMillis || 0;
-      },
-      onPanResponderMove: handlePanResponderMove,
-      onPanResponderRelease: handlePanResponderRelease,
-    })
-  ).current;
-
-  // 移动端单击/双击识别
-  const handleTap = useCallback(() => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    if (lastTap.current && (now - lastTap.current) < DOUBLE_TAP_DELAY) {
-      // 双击：播放/暂停
-      const { togglePlayPause } = usePlayerStore.getState();
-      if (typeof togglePlayPause === 'function') {
-        togglePlayPause();
-      }
-      lastTap.current = 0;
-    } else {
-      // 单击：切换控制栏显示/隐藏
-      lastTap.current = now;
-      setTimeout(() => {
-        if (lastTap.current === now) {
+    try {
+      const singleTap = Gesture.Tap()
+        .maxDuration(250)
+        .runOnJS(true)
+        .onEnd(() => {
           const { showControls, setShowControls } = usePlayerStore.getState();
           if (typeof setShowControls === 'function') {
             setShowControls(!showControls);
           }
-          lastTap.current = 0;
-        }
-      }, DOUBLE_TAP_DELAY);
+        });
+
+      const doubleTap = Gesture.Tap()
+        .numberOfTaps(2)
+        .maxDuration(250)
+        .runOnJS(true)
+        .onEnd(() => {
+          const { togglePlayPause } = usePlayerStore.getState();
+          if (typeof togglePlayPause === 'function') {
+            togglePlayPause();
+          }
+        });
+
+      const panGesture = Gesture.Pan()
+        .minDist(10)
+        .runOnJS(true)
+        .onStart(() => {
+          const s = usePlayerStore.getState();
+          panStartPos.current = s.status?.positionMillis || 0;
+        })
+        .onUpdate((e) => {
+          const s = usePlayerStore.getState();
+          if (!s.status?.durationMillis) return;
+          const duration = s.status.durationMillis;
+          const target = Math.max(
+            0,
+            Math.min(panStartPos.current + e.translationX * 200, duration)
+          );
+          if (typeof s.seekToPosition === 'function') {
+            s.seekToPosition(target / duration, false);
+          }
+        })
+        .onEnd(() => {
+          const s = usePlayerStore.getState();
+          if (!s.status?.durationMillis) return;
+          const duration = s.status.durationMillis;
+          const target = Math.max(0, Math.min(panStartPos.current, duration));
+          if (typeof s.seekToPosition === 'function') {
+            s.seekToPosition(target / duration, true);
+          }
+        });
+
+      return Gesture.Simultaneous(
+        panGesture,
+        Gesture.Exclusive(doubleTap, singleTap)
+      ).runOnJS(true);
+    } catch (err) {
+      console.warn("gesture init failed:", err);
+      return null;
+    }
+  }, []);
+
+  // 后备点击（手势不可用时）
+  const handleTapFallback = useCallback(() => {
+    const { setShowControls, showControls } = usePlayerStore.getState();
+    if (typeof setShowControls === 'function') {
+      setShowControls(!showControls);
     }
   }, []);
 
@@ -240,7 +242,7 @@ export default function PlayScreen() {
     }
   }, []);
 
-  // 清理：屏幕方向恢复
+  // ========== 清理时屏幕方向安全调用 ==========
   useEffect(() => {
     return () => {
       reset?.();
@@ -328,16 +330,11 @@ export default function PlayScreen() {
     );
   }
 
-  // 公共的视频内容区域（不含手势层，TV 和移动端共用）
+  // 公共的视频内容区域
   const VideoContent = () => (
-    <>
+    <View style={styles.videoWrapper}>
       {currentEpisode?.url ? (
-        <Video
-          ref={videoRef}
-          style={styles.videoPlayer}
-          {...videoProps}
-          // 注意：移除了 pointerEvents="none"，让手势层能够接收到触摸事件
-        />
+        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
       ) : (
         <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
       )}
@@ -347,10 +344,10 @@ export default function PlayScreen() {
           <ActivityIndicator size="large" color="#00bb5e" />
         </View>
       )}
-    </>
+    </View>
   );
 
-  // 移动端布局：使用自定义手势层（单击/双击/滑动）
+  // 移动端布局：使用手势
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
@@ -366,14 +363,15 @@ export default function PlayScreen() {
       )}
 
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
-        <TouchableOpacity
-          activeOpacity={1}
-          style={styles.videoWrapper}
-          onPress={handleTap}
-          {...panResponder.panHandlers}
-        >
-          <VideoContent />
-        </TouchableOpacity>
+        {gesture ? (
+          <GestureDetector gesture={gesture}>
+            <VideoContent />
+          </GestureDetector>
+        ) : (
+          <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
+            <VideoContent />
+          </TouchableOpacity>
+        )}
         {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
       </View>
 
@@ -411,12 +409,10 @@ export default function PlayScreen() {
     </View>
   );
 
-  // TV 端布局：不使用手势，仅通过遥控器按键控制（useTVRemoteHandler 已注册事件）
+  // TV 端布局：不使用手势，仅依靠遥控器按键
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
-      <View style={styles.videoWrapper}>
-        <VideoContent />
-      </View>
+      <VideoContent />
       {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
     </ThemedView>
   );
