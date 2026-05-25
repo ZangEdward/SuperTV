@@ -40,7 +40,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
     public static final String NAME = "NativeDownloadModule";
     private static final String TAG = "NativeDownload";
     
-    private final ExecutorService downloadPool = Executors.newFixedThreadPool(3);
+    private final ExecutorService downloadPool = Executors.newFixedThreadPool(4);
     private final Map<String, AtomicBoolean> activeTasks = new ConcurrentHashMap<>();
     
     private final OkHttpClient client = new OkHttpClient.Builder()
