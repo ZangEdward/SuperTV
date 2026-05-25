@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, memo } from "react";
 import { View, Text, StyleSheet, Pressable, TouchableOpacity, Platform, GestureResponderEvent } from "react-native";
 import { Pause, Play, SkipForward, List, Tv, ArrowDownToDot, ArrowUpFromDot, Gauge, ArrowLeft, RotateCw, Minimize2, Maximize2, Cast } from "lucide-react-native";
 import { useRouter } from "expo-router";
@@ -23,14 +23,24 @@ const safeCall = (fn: any, ...args: any[]) => {
   if (typeof fn === 'function') {
     return fn(...args);
   }
-  console.warn('[PlayerControls] Attempted to call undefined function:', fn?.name || 'anonymous');
 };
 
-export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, setShowControls }) => {
-  const router = useRouter();
+const formatTime = (milliseconds: number) => {
+  if (!milliseconds) return "00:00";
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+};
+
+export const PlayerControls: React.FC<PlayerControlsProps> = memo(({ showControls, setShowControls }) => {
   const insets = useSafeAreaInsets();
   const { deviceType, isPortrait } = useResponsiveLayout();
-  const isMobileLandscape = deviceType === 'mobile' && !isPortrait;
 
   const {
     currentEpisodeIndex,
@@ -61,30 +71,12 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
   const videoTitle = detail?.title || "";
   const currentEpisode = (episodes && Array.isArray(episodes)) ? episodes[currentEpisodeIndex] : null;
   const currentEpisodeTitle = currentEpisode?.title;
-  const currentSource = (resources && Array.isArray(resources)) ? resources.find((r) => r.source === detail?.source) : null;
-  const currentSourceName = currentSource?.source_name;
+  const currentSourceName = resources?.find((r) => r.source === detail?.source)?.source_name;
   const hasNextEpisode = currentEpisodeIndex < (episodes?.length || 0) - 1;
 
-  const formatTime = (milliseconds: number) => {
-    if (!milliseconds) return "00:00";
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    }
-    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  };
-
   const onPlayNextEpisode = () => {
-    if (hasNextEpisode && typeof playEpisode === 'function') {
+    if (hasNextEpisode) {
       safeCall(playEpisode, currentEpisodeIndex + 1);
-    } else if (!hasNextEpisode) {
-      console.warn('[PlayerControls] No next episode available');
-    } else {
-      console.warn('[PlayerControls] playEpisode is not a function');
     }
   };
 
@@ -94,273 +86,229 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({ showControls, se
     if (barWidth > 0 && e.nativeEvent) {
       const touchX = e.nativeEvent.locationX;
       const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
-
-      // Safety check for touches array
       const touches = e.nativeEvent.touches || [];
       const isFinalize = touches.length === 0;
-
       safeCall(seekToPosition, ratio, isFinalize);
     }
   };
 
   const toggleOrientation = async () => {
     try {
-      if (typeof ScreenOrientation?.lockAsync === 'function') {
-        if (isPortrait) {
-          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-          setIsFullscreen(true);
-        } else {
-          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-          // If we were already in fullscreen, we might want to stay in fullscreen but portrait
-          // The user said "切换播放器横竖屏", so we stay in "fullscreen mode" but change orientation
-        }
+      if (isPortrait) {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        setIsFullscreen(true);
       } else {
-        console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
       }
-    } catch (e) {
-      console.warn("Failed to toggle orientation:", e);
-    }
+    } catch (e) {}
   };
 
   const enterFullscreen = async () => {
     try {
-      if (typeof ScreenOrientation?.lockAsync === 'function') {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-        setIsFullscreen(true);
-      }
-    } catch (e) {
-      console.warn("Failed to enter fullscreen:", e);
-    }
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      setIsFullscreen(true);
+    } catch (e) {}
   };
 
   const exitFullscreen = async () => {
     try {
-      if (typeof ScreenOrientation?.lockAsync === 'function') {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-        setIsFullscreen(false);
-      } else {
-        console.warn('[PlayerControls] ScreenOrientation.lockAsync is not available');
-      }
-    } catch (e) {
-      console.warn("Failed to exit fullscreen:", e);
-    }
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      setIsFullscreen(false);
+    } catch (e) {}
   };
 
+  // 渲染全屏布局 (横屏/竖屏全屏)
   if (isFullscreen) {
     return (
-      <View style={[styles.controlsOverlay, { paddingLeft: Math.max(insets.left, 20), paddingRight: Math.max(insets.right, 20) }]}>
-        <View style={styles.mobileTopBar}>
-          <TouchableOpacity onPress={exitFullscreen} style={styles.iconBtn}>
-            <ArrowLeft color="white" size={24} />
-          </TouchableOpacity>
-          <Text style={styles.mobileTitle} numberOfLines={1}>
-            {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ` - 第${currentEpisodeIndex + 1}集`}
-          </Text>
-          <TouchableOpacity onPress={() => safeCall(setShowCastModal, true)} style={styles.iconBtn}>
-            <Cast color="white" size={22} />
-          </TouchableOpacity>
-        </View>
+      <Pressable onPress={() => setShowControls(false)} style={styles.fullscreenClickArea}>
+        <View style={[styles.controlsOverlay, { paddingLeft: Math.max(insets.left, 20), paddingRight: Math.max(insets.right, 20) }]}>
+          {/* 顶部栏 */}
+          <Pressable onPress={(e) => e.stopPropagation()} style={styles.mobileTopBar}>
+            <TouchableOpacity onPress={exitFullscreen} style={styles.iconBtn}>
+              <ArrowLeft color="white" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.mobileTitle} numberOfLines={1}>
+              {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ` - 第${currentEpisodeIndex + 1}集`}
+            </Text>
+            <TouchableOpacity onPress={() => safeCall(setShowCastModal, true)} style={styles.iconBtn}>
+              <Cast color="white" size={22} />
+            </TouchableOpacity>
+          </Pressable>
 
-        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          {/* 中间播放按钮 (仅在竖屏全屏下显示大的，防止按钮过小) */}
+          {isPortrait && (
+            <Pressable onPress={(e) => e.stopPropagation()} style={styles.centerControlArea}>
+              <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtnBig}>
+                {status?.isLoaded && status.isPlaying ? <Pause color="white" size={40} /> : <Play color="white" size={40} />}
+              </TouchableOpacity>
+            </Pressable>
+          )}
+
+          {/* 底部控制区 */}
+          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 15) }]}>
+            {/* 进度条 */}
+            <View
+              style={styles.progressBarContainer}
+              onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={handleProgressTouch}
+              onResponderMove={handleProgressTouch}
+              onResponderRelease={handleProgressTouch}
+            >
+              <View style={styles.progressBarBackground} />
+              <View style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]} />
+            </View>
+
+            {/* 控制按钮行 */}
+            <View style={styles.mobileBottomRow}>
+              <View style={styles.mobileBottomLeft}>
+                {!isPortrait && (
+                  <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.mobileMediaBtn}>
+                    {status?.isLoaded && status.isPlaying ? <Pause color="white" size={24} /> : <Play color="white" size={24} />}
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity onPress={onPlayNextEpisode} disabled={!hasNextEpisode} style={styles.mobileMediaBtn}>
+                  <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
+                </TouchableOpacity>
+
+                <ThemedText style={styles.timeText}>
+                  {status?.isLoaded ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}` : "00:00 / 00:00"}
+                </ThemedText>
+              </View>
+
+              <View style={styles.mobileBottomRight}>
+                <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
+                  <List color="white" size={22} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
+                  <Tv color="white" size={22} />
+                </TouchableOpacity>
+                {!isPortrait && (
+                  <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
+                    <RotateCw color="white" size={22} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.mobileTextBtn} onPress={() => safeCall(setShowSpeedModal, true)}>
+                  <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={exitFullscreen} style={styles.mobileIconBtn}>
+                  <Minimize2 color="white" size={22} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  }
+
+  // 渲染普通竖屏布局 (非全屏)
+  if (deviceType === 'mobile' && isPortrait) {
+    return (
+      <Pressable onPress={() => setShowControls(false)} style={styles.fullscreenClickArea}>
+        <View style={styles.controlsOverlay}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={styles.centerControlArea}>
+             <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtnSmall}>
+              {status?.isLoaded && status.isPlaying ? <Pause color="white" size={24} /> : <Play color="white" size={24} />}
+            </TouchableOpacity>
+          </Pressable>
+
+          <Pressable onPress={(e) => e.stopPropagation()} style={[styles.mobileBottomSection, { paddingBottom: 10 }]}>
+            <View
+              style={styles.progressBarContainerSmall}
+              onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={handleProgressTouch}
+              onResponderMove={handleProgressTouch}
+              onResponderRelease={handleProgressTouch}
+            >
+              <View style={styles.progressBarBackgroundSmall} />
+              <View style={[styles.progressBarFilledSmall, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]} />
+            </View>
+
+            <View style={styles.mobileNonFullscreenBottomRow}>
+               <ThemedText style={styles.timeTextSmall}>
+                  {status?.isLoaded ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}` : "00:00 / 00:00"}
+                </ThemedText>
+              <TouchableOpacity onPress={enterFullscreen} style={styles.iconBtnSmall}>
+                <Maximize2 color="white" size={20} />
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  }
+
+  // TV / 其他默认布局
+  return (
+    <Pressable onPress={() => setShowControls(false)} style={styles.fullscreenClickArea}>
+      <View style={styles.controlsOverlay}>
+        <Pressable onPress={(e) => e.stopPropagation()} style={styles.topControls}>
+          <Text style={styles.controlTitle}>
+            {videoTitle} {currentEpisodeTitle ? `- ${currentEpisodeTitle}` : ""}{" "}
+            {currentSourceName ? `(${currentSourceName})` : ""}
+          </Text>
+        </Pressable>
+
+        <Pressable onPress={(e) => e.stopPropagation()} style={styles.bottomControlsContainer}>
           <View
             style={styles.progressBarContainer}
             onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
+            onStartShouldSetResponder={() => deviceType !== 'tv'}
+            onMoveShouldSetResponder={() => deviceType !== 'tv'}
             onResponderGrant={handleProgressTouch}
             onResponderMove={handleProgressTouch}
             onResponderRelease={handleProgressTouch}
           >
             <View style={styles.progressBarBackground} />
-            <View
-              style={[
-                styles.progressBarFilled,
-                { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` },
-              ]}
-            />
+            <View style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]} />
           </View>
 
-          <View style={[styles.mobileBottomRow, isPortrait && { flexWrap: 'wrap', gap: 10 }]}>
-            <View style={[styles.mobileBottomLeft, isPortrait && { gap: 8, flex: 1 }]}>
-              <MediaButton onPress={() => safeCall(togglePlayPause)} style={styles.mobileMediaBtn}>
-                {status?.isLoaded && status.isPlaying ? (
-                  <Pause color="white" size={24} />
-                ) : (
-                  <Play color="white" size={24} />
-                )}
-              </MediaButton>
+          <ThemedText style={{ color: "white", marginTop: 5 }}>
+            {status?.isLoaded ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}` : "00:00 / 00:00"}
+          </ThemedText>
 
-              <MediaButton onPress={onPlayNextEpisode} disabled={!hasNextEpisode} style={styles.mobileMediaBtn}>
-                <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
-              </MediaButton>
-
-              {!isPortrait && (
-                <>
-                  <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
-                    <List color="white" size={22} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
-                    <Tv color="white" size={22} />
-                  </TouchableOpacity>
-                </>
-              )}
-
-              <ThemedText style={[styles.timeText, isPortrait && { fontSize: 10 }]}>
-                {status?.isLoaded
-                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
-                  : "00:00 / 00:00"}
-              </ThemedText>
-            </View>
-
-            <View style={[styles.mobileBottomRight, isPortrait && { gap: 10 }]}>
-              {isPortrait && (
-                <>
-                  <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
-                    <List color="white" size={20} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
-                    <Tv color="white" size={20} />
-                  </TouchableOpacity>
-                </>
-              )}
-              <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
-                <RotateCw color="white" size={22} />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.mobileTextBtn} onPress={() => safeCall(setShowSpeedModal, true)}>
-                <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.mobileTextBtn} onPress={exitFullscreen}>
-                <Minimize2 color="white" size={20} />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.bottomControls}>
+            <MediaButton onPress={() => safeCall(setIntroEndTime)} timeLabel={introEndTime ? formatTime(introEndTime) : undefined}>
+              <ArrowDownToDot color="white" size={24} />
+            </MediaButton>
+            <MediaButton onPress={() => safeCall(togglePlayPause)} hasTVPreferredFocus={showControls}>
+              {status?.isLoaded && status.isPlaying ? <Pause color="white" size={24} /> : <Play color="white" size={24} />}
+            </MediaButton>
+            <MediaButton onPress={onPlayNextEpisode} disabled={!hasNextEpisode}>
+              <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
+            </MediaButton>
+            <MediaButton onPress={() => safeCall(setOutroStartTime)} timeLabel={outroStartTime ? formatTime(outroStartTime) : undefined}>
+              <ArrowUpFromDot color="white" size={24} />
+            </MediaButton>
+            <MediaButton onPress={() => safeCall(setShowEpisodeModal, true)}>
+              <List color="white" size={24} />
+            </MediaButton>
+            <MediaButton onPress={() => safeCall(setShowSpeedModal, true)} timeLabel={playbackRate !== 1.0 ? `${playbackRate}x` : undefined}>
+              <Gauge color="white" size={24} />
+            </MediaButton>
+            <MediaButton onPress={() => safeCall(setShowSourceModal, true)}>
+              <Tv color="white" size={24} />
+            </MediaButton>
           </View>
-        </View>
+        </Pressable>
       </View>
-    );
-  }
-
-  if (deviceType === 'mobile' && isPortrait) {
-    return (
-      <View style={styles.controlsOverlay}>
-        <View style={styles.centerControlArea}>
-           <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtnSmall}>
-            {status?.isLoaded && status.isPlaying ? (
-              <Pause color="white" size={24} />
-            ) : (
-              <Play color="white" size={24} />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.mobileBottomSection, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <View
-            style={styles.progressBarContainerSmall}
-            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={handleProgressTouch}
-            onResponderMove={handleProgressTouch}
-            onResponderRelease={handleProgressTouch}
-          >
-            <View style={styles.progressBarBackgroundSmall} />
-            <View
-              style={[styles.progressBarFilledSmall, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
-            />
-          </View>
-
-          <View style={styles.mobileNonFullscreenBottomRow}>
-             <ThemedText style={styles.timeTextSmall}>
-                {status?.isLoaded
-                  ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
-                  : "00:00 / 00:00"}
-              </ThemedText>
-
-            <TouchableOpacity onPress={enterFullscreen} style={styles.iconBtnSmall}>
-              <Maximize2 color="white" size={20} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.controlsOverlay}>
-      <View style={styles.topControls}>
-        <Text style={styles.controlTitle}>
-          {videoTitle} {currentEpisodeTitle ? `- ${currentEpisodeTitle}` : ""}{" "}
-          {currentSourceName ? `(${currentSourceName})` : ""}
-        </Text>
-      </View>
-
-      <View style={styles.bottomControlsContainer}>
-        <View
-          style={styles.progressBarContainer}
-          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-          onStartShouldSetResponder={() => deviceType !== 'tv'} // TV doesn't use touch to seek here usually
-          onMoveShouldSetResponder={() => deviceType !== 'tv'}
-          onResponderGrant={handleProgressTouch}
-          onResponderMove={handleProgressTouch}
-          onResponderRelease={handleProgressTouch}
-        >
-          <View style={styles.progressBarBackground} />
-          <View
-            style={[styles.progressBarFilled, { width: `${(isSeeking ? seekPosition : progressPosition) * 100}%` }]}
-          />
-        </View>
-
-        <ThemedText style={{ color: "white", marginTop: 5 }}>
-          {status?.isLoaded
-            ? `${formatTime(status.positionMillis)} / ${formatTime(status.durationMillis || 0)}`
-            : "00:00 / 00:00"}
-        </ThemedText>
-
-        <View style={styles.bottomControls}>
-          <MediaButton onPress={() => safeCall(setIntroEndTime)} timeLabel={introEndTime ? formatTime(introEndTime) : undefined}>
-            <ArrowDownToDot color="white" size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={() => safeCall(togglePlayPause)} hasTVPreferredFocus={showControls}>
-            {status?.isLoaded && status.isPlaying ? (
-              <Pause color="white" size={24} />
-            ) : (
-              <Play color="white" size={24} />
-            )}
-          </MediaButton>
-
-          <MediaButton onPress={onPlayNextEpisode} disabled={!hasNextEpisode}>
-            <SkipForward color={hasNextEpisode ? "white" : "#666"} size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={() => safeCall(setOutroStartTime)} timeLabel={outroStartTime ? formatTime(outroStartTime) : undefined}>
-            <ArrowUpFromDot color="white" size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={() => safeCall(setShowEpisodeModal, true)}>
-            <List color="white" size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={() => safeCall(setShowSpeedModal, true)} timeLabel={playbackRate !== 1.0 ? `${playbackRate}x` : undefined}>
-            <Gauge color="white" size={24} />
-          </MediaButton>
-
-          <MediaButton onPress={() => safeCall(setShowSourceModal, true)}>
-            <Tv color="white" size={24} />
-          </MediaButton>
-        </View>
-      </View>
-    </View>
+    </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
-  controlsOverlay: {
+  fullscreenClickArea: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(21, 23, 24, 0.5)",
+    zIndex: 100,
+  },
+  controlsOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.45)",
     justifyContent: "space-between",
     padding: 20,
   },
@@ -369,29 +317,25 @@ const styles = StyleSheet.create({
   bottomControlsContainer: { width: "100%", alignItems: "center" },
   bottomControls: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 15 },
   progressBarContainer: { width: "100%", height: 30, position: "relative", marginTop: 5, justifyContent: 'center' },
-  progressBarBackground: { position: "absolute", left: 0, right: 0, height: 6, backgroundColor: "rgba(255, 255, 255, 0.3)", borderRadius: 3 },
-  progressBarFilled: { position: "absolute", left: 0, height: 6, backgroundColor: "#fff", borderRadius: 3 },
-  progressBarTouchable: { position: "absolute", left: 0, right: 0, height: 30, top: -10, zIndex: 10 },
-  controlButton: { padding: 10, flexDirection: "row", alignItems: "center" },
-  topRightContainer: { padding: 10, alignItems: "center", justifyContent: "center", minWidth: 44 },
-  resolutionText: { color: "white", fontSize: 16, fontWeight: "bold", backgroundColor: "rgba(21, 23, 24, 0.6)", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  progressBarBackground: { position: "absolute", left: 0, right: 0, height: 4, backgroundColor: "rgba(255, 255, 255, 0.2)", borderRadius: 2 },
+  progressBarFilled: { position: "absolute", left: 0, height: 4, backgroundColor: "#00bb5e", borderRadius: 2 },
   mobileTopBar: { flexDirection: 'row', alignItems: 'center', paddingTop: 10 },
   iconBtn: { padding: 10 },
-  mobileTitle: { color: 'white', fontSize: 18, fontWeight: 'bold', marginLeft: 10, flex: 1 },
-  mobileBottomSection: { width: '100%', paddingBottom: 10 },
-  mobileBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingHorizontal: 10 },
-  mobileBottomLeft: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-  mobileBottomRight: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  mobileMediaBtn: { minWidth: 44, padding: 8 },
+  mobileTitle: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: 10, flex: 1 },
+  mobileBottomSection: { width: '100%' },
+  mobileBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  mobileBottomLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  mobileBottomRight: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+  mobileMediaBtn: { padding: 8 },
   mobileIconBtn: { padding: 8 },
-  timeText: { color: 'white', fontSize: 12, marginLeft: 5 },
+  timeText: { color: 'white', fontSize: 12, marginLeft: 2 },
   timeTextSmall: { color: 'white', fontSize: 11, opacity: 0.8 },
-  mobileTextBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  mobileTextBtnLabel: { color: 'white', fontSize: 13, fontWeight: '600' },
-  centerPlayBtn: { position: 'absolute', top: '40%', left: '45%', backgroundColor: 'rgba(21, 23, 24, 0.6)', padding: 15, borderRadius: 40 },
+  mobileTextBtn: { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  mobileTextBtnLabel: { color: 'white', fontSize: 11, fontWeight: '600' },
   centerControlArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  centerPlayBtnSmall: { backgroundColor: 'rgba(21, 23, 24, 0.5)', padding: 12, borderRadius: 30 },
-  progressBarContainerSmall: { width: "100%", height: 20, position: "relative", justifyContent: 'center' },
+  centerPlayBtnBig: { backgroundColor: 'rgba(0, 0, 0, 0.4)', padding: 20, borderRadius: 50 },
+  centerPlayBtnSmall: { backgroundColor: 'rgba(0, 0, 0, 0.4)', padding: 12, borderRadius: 30 },
+  progressBarContainerSmall: { width: "100%", height: 16, position: "relative", justifyContent: 'center' },
   progressBarBackgroundSmall: { position: "absolute", left: 0, right: 0, height: 3, backgroundColor: "rgba(255, 255, 255, 0.2)", borderRadius: 1.5 },
   progressBarFilledSmall: { position: "absolute", left: 0, height: 3, backgroundColor: "#00bb5e", borderRadius: 1.5 },
   mobileNonFullscreenBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2, paddingHorizontal: 4 },

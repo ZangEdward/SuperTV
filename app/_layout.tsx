@@ -16,6 +16,7 @@ import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import LoginModal from "@/components/LoginModal";
 import useAuthStore from "@/stores/authStore";
 import { useUpdateStore, initUpdateStore } from "@/stores/updateStore";
+import useCacheStore from "@/stores/cacheStore";
 import { UpdateModal } from "@/components/UpdateModal";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Colors } from "@/constants/Colors";
@@ -78,6 +79,7 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
   const { loadSettings, remoteInputEnabled, apiBaseUrl } = useSettingsStore();
+  const { loadCache } = useCacheStore();
   const { startServer, stopServer } = useRemoteControlStore();
   const { checkLoginStatus } = useAuthStore();
   const { checkForUpdate, lastCheckTime } = useUpdateStore();
@@ -112,7 +114,10 @@ export default function RootLayout() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        await loadSettings();
+        await Promise.all([
+          loadSettings(),
+          loadCache()
+        ]);
         // 关键：App 启动即开启组播锁
         if (Platform.OS === 'android' && MulticastModule) {
           MulticastModule.acquire();

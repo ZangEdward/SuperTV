@@ -74,7 +74,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
   currentDownloadId: null,
   downloadProgress: {},
   queue: [],
-  concurrency: 1, // 降低默认并发数，减少 CPU 消耗
+  concurrency: 5, // 默认同时下载 5 集
   activeCount: 0,
 
   setConcurrency: (value) => {
@@ -107,20 +107,13 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
   loadCache: async () => {
       const state = get();
-      // 如果内存中已经有队列数据，不覆盖（防止播放页新加下载后被旧数据替换）
-      const hasInMemoryQueue = state.queue.length > 0;
-
       set({ loading: true, error: null });
       try {
         await CacheService.ensureDownloadDirectory();
         const items = await CacheService.getAll();
+        const queue = await CacheService.getQueue();
 
-        if (!hasInMemoryQueue) {
-          const queue = await CacheService.getQueue();
-          set({ items, queue, loading: false });
-        } else {
-          set({ items, loading: false });
-        }
+        set({ items, queue, loading: false });
       } catch (error) {
         logger.warn("loadCache failed", error);
         set({ loading: false, error: "加载缓存失败" });
@@ -128,8 +121,38 @@ const useCacheStore = create<CacheState>((set, get) => ({
     },
 
   enqueueSeries: (series) => {
+    // 检查是否已经存在该剧集的该集下载
+    const currentQueue = get().queue;
+    const items = get().items;
+
+    const newEpisodes = series.episodes.filter(ep => {
+      // 检查是否已在已完成列表中
+      const isCompleted = items.some(it =>
+        it.title === series.title && it.episodeIndex === ep.index
+      );
+      if (isCompleted) return false;
+
+      // 检查是否已在队列中
+      const isQueued = currentQueue.some(group =>
+        group.title === series.title && group.episodes.some(qEp => qEp.index === ep.index && qEp.status !== 'failed' && qEp.status !== 'cancelled')
+      );
+      return !isQueued;
+    });
+
+    if (newEpisodes.length === 0) {
+      Toast.show({ type: "info", text1: "提示", text2: "所选集数已在缓存中或队列中" });
+      return;
+    }
+
     const groupId = `${series.source}_${series.id}_${Date.now()}`;
-    const episodes: QueuedEpisode[] = series.episodes.map((ep) => ({ index: ep.index, url: ep.url, status: 'pending' as const, progress: 0, completedCount: 0, id: `${series.source}_${series.id}_${ep.index}` }));
+    const episodes: QueuedEpisode[] = newEpisodes.map((ep) => ({
+      index: ep.index,
+      url: ep.url,
+      status: 'pending' as const,
+      progress: 0,
+      completedCount: 0,
+      id: `${series.source}_${series.id}_${ep.index}`
+    }));
     const group: GroupedDownload = {
       groupId,
       source: series.source,
@@ -141,6 +164,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     set((state) => ({ queue: [...state.queue, group] }));
     CacheService.saveQueue(get().queue);
     (get() as any).processQueue?.();
+    Toast.show({ type: "success", text1: "已加入下载队列", text2: `已成功添加 ${newEpisodes.length} 个任务` });
   },
 
   // start download for a queued episode respecting concurrency

@@ -18,7 +18,7 @@ export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
   const router = useRouter();
   const { detail, searchResults, loading, error, init, setDetail } = useDetailStore();
-  const { downloadEpisode, currentDownloadId, enqueueSeries, items, queue } = useCacheStore();
+  const { downloadEpisode, currentDownloadId, enqueueSeries, items, queue, loadCache } = useCacheStore();
   const [showAllSources, setShowAllSources] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResultWithResolution | null>(null);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -28,10 +28,11 @@ export default function CacheScreen() {
   const { deviceType, spacing } = responsiveConfig;
 
   useEffect(() => {
+    loadCache();
     if (q && (!detail || detail.title !== q || searchResults.length === 0)) {
       init(q, source, id);
     }
-  }, [q, source, id, detail, init, searchResults.length]);
+  }, [q, source, id, detail, init, searchResults.length, loadCache]);
 
   useEffect(() => {
     if (detail && detail.source) {
@@ -84,7 +85,6 @@ export default function CacheScreen() {
       poster: selectedSource.poster,
       episodes: episodeIndexes.map((index) => ({ index, url: selectedSource.episodes[index] })),
     });
-    Alert.alert('已加入下载列表', `已加入 ${episodeIndexes.length} 集到缓存队列`);
     setSelectedEpisodes([]);
   };
 
