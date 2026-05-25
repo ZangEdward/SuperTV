@@ -24,7 +24,7 @@ import Logger from '@/utils/Logger';
 const logger = Logger.withTag('SearchScreen');
 
 export default function SearchScreen() {
-  const { keyword, results, loading, error, setKeyword, search } = useSearchStore();
+  const { keyword, results, loading, error, setKeyword, search, searchProgress } = useSearchStore();
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
@@ -118,9 +118,26 @@ export default function SearchScreen() {
         )}
       </View>
 
-      {loading ? (
+      {searchProgress.total > 0 && !searchProgress.isComplete && (
+        <View style={dynamicStyles.progressContainer}>
+          <ThemedText style={dynamicStyles.progressText}>
+            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '连接资源中...'}
+            {` (${searchProgress.completed}/${searchProgress.total})`}
+          </ThemedText>
+          <View style={dynamicStyles.progressBarBg}>
+            <View
+              style={[
+                dynamicStyles.progressBarFill,
+                { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }
+              ]}
+            />
+          </View>
+        </View>
+      )}
+
+      {loading && results.length === 0 ? (
         <VideoLoadingAnimation />
-      ) : error ? (
+      ) : error && results.length === 0 ? (
         <View style={[commonStyles.center, { flex: 1 }]}>
           <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
         </View>
@@ -206,6 +223,25 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       color: "red",
       fontSize: isMobile ? 14 : 16,
       textAlign: "center",
+    },
+    progressContainer: {
+      paddingHorizontal: spacing,
+      marginBottom: spacing / 2,
+    },
+    progressText: {
+      fontSize: 12,
+      color: "#888",
+      marginBottom: 4,
+    },
+    progressBarBg: {
+      height: 2,
+      backgroundColor: "#2c2c2e",
+      borderRadius: 1,
+      overflow: "hidden",
+    },
+    progressBarFill: {
+      height: "100%",
+      backgroundColor: Colors.dark.primary,
     },
   });
 };

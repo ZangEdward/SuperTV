@@ -99,15 +99,15 @@ const CustomScrollView = forwardRef<any, CustomScrollViewProps>(({
     return null;
   };
 
-  if (loading) {
+  if (loading && data.length === 0) {
     return (
-      <View style={commonStyles.center}>
-        <ActivityIndicator size="large" />
+      <View style={[commonStyles.center, { flex: 1 }]}>
+        <ActivityIndicator size="large" color={responsiveConfig.deviceType === 'tv' ? 'white' : undefined} />
       </View>
     );
   }
 
-  if (error) {
+  if (error && data.length === 0) {
     return (
       <View style={commonStyles.center}>
         <ThemedText type="subtitle" style={{ padding: responsiveConfig.spacing }}>

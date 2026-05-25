@@ -5,12 +5,20 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SearchStore");
 
+export interface SearchProgress {
+  total: number;
+  completed: number;
+  currentSource: string | null;
+  isComplete: boolean;
+}
+
 interface SearchState {
   keyword: string;
   results: SearchResult[];
   loading: boolean;
   error: string | null;
   controller: AbortController | null;
+  searchProgress: SearchProgress;
   setKeyword: (keyword: string) => void;
   search: (keyword?: string) => Promise<void>;
   clearResults: () => void;
@@ -23,6 +31,7 @@ const useSearchStore = create<SearchState>((set, get) => ({
   loading: false,
   error: null,
   controller: null,
+  searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
 
   setKeyword: (keyword) => set({ keyword }),
 
@@ -47,20 +56,49 @@ const useSearchStore = create<SearchState>((set, get) => ({
       loading: true,
       error: null,
       results: [],
-      controller: newController
+      controller: newController,
+      searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
     });
 
-    const { videoSource } = useSettingsStore.getState();
+    const updateProgress = (updates: Partial<SearchProgress>) => {
+      if (signal.aborted) return;
+      set(state => ({
+        searchProgress: { ...state.searchProgress, ...updates }
+      }));
+    };
+
+    const seenTitles = new Set<string>();
+
+    const processAndAddResults = (results: SearchResult[]) => {
+      if (signal.aborted || !results || results.length === 0) return;
+
+      set((state) => {
+        const newResults = results.filter(r => {
+          const normalizedTitle = r.title.trim().toLowerCase();
+          if (seenTitles.has(normalizedTitle)) return false;
+          seenTitles.add(normalizedTitle);
+          return true;
+        });
+
+        if (newResults.length === 0) return state;
+
+        // 只要有了结果，就关闭全屏加载状态
+        return {
+          results: [...state.results, ...newResults],
+          loading: false
+        };
+      });
+    };
 
     try {
-      // 1. 获取可用资源（优先从 settingsStore 获取已缓存的，加快速度）
       const settingsStore = useSettingsStore.getState();
+      const { videoSource } = settingsStore;
       let enabledResources = [];
 
       if (settingsStore.allSources && settingsStore.allSources.length > 0) {
-        enabledResources = settingsStore.videoSource.enabledAll
+        enabledResources = videoSource.enabledAll
           ? settingsStore.allSources
-          : settingsStore.allSources.filter((r) => settingsStore.videoSource.sources[r.key]);
+          : settingsStore.allSources.filter((r) => videoSource.sources[r.key]);
       } else {
         const allResources = await api.getResources(signal);
         enabledResources = videoSource.enabledAll
@@ -73,82 +111,62 @@ const useSearchStore = create<SearchState>((set, get) => ({
         return;
       }
 
-      let firstBatchFound = false;
-      let totalFound = 0;
-      const seenTitles = new Set<string>();
+      updateProgress({ total: enabledResources.length });
 
-      // 3. 并行搜索，动态异步刷新结果
+      let completed = 0;
+
+      // 3. 并行搜索，动态异步刷新结果（Selene 模式）
       const searchPromises = enabledResources.map(async (resource) => {
         try {
-          const response = await api.searchVideo(term, resource.key, signal);
-          if (!response || !response.results) return;
+          updateProgress({ currentSource: resource.name });
 
-          const { results } = response;
+          // 增加单源超时竞争
+          const timeoutPromise = new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+          );
+
+          const results = await Promise.race([
+            api.searchVideo(term, resource.key, signal).then(r => r.results),
+            timeoutPromise
+          ]) as SearchResult[] | null;
 
           if (signal.aborted) return;
-
           if (results && results.length > 0) {
-            totalFound += results.length;
-            set((state) => {
-              // 关键：全局去重（按标题），同剧集只显示一个结果
-              const newResults = results.filter(r => {
-                const normalizedTitle = r.title.trim().toLowerCase();
-                if (seenTitles.has(normalizedTitle)) return false;
-                seenTitles.add(normalizedTitle);
-                return true;
-              });
-
-              if (newResults.length === 0) {
-                 // 如果没有新结果且是第一个源返回，也要关闭 loading 吗？
-                 // 不，最好等有结果。但如果所有源都返回空，则最后会处理。
-                 return state;
-              }
-
-              const updatedResults = [...state.results, ...newResults];
-
-              // 异步刷新：只要有新结果就立即显示
-              if (!firstBatchFound) {
-                firstBatchFound = true;
-                return { results: updatedResults, loading: false };
-              }
-              return { results: updatedResults };
-            });
+            processAndAddResults(results);
           }
         } catch (err) {
           if ((err as Error).name !== "AbortError") {
-            logger.warn(`Search failed for source ${resource.name}:`, err);
+            logger.debug(`Search failed for source ${resource.name}`);
           }
+        } finally {
+          completed++;
+          updateProgress({ completed });
         }
       });
 
       await Promise.all(searchPromises);
+      updateProgress({ isComplete: true });
 
       if (signal.aborted) return;
 
-      // 如果全部搜索完成但没有找到任何结果，则尝试 fallback 或报错
-      if (totalFound === 0 || get().results.length === 0) {
-        // 降级策略：所有单源搜索都返回空时，尝试批量搜索端点
-        // 参考 detailStore.ts 中的 fallback 机制
-        logger.warn(`[WARN] All individual source searches returned 0 results for "${term}", trying bulk search endpoint`);
+      // 如果最终完全没有结果，尝试 fallback
+      if (get().results.length === 0) {
+        updateProgress({ currentSource: '全局搜索' });
         try {
           const { results: fallbackResults } = await api.searchVideos(term);
           if (!signal.aborted && fallbackResults && fallbackResults.length > 0) {
-            const filtered = fallbackResults.filter(item => {
-              if (!item.title || !term) return false;
-              return item.title.toLowerCase().includes(term.toLowerCase());
-            });
-            if (filtered.length > 0) {
-              logger.info(`[SUCCESS] Fallback bulk search found ${filtered.length} results`);
-              set({ results: filtered, loading: false });
-            } else {
-              logger.error(`[ERROR] Fallback bulk search found results but none matched "${term}"`);
-              set({ error: `未找到 "${term}" 相关内容`, loading: false });
-            }
+             const filtered = fallbackResults.filter(item =>
+               item.title && item.title.toLowerCase().includes(term.toLowerCase())
+             );
+             if (filtered.length > 0) {
+               set({ results: filtered, loading: false });
+             } else {
+               set({ error: `未找到 "${term}" 相关内容`, loading: false });
+             }
           } else {
             set({ error: `未找到 "${term}" 相关内容`, loading: false });
           }
         } catch (fallbackError) {
-          logger.error(`[ERROR] Fallback bulk search also failed:`, fallbackError);
           set({ error: `未找到 "${term}" 相关内容`, loading: false });
         }
       } else {

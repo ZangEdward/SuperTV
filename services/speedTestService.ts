@@ -3,62 +3,72 @@ import Logger from '@/utils/Logger';
 const logger = Logger.withTag('SpeedTest');
 
 export interface SpeedTestResult {
-  latency: number;
-  speed: number; // in MB/s
+  latency: number; // 延迟 (ms)
+  speed: number;   // 速度 (MB/s)
 }
 
 /**
- * 测速服务：针对 M3U8 视频源进行深度测速
- * 逻辑：下载 M3U8 -> 解析第一个 TS -> 下载前 2MB -> 计算延迟和平均速度
+ * 测速服务：模仿 Selene-Source 的高性能并发测速逻辑
  */
 export class SpeedTestService {
-  private static readonly MAX_TEST_SIZE = 2 * 1024 * 1024; // 2MB
-  private static readonly TIMEOUT = 2000; // 2s 超时
+  private static readonly SAMPLE_SIZE = 512 * 1024; // 512KB 样本即可，2MB 太慢了
+  private static readonly GLOBAL_TIMEOUT = 5000;    // 整体 5s 限制
+  private static readonly RTT_TIMEOUT = 2000;      // 延迟测量 2s 限制
 
   /**
    * 测试单个 M3U8 链接的真实速度
+   * 采用并发测速方案：同步测量 RTT 和 样本下载
    */
   static async testM3U8Speed(url: string, signal?: AbortSignal): Promise<SpeedTestResult> {
-    const startTime = performance.now();
-    const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), this.TIMEOUT);
+    const mainController = new AbortController();
+    const timeoutId = setTimeout(() => mainController.abort(), this.GLOBAL_TIMEOUT);
 
-    // 监听外部取消信号
     if (signal) {
-        signal.addEventListener('abort', () => timeoutController.abort());
+      signal.addEventListener('abort', () => mainController.abort());
     }
 
     try {
-      // 1. 获取 M3U8 内容
-      const m3u8Res = await fetch(url, { signal: timeoutController.signal });
-      if (!m3u8Res.ok) throw new Error('M3U8 fetch failed');
+      // 1. 获取 M3U8 内容 (同时作为第一次 RTT 参考)
+      const m3u8StartTime = performance.now();
+      const m3u8Res = await fetch(url, {
+        signal: mainController.signal,
+        headers: { 'Range': 'bytes=0-1024' } // 仅请求开头，大幅提速
+      });
 
-      const latency = Math.round(performance.now() - startTime);
+      if (!m3u8Res.ok) throw new Error('M3U8 fetch failed');
+      const latency = Math.round(performance.now() - m3u8StartTime);
       const content = await m3u8Res.text();
 
-      // 2. 解析第一个有效 TS 链接
-      const tsUrl = this.getFirstTsUrl(url, content);
-      if (!tsUrl) {
+      // 2. 解析 TS 链接
+      const tsUrls = this.getTsUrls(url, content, 2);
+      if (tsUrls.length === 0) {
         return { latency, speed: 0 };
       }
 
-      // 3. 下载前 2MB 数据并计算速度
+      // 3. 并发测速 (模仿 Selene 的多段采样)
       const downloadStartTime = performance.now();
-      const tsRes = await fetch(tsUrl, {
-        signal: timeoutController.signal,
-        headers: {
-            'Range': `bytes=0-${this.MAX_TEST_SIZE - 1}`
+
+      const downloadTasks = tsUrls.map(async (tsUrl) => {
+        try {
+          const res = await fetch(tsUrl, {
+            signal: mainController.signal,
+            headers: { 'Range': `bytes=0-${this.SAMPLE_SIZE - 1}` }
+          });
+          if (!res.ok && res.status !== 206) return 0;
+          const buffer = await res.arrayBuffer();
+          return buffer.byteLength;
+        } catch {
+          return 0;
         }
       });
 
-      if (!tsRes.ok && tsRes.status !== 206) throw new Error('TS fetch failed');
+      const results = await Promise.all(downloadTasks);
+      const totalBytes = results.reduce((a, b) => a + b, 0);
+      const duration = (performance.now() - downloadStartTime) / 1000; // 秒
 
-      // 读取二进制数据以确保真实下载发生
-      const buffer = await tsRes.arrayBuffer();
-      const receivedLength = buffer.byteLength;
+      if (totalBytes === 0) return { latency, speed: 0 };
 
-      const duration = (performance.now() - downloadStartTime) / 1000; // seconds
-      const speed = receivedLength / (1024 * 1024) / (duration || 0.001); // MB/s
+      const speed = (totalBytes / (1024 * 1024)) / (duration || 0.001);
 
       return {
         latency,
@@ -67,13 +77,8 @@ export class SpeedTestService {
 
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
-          // 判断是超时还是用户手动取消
-          if (!signal?.aborted) {
-              logger.debug(`Speed test timeout (2s) for ${url}`);
-          }
-          return { latency: Infinity, speed: 0 };
+        return { latency: Infinity, speed: 0 };
       }
-      logger.warn(`Speed test failed for ${url}:`, e);
       return { latency: Infinity, speed: 0 };
     } finally {
       clearTimeout(timeoutId);
@@ -81,41 +86,39 @@ export class SpeedTestService {
   }
 
   /**
-   * 从 M3U8 内容中提取第一个 TS 链接，处理相对路径
+   * 获取前 N 个 TS 链接
    */
-  private static getFirstTsUrl(m3u8Url: string, content: string): string | null {
+  private static getTsUrls(m3u8Url: string, content: string, count: number): string[] {
     const lines = content.split('\n');
-    let tsPath = '';
+    const urls: string[] = [];
+    const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+    const origin = m3u8Url.split('/').slice(0, 3).join('/');
 
     for (let line of lines) {
       line = line.trim();
       if (line && !line.startsWith('#')) {
-        tsPath = line;
-        break;
+        let fullUrl = line;
+        if (!line.startsWith('http')) {
+          if (line.startsWith('/')) {
+            fullUrl = origin + line;
+          } else {
+            fullUrl = baseUrl + line;
+          }
+        }
+        urls.push(fullUrl);
+        if (urls.length >= count) break;
       }
     }
-
-    if (!tsPath) return null;
-
-    // 处理绝对路径
-    if (tsPath.startsWith('http')) return tsPath;
-
-    // 处理相对路径
-    const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-    if (tsPath.startsWith('/')) {
-      const origin = m3u8Url.split('/').slice(0, 3).join('/');
-      return origin + tsPath;
-    }
-
-    return baseUrl + tsPath;
+    return urls;
   }
 
   /**
    * 格式化速度显示
    */
   static formatSpeed(mbps: number): string {
-    if (mbps === 0) return '不可用';
+    if (mbps === 0 || mbps === Infinity) return '超时';
+    if (mbps < 0.01) return '极慢';
     if (mbps < 1) return `${(mbps * 1024).toFixed(0)} KB/s`;
-    return `${mbps.toFixed(2)} MB/s`;
+    return `${mbps.toFixed(1)} MB/s`;
   }
 }

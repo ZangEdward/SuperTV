@@ -14,6 +14,13 @@ export type SearchResultWithResolution = SearchResult & {
   speed?: number;
 };
 
+export interface SearchProgress {
+  total: number;
+  completed: number;
+  currentSource: string | null;
+  isComplete: boolean;
+}
+
 interface DetailState {
   q: string | null;
   searchResults: SearchResultWithResolution[];
@@ -25,6 +32,7 @@ interface DetailState {
   controller: AbortController | null;
   isFavorited: boolean;
   failedSources: Set<string>;
+  searchProgress: SearchProgress;
 
   init: (q: string, preferredSource?: string, id?: string) => Promise<void>;
   setDetail: (detail: SearchResultWithResolution) => Promise<void>;
@@ -53,6 +61,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
   controller: null,
   isFavorited: false,
   failedSources: new Set(),
+  searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
@@ -73,23 +82,36 @@ const useDetailStore = create<DetailState>((set, get) => ({
       error: null,
       allSourcesLoaded: false,
       controller: newController,
+      searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
     });
 
     const { videoSource } = useSettingsStore.getState();
 
-    const processAndSetResults = async (results: SearchResult[], defaultLatency?: number, merge = false) => {
-      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
-      
+    const updateProgress = (updates: Partial<SearchProgress>) => {
       if (signal.aborted) return;
+      set(state => ({
+        searchProgress: { ...state.searchProgress, ...updates }
+      }));
+    };
+
+    const processAndSetResults = async (results: SearchResult[], defaultLatency?: number) => {
+      if (signal.aborted || results.length === 0) return;
 
       const state = get();
+      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
+
+      // 合并并去重
       const existingSources = new Set(state.searchResults.map((r) => r.source));
       const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
-      const combinedResults = merge ? [...state.searchResults, ...newResults] : resultsWithLatency;
 
+      if (newResults.length === 0) return;
+
+      const combinedResults = [...state.searchResults, ...newResults];
+
+      // 智能排序：优先显示剧集多且延迟低的
       const finalResults = combinedResults.sort((a, b) => {
-        if (b.episodes.length !== a.episodes.length) {
-          return b.episodes.length - a.episodes.length;
+        if ((b.episodes?.length || 0) !== (a.episodes?.length || 0)) {
+          return (b.episodes?.length || 0) - (a.episodes?.length || 0);
         }
         return (a.latency || 0) - (b.latency || 0);
       });
@@ -101,7 +123,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
           )
         : null;
 
-      // FIX: Ensure we keep the preferred source if it's found
       const selectedDetail = preferredMatch || state.detail || finalResults[0] || null;
 
       set({
@@ -114,6 +135,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
         detail: selectedDetail,
       });
 
+      // 如果选中的详情还没有剧集数据，异步拉取一次
       if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
         await get().setDetail(selectedDetail);
       }
@@ -121,49 +143,34 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     try {
       if (preferredSource && id) {
+        // [路径 A] 有首选源：先精准打击，再异步拉取其他
+        updateProgress({ total: 1, currentSource: '首选源' });
+
         let preferredResult: SearchResult[] = [];
         try {
           const response = await api.searchVideo(q, preferredSource, signal);
           preferredResult = response.results;
         } catch (error) {
-          logger.error(`[ERROR] API searchVideo (preferred) FAILED - source: ${preferredSource}`, error);
+          logger.warn(`Preferred source "${preferredSource}" failed`, error);
         }
 
         if (signal.aborted) return;
         
         if (preferredResult.length > 0) {
-          await processAndSetResults(preferredResult, 0, false);
+          await processAndSetResults(preferredResult, 0);
           set({ loading: false });
+          updateProgress({ completed: 1, isComplete: true });
         } else {
-          // Fallback: 从所有资源中搜索
-          logger.info(`[FALLBACK] Preferred source "${preferredSource}" returned no results, trying all sources`);
-          try {
-            const { results: allResults } = await api.searchVideos(q);
-            if (signal.aborted) return;
-            const filteredResults = allResults.filter(item => item.title && q && item.title.toLowerCase().includes(q.toLowerCase()));
-            if (filteredResults.length > 0) {
-              await processAndSetResults(filteredResults, 0, false);
-              set({ loading: false });
-            } else {
-              // 完全不设置error，允许play.tsx检测到detail为null后显示专用错误页
-              logger.warn(`[WARN] No results found for "${q}" in any source`);
-              set({ loading: false }); // 标记加载完成但无数据
-            }
-          } catch (fallbackError) {
-            logger.warn(`[FALLBACK ERROR] All sources search failed for "${q}"`, fallbackError);
-            set({ loading: false }); // 标记加载完成，让play.tsx处理null detail
-          }
+          logger.info(`Preferred source failed, falling back to all-source search`);
         }
         
-        // 如果首选源有结果，异步请求所有资源以获取完整列表（换源用）
-        if (preferredResult.length > 0) {
-          try {
-            const { results: allResults } = await api.searchVideos(q);
-            if (signal.aborted) return;
-            await processAndSetResults(allResults.filter(item => item.title && q && item.title.toLowerCase().includes(q.toLowerCase())), 0, true);
-          } catch {}
-        }
+        // 异步拉取全量资源（换源备用），不阻塞首屏
+        api.searchVideos(q).then(response => {
+          if (!signal.aborted) processAndSetResults(response.results, 100);
+        }).catch(() => {});
+
       } else {
+        // [路径 B] 无首选源：模仿 Selene 异步并发加载模式
         const allResources = await api.getResources(signal);
         const enabledResources = videoSource.enabledAll ? allResources : allResources.filter((r) => videoSource.sources[r.key]);
 
@@ -172,30 +179,54 @@ const useDetailStore = create<DetailState>((set, get) => ({
           return;
         }
 
+        updateProgress({ total: enabledResources.length });
+
+        let completed = 0;
         let firstResultFound = false;
+
+        // 并发执行搜索
         const searchPromises = enabledResources.map(async (resource) => {
           try {
+            updateProgress({ currentSource: resource.name });
             const searchStart = performance.now();
-            const { results } = await api.searchVideo(q, resource.key, signal);
+
+            // 为单个源增加超时竞争，防止被某个僵尸源拖死
+            const timeoutPromise = new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error('TIMEOUT')), 10000)
+            );
+
+            const results = await Promise.race([
+              api.searchVideo(q, resource.key, signal).then(r => r.results),
+              timeoutPromise
+            ]) as SearchResult[] | null;
+
             const latency = performance.now() - searchStart;
 
-            if (results.length > 0) {
-              await processAndSetResults(results, latency, true);
+            if (results && results.length > 0) {
+              await processAndSetResults(results, latency);
               if (!firstResultFound) {
                 set({ loading: false });
                 firstResultFound = true;
               }
             }
-          } catch {}
+          } catch (e) {
+            logger.debug(`Search failed for ${resource.name}`);
+          } finally {
+            completed++;
+            updateProgress({ completed });
+          }
         });
 
+        // 这里的 Promise.all 只是为了等待最终状态，实际 UI 是由内部的 processAndSetResults 实时更新的
         await Promise.all(searchPromises);
+        updateProgress({ isComplete: true });
       }
 
+      // 最后同步一下收藏状态
       const finalState = get();
       if (finalState.detail) {
-        const { source, id } = finalState.detail;
-        const isFavorited = await FavoriteManager.isFavorited(source, id.toString());
+        const { source, id: vid } = finalState.detail;
+        const isFavorited = await FavoriteManager.isFavorited(source, vid.toString());
         set({ isFavorited });
       }
     } catch (e) {
@@ -213,53 +244,62 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const { searchResults, controller } = get();
     if (searchResults.length === 0) return;
 
-    // 使用当前控制器的 signal，支持取消
     const signal = controller?.signal;
+    const testBatchSize = 3; // 每次并发测试 3 个，防止互相抢占带宽导致测速不准
 
-    // 为了实现实时反馈，不使用 Promise.all 阻塞，而是逐个或分批完成并更新
-    searchResults.forEach(async (item) => {
-      try {
-        // 1. 确保有 episodes 数据
-        let episodes = item.episodes;
-        if (!episodes || episodes.length === 0) {
-          const detail = await api.getVideoDetail(item.source, item.id.toString());
-          episodes = detail.episodes || [];
-        }
+    // [逻辑升级] 模仿 Selene 的加权评分排序
+    const calculateScore = (r: SearchResultWithResolution) => {
+      let score = 0;
+      // 1. 速度权重 (40%) - 2MB/s 以上即为优秀
+      const speedScore = Math.min((r.speed || 0) / 2, 1) * 40;
+      // 2. 延迟权重 (30%) - 100ms 以下为优秀，1000ms 以上为极差
+      const latencyScore = r.latency ? Math.max(0, (1000 - r.latency) / 900) * 30 : 0;
+      // 3. 分辨率权重 (20%)
+      let resScore = 0;
+      if (r.resolution?.includes('1080')) resScore = 20;
+      else if (r.resolution?.includes('720')) resScore = 15;
+      else if (r.resolution?.includes('480')) resScore = 10;
+      // 4. 稳定性权重 (10%) - 剧集越多通常越稳定
+      const epScore = Math.min((r.episodes?.length || 0) / 30, 1) * 10;
 
-        if (episodes.length === 0) {
-           set(state => ({
-             searchResults: state.searchResults.map(r =>
-               r.source === item.source ? { ...r, latency: Infinity, speed: 0 } : r
-             )
-           }));
-           return;
-        }
+      return speedScore + latencyScore + resScore + epScore;
+    };
 
-        // 2. 执行深度测速
-        const testUrl = episodes[0];
-        const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+    // 分批次测速
+    for (let i = 0; i < searchResults.length; i += testBatchSize) {
+      if (signal?.aborted) break;
+      const batch = searchResults.slice(i, i + testBatchSize);
 
-        // 3. 实时更新当前源的状态
-        set(state => {
-          const newResults = state.searchResults.map(r =>
-            r.source === item.source ? { ...r, ...metrics } : r
-          );
+      await Promise.all(batch.map(async (item) => {
+        try {
+          let episodes = item.episodes;
+          if (!episodes || episodes.length === 0) {
+            const detail = await api.getVideoDetail(item.source, item.id.toString());
+            episodes = detail.episodes || [];
+          }
 
-          // 检查是否所有源都测速完成了（或者超出了初始列表长度）
-          // 这里可以不做排序，等全部完成后再统一排序，或者保持实时排序（由于 TV 端焦点问题，建议最后统排）
-          return { searchResults: newResults };
-        });
-      } catch (e) {
-        set(state => ({
-          searchResults: state.searchResults.map(r =>
-            r.source === item.source ? { ...r, latency: Infinity, speed: 0 } : r
-          )
-        }));
-      }
-    });
+          if (episodes.length === 0) return;
 
-    // 等待一段时间（比如测速超时的最大值）后进行最终排序，或者由 UI 触发重排
-    // 这里我们简单处理：在所有并发触发后，不在这里阻塞，让 UI 实时显示数值
+          // 模仿 Selene：优先测第二集，更接近真实播放情况
+          const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
+          const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+
+          set(state => {
+            const updatedResults = state.searchResults.map(r =>
+              r.source === item.source ? { ...r, ...metrics } : r
+            );
+
+            // 测速过程中不重排，防止 UI 闪烁导致用户点错，测速完成后再重排
+            return { searchResults: updatedResults };
+          });
+        } catch {}
+      }));
+    }
+
+    // 所有测速完成后，执行一次终极加权重排
+    set(state => ({
+      searchResults: [...state.searchResults].sort((a, b) => calculateScore(b) - calculateScore(a))
+    }));
   },
 
   setDetail: async (detail) => {

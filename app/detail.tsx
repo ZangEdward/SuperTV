@@ -44,6 +44,7 @@ export default function DetailScreen() {
     isFavorited,
     toggleFavorite,
     optimizeSources,
+    searchProgress,
   } = useDetailStore();
 
   const { items, queue } = useCacheStore();
@@ -118,9 +119,21 @@ export default function DetailScreen() {
   }, [detail, isReverse]);
 
   if (loading && !detail) {
+    const progress = searchProgress.total > 0 ? (searchProgress.completed / searchProgress.total) * 100 : 0;
     return (
       <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#151718' }]}>
         <VideoLoadingAnimation />
+        <View style={{ marginTop: 20, alignItems: 'center' }}>
+          <ThemedText style={{ color: '#888', fontSize: 14 }}>
+            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '正在检索全网资源...'}
+          </ThemedText>
+          <View style={{ width: 200, height: 2, backgroundColor: '#333', marginTop: 8, borderRadius: 1, overflow: 'hidden' }}>
+            <View style={{ width: `${progress}%`, height: '100%', backgroundColor: Colors.dark.primary }} />
+          </View>
+          <ThemedText style={{ color: '#555', fontSize: 12, marginTop: 4 }}>
+            已完成 {searchProgress.completed} / {searchProgress.total}
+          </ThemedText>
+        </View>
         {deviceType === 'tv' && (
           <TouchableOpacity focusable={true} style={{ position: 'absolute', opacity: 0 }} />
         )}
