@@ -7,6 +7,7 @@ import { API } from "@/services/api";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { ImageCacheService } from "@/services/imageCacheService";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
@@ -24,6 +25,8 @@ interface VideoCardMobileProps extends React.ComponentProps<typeof TouchableOpac
   playTime?: number;
   episodeIndex?: number;
   totalEpisodes?: number;
+  sourceCount?: number; // 新增：资源数量
+  from?: string; // 增加场景标识
   onFocus?: () => void;
   onRecordDeleted?: () => void;
   api: API;
@@ -41,6 +44,9 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       sourceName,
       progress,
       episodeIndex,
+      totalEpisodes,
+      sourceCount,
+      from,
       onFocus,
       onRecordDeleted,
       api,
@@ -51,65 +57,35 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     const router = useRouter();
     const { cardWidth, cardHeight, spacing } = useResponsiveLayout();
     const [fadeAnim] = useState(new Animated.Value(0));
-
-    const longPressTriggered = useRef(false);
+    const [imageUri, setImageUri] = useState<string | null>(null);
 
     const handlePress = () => {
-      if (longPressTriggered.current) {
-        longPressTriggered.current = false;
-        return;
-      }
-      
-      // 优化：只要有集数索引（来自播放记录），就直接跳转播放
-      if (episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: (playTime || 0) * 1000 },
-        });
-      } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title, id },
-        });
-      }
+      // 聚合卡片点击逻辑：进入搜索聚合详情（当前详情页已支持自动加载）
+      router.push({
+        pathname: "/detail",
+        params: { source, q: title, id },
+      });
     };
 
     useEffect(() => {
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: DeviceUtils.getAnimationDuration(300),
-        delay: Math.random() * 100,
+        duration: 300,
         useNativeDriver: true,
       }).start();
-    }, [fadeAnim]);
 
-    const handleLongPress = () => {
-      if (progress === undefined) return;
+      // [核心优化] 获取本地持久化缓存图片
+      const loadCachedImage = async () => {
+        const proxyUrl = api.getImageProxyUrl(poster);
+        const localPath = await ImageCacheService.getLocalPath(proxyUrl);
+        setImageUri(localPath);
+      };
+      loadCachedImage();
+    }, [fadeAnim, poster]);
 
-      longPressTriggered.current = true;
-
-      Alert.alert("删除观看记录", `确定要删除"${title}"的观看记录吗？`, [
-        {
-          text: "取消",
-          style: "cancel",
-        },
-        {
-          text: "删除",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await PlayRecordManager.remove(source, id);
-              onRecordDeleted?.();
-            } catch (error) {
-              logger.info("Failed to delete play record:", error);
-              Alert.alert("错误", "删除观看记录失败，请重试");
-            }
-          },
-        },
-      ]);
-    };
-
-    const isContinueWatching = progress !== undefined && progress > 0 && progress < 1;
+    // --- Selene 风格角标逻辑 ---
+    const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';
+    const showEpisodeBadge = (from === 'search' || from === 'agg') && totalEpisodes && totalEpisodes > 1;
 
     const styles = createMobileStyles(cardWidth, cardHeight, spacing);
 
@@ -117,26 +93,30 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]} ref={ref}>
         <TouchableOpacity
           onPress={handlePress}
-          onLongPress={handleLongPress}
           style={styles.pressable}
           activeOpacity={0.8}
-          delayLongPress={800}
         >
           <View style={styles.card}>
-            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
+            {imageUri && <Image source={{ uri: imageUri }} style={styles.poster} />}
             
-            {/* 进度条 */}
-            {isContinueWatching && (
-              <View style={styles.progressContainer}>
-                <View style={[styles.progressBar, { width: `${(progress || 0) * 100}%` }]} />
+            {/* 年份 (Top-Left) */}
+            {showYearBadge && (
+              <View style={styles.seleneYearBadge}>
+                <Text style={styles.badgeText}>{year}</Text>
               </View>
             )}
 
-            {/* 继续观看标识 */}
-            {isContinueWatching && (
-              <View style={styles.continueWatchingBadge}>
-                <Play size={12} color="#ffffff" fill="#ffffff" />
-                <Text style={styles.continueWatchingText}>继续</Text>
+            {/* 集数 (Top-Right) */}
+            {showEpisodeBadge && (
+              <View style={styles.seleneEpisodeBadge}>
+                <Text style={styles.badgeText}>{totalEpisodes}</Text>
+              </View>
+            )}
+
+            {/* 资源数量 (Bottom-Right) - 聚合模式专用 */}
+            {from === 'agg' && sourceCount && sourceCount > 1 && (
+              <View style={styles.seleneSourceCountBadge}>
+                <Text style={styles.badgeText}>{sourceCount}</Text>
               </View>
             )}
 
@@ -148,14 +128,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
               </View>
             )}
 
-            {/* 年份 */}
-            {year && (
-              <View style={styles.yearBadge}>
-                <Text style={styles.badgeText}>{year}</Text>
-              </View>
-            )}
-
-            {/* 来源 */}
+            {/* 来源 (Bottom-Left) */}
             {sourceName && (
               <View style={styles.sourceNameBadge}>
                 <Text style={styles.badgeText}>{sourceName}</Text>
@@ -164,12 +137,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           </View>
 
           <View style={styles.infoContainer}>
-            <ThemedText numberOfLines={2} style={styles.title}>{title}</ThemedText>
-            {isContinueWatching && (
-              <ThemedText style={styles.continueLabel} numberOfLines={1}>
-                第{episodeIndex! + 1}集 {Math.round((progress || 0) * 100)}%
-              </ThemedText>
-            )}
+            <ThemedText numberOfLines={1} style={styles.title}>{title}</ThemedText>
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -231,57 +199,75 @@ const createMobileStyles = (cardWidth: number, cardHeight: number, spacing: numb
     },
     ratingContainer: {
       position: "absolute",
-      top: 6,
+      bottom: 6,
       right: 6,
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      borderRadius: 4,
-      paddingHorizontal: 4,
+      backgroundColor: "#e91e63",
+      borderRadius: 12,
+      paddingHorizontal: 6,
       paddingVertical: 2,
     },
     ratingText: {
-      color: "#FFD700",
+      color: "white",
       fontSize: 10,
       fontWeight: "bold",
-      marginLeft: 2,
     },
-    yearBadge: {
+    seleneYearBadge: {
       position: "absolute",
-      bottom: 24,
-      right: 6,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
+      top: 6,
+      left: 6,
+      backgroundColor: "rgba(44, 62, 80, 0.8)",
       borderRadius: 4,
-      paddingHorizontal: 4,
-      paddingVertical: 2,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+    },
+    seleneEpisodeBadge: {
+      position: "absolute",
+      top: 6,
+      right: 6,
+      backgroundColor: "#27ae60",
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+    },
+    seleneSourceCountBadge: {
+      position: "absolute",
+      bottom: 6,
+      right: 6,
+      backgroundColor: "rgba(155, 89, 182, 0.8)", // 紫色
+      borderRadius: 12,
+      width: 20,
+      height: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     sourceNameBadge: {
       position: "absolute",
       bottom: 6,
       left: 6,
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-      borderRadius: 4,
+      backgroundColor: "rgba(0, 0, 0, 0.6)",
+      borderRadius: 3,
       paddingHorizontal: 4,
-      paddingVertical: 2,
+      paddingVertical: 1,
+      borderWidth: 0.5,
+      borderColor: '#7f8c8d',
     },
     badgeText: {
       color: "white",
-      fontSize: 9,
-      fontWeight: "500",
+      fontSize: 10,
+      fontWeight: "bold",
     },
     infoContainer: {
       width: cardWidth,
-      marginTop: 6,
-      paddingHorizontal: 2,
+      marginTop: 4,
+      alignItems: 'center',
     },
     title: {
       fontSize: 13,
-      lineHeight: 16,
-      marginBottom: 2,
-    },
-    continueLabel: {
-      color: Colors.dark.primary,
-      fontSize: 11,
+      fontWeight: '500',
+      color: '#fff',
+      textAlign: 'center',
     },
   });
 };

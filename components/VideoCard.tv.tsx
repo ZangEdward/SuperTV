@@ -23,6 +23,8 @@ interface VideoCardProps extends React.ComponentProps<typeof TouchableOpacity> {
   playTime?: number; // 播放时间 in ms
   episodeIndex?: number; // 剧集索引
   totalEpisodes?: number; // 总集数
+  sourceCount?: number;
+  from?: string; // 增加场景标识
   onFocus?: () => void;
   onRecordDeleted?: () => void; // 添加回调属性
   api: API;
@@ -40,6 +42,8 @@ const VideoCard = forwardRef<View, VideoCardProps>(
       sourceName,
       progress,
       episodeIndex,
+      totalEpisodes,
+      from,
       onFocus,
       onRecordDeleted,
       api,
@@ -51,39 +55,12 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const [isFocused, setIsFocused] = useState(false);
     const [fadeAnim] = useState(new Animated.Value(0));
 
-    const longPressTriggered = useRef(false);
-
-    const scale = useRef(new Animated.Value(1)).current;
-
-    const deviceType = useResponsiveLayout().deviceType;
-
-    const animatedStyle = {
-      transform: [{ scale }],
-    };
-
     const handlePress = () => {
-      if (longPressTriggered.current) {
-        longPressTriggered.current = false;
-        return;
-      }
-      // 如果有集数索引，说明是播放记录，直接转到播放页面
-      if (episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: {
-            source,
-            id: id.toString(),
-            episodeIndex: (episodeIndex - 1).toString(),
-            title,
-            position: Math.floor((playTime || 0) * 1000).toString()
-          },
-        });
-      } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title, id: id.toString() },
-        });
-      }
+      // TV 端点击逻辑一致
+      router.push({
+        pathname: "/detail",
+        params: { source, q: title, id: id.toString() },
+      });
     };
 
     const handleFocus = useCallback(() => {
@@ -95,7 +72,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         useNativeDriver: true,
       }).start();
       onFocus?.();
-    }, [scale, onFocus]);
+    }, [onFocus]);
 
     const handleBlur = useCallback(() => {
       setIsFocused(false);
@@ -103,76 +80,58 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         toValue: 1.0,
         useNativeDriver: true,
       }).start();
-    }, [scale]);
+    }, []);
 
     useEffect(() => {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 400,
-        delay: Math.random() * 200, // 随机延迟创造交错效果
+        delay: Math.random() * 200,
         useNativeDriver: true,
       }).start();
     }, [fadeAnim]);
 
-    const handleLongPress = () => {
-      // Only allow long press for items with progress (play records)
-      if (progress === undefined) return;
+    const scale = useRef(new Animated.Value(1)).current;
+    const animatedStyle = { transform: [{ scale }] };
 
-      longPressTriggered.current = true;
+    // --- Selene 风格角标逻辑 (TV) ---
+    const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';
+    const showEpisodeBadge = (from === 'search' || from === 'agg') && totalEpisodes && totalEpisodes > 1;
 
-      // Show confirmation dialog to delete play record
-      Alert.alert("删除观看记录", `确定要删除"${title}"的观看记录吗？`, [
-        {
-          text: "取消",
-          style: "cancel",
-        },
-        {
-          text: "删除",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Delete from local storage
-              await PlayRecordManager.remove(source, id);
-
-              // Call the onRecordDeleted callback
-              if (onRecordDeleted) {
-                onRecordDeleted();
-              }
-              // 如果没有回调函数，则使用导航刷新作为备选方案
-              else if (router.canGoBack()) {
-                router.replace("/");
-              }
-            } catch (error) {
-              logger.info("Failed to delete play record:", error);
-              Alert.alert("错误", "删除观看记录失败，请重试");
-            }
-          },
-        },
-      ]);
-    };
-
-    // 是否是继续观看的视频
     const isContinueWatching = progress !== undefined && progress > 0 && progress < 1;
 
     return (
       <Animated.View style={[styles.wrapper, animatedStyle, { opacity: fadeAnim }]}>
         <Pressable
-          android_ripple={Platform.isTV || deviceType !== 'tv' ? { color: 'transparent' } : { color: Colors.dark.link }}
           onPress={handlePress}
-          onLongPress={handleLongPress}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          style={({ pressed }) => [
-            styles.pressable,
-            {
-              zIndex: pressed ? 999 : 1, // 确保按下时有最高优先级
-            },
-          ]}
-          // activeOpacity={1}
-          delayLongPress={1000}
+          style={styles.pressable}
         >
           <View style={styles.card}>
             <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
+
+            {/* 年份 (Top-Left) */}
+            {showYearBadge && (
+              <View style={styles.seleneYearBadge}>
+                <Text style={styles.badgeText}>{year}</Text>
+              </View>
+            )}
+
+            {/* 集数 (Top-Right) */}
+            {showEpisodeBadge && (
+              <View style={styles.seleneEpisodeBadge}>
+                <Text style={styles.badgeText}>{totalEpisodes}</Text>
+              </View>
+            )}
+
+            {/* 资源数量 (Bottom-Right) - 聚合模式专用 */}
+            {from === 'agg' && sourceCount && sourceCount > 1 && (
+              <View style={styles.seleneSourceCountBadge}>
+                <Text style={styles.badgeText}>{sourceCount}</Text>
+              </View>
+            )}
+
             {isFocused && (
               <View style={styles.overlay}>
                 {isContinueWatching && (
@@ -197,26 +156,14 @@ const VideoCard = forwardRef<View, VideoCardProps>(
                 <ThemedText style={styles.ratingText}>{rate}</ThemedText>
               </View>
             )}
-            {year && (
-              <View style={styles.yearBadge}>
-                <Text style={styles.badgeText}>{year}</Text>
-              </View>
-            )}
-            {sourceName && (
+            {sourceName && !showYearBadge && (
               <View style={styles.sourceNameBadge}>
                 <Text style={styles.badgeText}>{sourceName}</Text>
               </View>
             )}
           </View>
           <View style={styles.infoContainer}>
-            <ThemedText numberOfLines={1}>{title}</ThemedText>
-            {isContinueWatching && (
-              <View style={styles.infoRow}>
-                <ThemedText style={styles.continueLabel}>
-                  第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
-                </ThemedText>
-              </View>
-            )}
+            <ThemedText numberOfLines={1} style={styles.titleText}>{title}</ThemedText>
           </View>
         </Pressable>
       </Animated.View>
@@ -336,6 +283,44 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 12,
     fontWeight: "bold",
+  },
+  seleneYearBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "rgba(44, 62, 80, 0.8)",
+    borderRadius: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    zIndex: 20,
+  },
+  seleneEpisodeBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "#27ae60",
+    borderRadius: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    zIndex: 20,
+  },
+  seleneSourceCountBadge: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(155, 89, 182, 0.8)", // 紫色
+    borderRadius: 15,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  titleText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+    textAlign: "center",
   },
   progressContainer: {
     position: "absolute",

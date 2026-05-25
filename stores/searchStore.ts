@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { SearchResult, api } from "@/services/api";
+import { DataCacheService } from "@/services/dataCacheService";
 import { useSettingsStore } from "@/stores/settingsStore";
 import Logger from "@/utils/Logger";
 
@@ -19,7 +20,17 @@ interface SearchState {
   error: string | null;
   controller: AbortController | null;
   searchProgress: SearchProgress;
+  useAggregatedView: boolean;
+
+  // 筛选和排序
+  selectedSource: string;
+  selectedYear: string;
+  selectedTitle: string;
+  yearSortOrder: 'none' | 'asc' | 'desc';
+
   setKeyword: (keyword: string) => void;
+  setUseAggregatedView: (use: boolean) => void;
+  setFilters: (filters: Partial<Pick<SearchState, 'selectedSource' | 'selectedYear' | 'selectedTitle' | 'yearSortOrder'>>) => void;
   search: (keyword?: string) => Promise<void>;
   clearResults: () => void;
   abort: () => void;
@@ -32,8 +43,15 @@ const useSearchStore = create<SearchState>((set, get) => ({
   error: null,
   controller: null,
   searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
+  useAggregatedView: true,
+  selectedSource: 'all',
+  selectedYear: 'all',
+  selectedTitle: 'all',
+  yearSortOrder: 'none',
 
   setKeyword: (keyword) => set({ keyword }),
+  setUseAggregatedView: (useAggregatedView) => set({ useAggregatedView }),
+  setFilters: (filters) => set(filters),
 
   abort: () => {
     const { controller } = get();
@@ -52,12 +70,20 @@ const useSearchStore = create<SearchState>((set, get) => ({
     const newController = new AbortController();
     const signal = newController.signal;
 
+    // [管理优化]：启动新搜索时释放旧的剧集详情缓存，保持内存健康
+    DataCacheService.clearDetailCache();
+
     set({
       loading: true,
       error: null,
       results: [],
       controller: newController,
       searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
+      // 重置筛选
+      selectedSource: 'all',
+      selectedYear: 'all',
+      selectedTitle: 'all',
+      yearSortOrder: 'none',
     });
 
     const updateProgress = (updates: Partial<SearchProgress>) => {
