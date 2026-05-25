@@ -16,6 +16,7 @@ import { ArrowUpDown, Zap, Info, List, Server, Cpu } from "lucide-react-native";
 import { Colors } from "@/constants/Colors";
 import { SpeedTestService } from "@/services/speedTestService";
 import useCacheStore from "@/stores/cacheStore";
+import { parseEpisode } from "@/utils/episode";
 
 export default function DetailScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
@@ -109,7 +110,10 @@ export default function DetailScreen() {
 
   const episodes = useMemo(() => {
     if (!detail) return [];
-    const list = detail.episodes.map((url, i) => ({ index: i, url }));
+    const list = detail.episodes.map((raw, i) => ({
+      ...parseEpisode(raw, i, detail.episodes_titles?.[i]),
+      index: i
+    }));
     return isReverse ? list.reverse() : list;
   }, [detail, isReverse]);
 
@@ -208,22 +212,30 @@ export default function DetailScreen() {
                   <View style={styles.episodeGrid}>
                     {episodes.map((ep) => {
                       const { isCached, isDownloading } = !isTV ? getEpCacheStatus(ep.index) : { isCached: false, isDownloading: false };
+                      // 智能判断是否显示长标题
+                      const isLongTitle = ep.title.length > 3;
+
                       return (
                         <TouchableOpacity
                           key={ep.index}
-                          style={styles.episodeBtn}
+                          style={[
+                            styles.episodeBtn,
+                            isLongTitle && { width: '50%', aspectRatio: undefined, height: 50 }
+                          ]}
                           onPress={() => handlePlay(ep.index)}
                         >
                           <View style={[
                             styles.episodeBox,
                             isCached && styles.episodeBoxCached,
-                            isDownloading && styles.episodeBoxDownloading
+                            isDownloading && styles.episodeBoxDownloading,
+                            isLongTitle && { alignItems: 'flex-start', paddingHorizontal: 12 }
                           ]}>
                             <Text style={[
                               styles.episodeText,
-                              (isCached || isDownloading) && { color: 'white' }
-                            ]}>
-                              {(ep.index + 1).toString().padStart(2, '0')}
+                              (isCached || isDownloading) && { color: 'white' },
+                              isLongTitle && { fontSize: 13, textAlign: 'left' }
+                            ]} numberOfLines={2}>
+                              {ep.title}
                             </Text>
                             {!isTV && isDownloading && <View style={styles.badgeDownloading} />}
                             {!isTV && isCached && <View style={styles.badgeCached} />}
@@ -343,7 +355,8 @@ export default function DetailScreen() {
           </ScrollView>
           <ThemedText style={styles.tvSectionTitle}>选集</ThemedText>
           <View style={styles.tvEpisodeGrid}>
-            {detail.episodes.map((_, index) => {
+            {episodes.map((ep) => {
+              const { index, title } = ep;
               const { isCached, isDownloading } = !isTV ? getEpCacheStatus(index) : { isCached: false, isDownloading: false };
               let btnStyle = styles.tvEpisodeBtn;
               if (isDownloading) btnStyle = { ...btnStyle, backgroundColor: 'rgba(244,67,54,0.3)' };
@@ -356,7 +369,7 @@ export default function DetailScreen() {
                   style={btnStyle}
                 >
                   <View style={{ position: 'relative' }}>
-                    <Text style={styles.tvSourceBtnText}>{`第 ${index + 1} 集`}</Text>
+                    <Text style={styles.tvSourceBtnText} numberOfLines={1}>{title}</Text>
                     {!isTV && isDownloading && <View style={styles.badgeDownloading} />}
                     {!isTV && isCached && <View style={styles.badgeCached} />}
                   </View>

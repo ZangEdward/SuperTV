@@ -55,7 +55,7 @@ export const EpisodeSelectionModal: React.FC<EpisodeSelectionModalProps> = () =>
               const absoluteIndex = selectedEpisodeGroup * episodeGroupSize + index;
               return (
                 <StyledButton
-                  text={item.title || `第 ${absoluteIndex + 1} 集`}
+                  text={item.title}
                   onPress={() => onSelectEpisode(absoluteIndex)}
                   isSelected={currentEpisodeIndex === absoluteIndex}
                   hasTVPreferredFocus={currentEpisodeIndex === absoluteIndex}

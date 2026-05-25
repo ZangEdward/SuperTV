@@ -20,7 +20,7 @@ export interface CacheState {
   activeCount: number;
   setConcurrency: (value: number) => void;
   processQueue?: () => void;
-  enqueueSeries: (series: Omit<GroupedDownload, 'groupId' | 'episodes'> & { episodes: { index: number; url: string }[] }) => void;
+  enqueueSeries: (series: Omit<GroupedDownload, 'groupId' | 'episodes'> & { episodes: { index: number; url: string; title: string }[] }) => void;
   downloadQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
   pauseQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
   resumeQueuedEpisode: (groupId: string, episodeIndex: number) => Promise<void>;
@@ -50,6 +50,7 @@ export interface CacheState {
 export type QueuedEpisode = {
   index: number;
   url: string;
+  title: string; // 新增：保存剧集标题
   status: 'pending' | 'queued' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused';
   progress?: number;
   completedCount?: number; // 新增：已完成的分片数量，用于断点续传
@@ -148,6 +149,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const episodes: QueuedEpisode[] = newEpisodes.map((ep) => ({
       index: ep.index,
       url: ep.url,
+      title: ep.title, // 使用传入的标题
       status: 'pending' as const,
       progress: 0,
       completedCount: 0,
@@ -237,7 +239,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
             itemId,
             abortController.signal,
             (p, cc) => {
-              // [FIX] 函数式更新，解决并发跳变
+              // [FIX] 函数式更新，且尊重当前状态，防止进度更新将“暂停”状态改回“下载中”
               set((state) => {
                 const newQueue = state.queue.map(group => {
                   if (group.groupId !== groupId) return group;
@@ -245,8 +247,14 @@ const useCacheStore = create<CacheState>((set, get) => ({
                     ...group,
                     episodes: group.episodes.map(e => {
                       if (e.index !== episodeIndex) return e;
+
+                      const currentStatus = e.status;
+                      const nextStatus = (currentStatus === 'paused' || currentStatus === 'cancelled')
+                        ? currentStatus
+                        : 'downloading';
+
                       const newProgress = Math.max(e.progress || 0, p);
-                      return { ...e, progress: newProgress, completedCount: cc, status: 'downloading' };
+                      return { ...e, progress: newProgress, completedCount: cc, status: nextStatus };
                     })
                   };
                 });
@@ -261,7 +269,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
               });
 
               if (cc % 20 === 0) CacheService.saveQueue(get().queue);
-            }, {
+            },
+{
               adFilter: downloadAdFilterEnabled
             }
           );
@@ -571,11 +580,11 @@ const useCacheStore = create<CacheState>((set, get) => ({
           title,
           poster,
           id,
-          episodes: [{ index: episodeIndex, url: episodeUrl }]
+          episodes: [{ index: episodeIndex, url: episodeUrl, title: options.episodeTitle }]
         });
 
         // 提示用户已加入队列
-        Toast.show({ type: "info", text1: "已加入下载队列", text2: `${title} 第 ${episodeIndex + 1} 集` });
+        Toast.show({ type: "info", text1: "已加入下载队列", text2: `${title} ${options.episodeTitle}` });
       } catch (e) {
         logger.error("[downloadEpisode] Unexpected error:", e);
         Toast.show({ type: "error", text1: "下载失败", text2: String(e) });
@@ -585,7 +594,19 @@ const useCacheStore = create<CacheState>((set, get) => ({
   removeCacheItem: async (id) => {
     set({ loading: true, error: null });
     try {
-      // 1. 处理已完成的项
+      // 1. 处理正在下载或队列中的项
+      const controllers = (get() as any)._controllers || {};
+      const ctrl = controllers[id];
+
+      // 触发物理停止
+      if (ctrl && typeof ctrl.abort === 'function') {
+        ctrl.abort();
+      }
+
+      // 调用原生模块停止（双重保险）
+      CacheService.cancelM3U8Task(id);
+
+      // 2. 处理已完成的项
       const existing = get().items.find((item) => item.id === id);
       if (existing) {
         await CacheService.deleteFile(existing.fileUri);
@@ -594,7 +615,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
         set({ items: nextItems });
       }
 
-      // 2. 处理队列中的项（如失败或取消的）
+      // 3. 更新队列状态
       const nextQueue = get().queue.map(group => ({
         ...group,
         episodes: group.episodes.filter(ep => {
@@ -609,9 +630,12 @@ const useCacheStore = create<CacheState>((set, get) => ({
       set((state) => ({
         queue: nextQueue,
         loading: false,
-        downloadProgress: dp
+        downloadProgress: dp,
+        activeCount: Math.max(0, state.activeCount - (ctrl ? 1 : 0))
       }));
+
       await CacheService.saveQueue(nextQueue);
+      (get() as any).processQueue?.();
 
       Toast.show({ type: "success", text1: "已删除缓存记录" });
     } catch (error) {
@@ -624,30 +648,42 @@ const useCacheStore = create<CacheState>((set, get) => ({
   removeSeries: async (title) => {
     set({ loading: true, error: null });
     try {
-      // 1. 获取该系列的所有已下载项并删除文件
+      // 1. 获取该系列的所有正在下载/排队的任务并停止
+      const seriesQueue = get().queue.filter((g) => g.title === title);
+      for (const group of seriesQueue) {
+        // 停止该组所有剧集的下载
+        for (const ep of group.episodes) {
+          const itemId = `${group.source}_${group.id}_${ep.index}`;
+          const controllers = (get() as any)._controllers || {};
+          const ctrl = controllers[itemId];
+          if (ctrl && typeof ctrl.abort === 'function') ctrl.abort();
+          CacheService.pauseTask(itemId);
+        }
+      }
+
+      // 2. 获取该系列的所有已下载项并删除文件
       const seriesItems = get().items.filter((it) => it.title === title);
       for (const item of seriesItems) {
         await CacheService.deleteFile(item.fileUri);
         await CacheService.remove(item.id);
       }
 
-      // 2. 取消该系列的所有正在下载/排队的任务
-      const seriesQueue = get().queue.filter((g) => g.title === title);
-      for (const group of seriesQueue) {
-        await (get() as any).cancelGroup(group.groupId);
-      }
-
       // 3. 更新状态
       const nextItems = get().items.filter((it) => it.title !== title);
+      const nextQueue = get().queue.filter((g) => g.title !== title);
       const dp = { ...(get().downloadProgress || {}) };
       seriesItems.forEach(it => delete dp[it.id]);
 
       set((state) => ({
         items: nextItems,
+        queue: nextQueue,
         loading: false,
-        downloadProgress: dp
+        downloadProgress: dp,
+        activeCount: Math.max(0, state.activeCount - seriesQueue.length)
       }));
+
       await CacheService.saveQueue(get().queue);
+      (get() as any).processQueue?.();
 
       Toast.show({ type: "success", text1: "已删除整部剧集缓存" });
     } catch (error) {
@@ -659,9 +695,20 @@ const useCacheStore = create<CacheState>((set, get) => ({
   clearCache: async () => {
     set({ loading: true, error: null });
     try {
+      // 1. 强力停止所有活跃任务
+      const controllers = (get() as any)._controllers || {};
+      Object.values(controllers).forEach((ctrl: any) => {
+        if (ctrl && typeof ctrl.abort === 'function') ctrl.abort();
+      });
+
+      // 2. 物理级掐断原生请求
+      CacheService.pauseTask(""); // 内部调用 stopAllCalls()
+
+      // 3. 清理文件和状态
       await CacheService.clearAll();
       await AsyncStorage.removeItem("mytv_cache_queue");
-      set({ items: [], queue: [], loading: false, downloadProgress: {} });
+      set({ items: [], queue: [], loading: false, downloadProgress: {}, activeCount: 0 });
+
       Toast.show({ type: "success", text1: "缓存已清除" });
     } catch (error) {
       logger.warn("clearCache failed", error);

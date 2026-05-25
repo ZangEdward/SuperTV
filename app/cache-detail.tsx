@@ -44,12 +44,13 @@ export default function CacheDetailScreen() {
   }, [items, queue, title]);
 
   const episodes = useMemo(() => {
-    const list: { index: number; status: string; progress?: number; fileUri?: string; groupId?: string; id?: string }[] = [];
+    const list: { index: number; title: string; status: string; progress?: number; fileUri?: string; groupId?: string; id?: string }[] = [];
     queue.filter(g => g.title === title).forEach(group => {
       group.episodes.forEach(ep => {
         const itemId = `${group.source}_${group.id}_${ep.index}`;
         list.push({
           index: ep.index,
+          title: ep.title,
           status: ep.status,
           progress: downloadProgress?.[itemId] ?? ep.progress ?? 0,
           groupId: group.groupId,
@@ -66,6 +67,7 @@ export default function CacheDetailScreen() {
       } else {
         list.push({
           index: it.episodeIndex,
+          title: it.episodeTitle || `第 ${it.episodeIndex + 1} 集`,
           status: 'completed',
           progress: 1,
           fileUri: it.fileUri,
@@ -127,7 +129,7 @@ export default function CacheDetailScreen() {
   };
 
   const renderEpisodeItem = ({ item }: { item: typeof episodes[0] }) => {
-    const epTitle = `第 ${item.index + 1} 集`;
+    const epTitle = item.title;
     const progressPercent = Math.min(100, Math.round((item.progress || 0) * 100));
     const isDownloading = item.status === 'downloading';
     const isCompleted = item.status === 'completed';

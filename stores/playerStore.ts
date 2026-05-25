@@ -5,6 +5,7 @@ import { RefObject } from "react";
 import { PlayRecord, PlayRecordManager, PlayerSettingsManager } from "@/services/storage";
 import useDetailStore, { episodesSelectorBySource } from "./detailStore";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
+import { parseEpisode } from "@/utils/episode";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('PlayerStore');
@@ -277,10 +278,13 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       }
 
       // 创建一个包含到当前集数为止的列表，以确保 UI 显示正确的集数
-      const mappedEpisodes = Array(episodeIndex + 1).fill(null).map((_, i) => ({
-        url: i === episodeIndex ? fileUri : '',
-        title: `第 ${i + 1} 集${i === episodeIndex ? ' (已缓存)' : ''}`,
-      }));
+      const mappedEpisodes = Array(episodeIndex + 1).fill(null).map((_, i) => {
+        const titlePrefix = `第 ${i + 1} 集`;
+        return {
+          url: i === episodeIndex ? fileUri : '',
+          title: i === episodeIndex ? (title || titlePrefix) : titlePrefix,
+        };
+      });
 
       set({
         isLoading: false,
@@ -394,10 +398,9 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       const savedPlaybackRate = playerSettings?.playbackRate || 1.0;
 
       const episodesMappingStart = performance.now();
-      const mappedEpisodes = (episodes || []).map((ep, index) => ({
-        url: ep,
-        title: `第 ${index + 1} 集`,
-      }));
+      const mappedEpisodes = (episodes || []).map((ep, index) =>
+        parseEpisode(ep, index, detail?.episodes_titles?.[index])
+      );
       const episodesMappingEnd = performance.now();
       logger.info(`[PERF] Episodes mapping (${episodes.length} episodes) took ${(episodesMappingEnd - episodesMappingStart).toFixed(2)}ms`);
 
@@ -807,11 +810,11 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
       // 重新加载当前集数的episodes
       const newEpisodes = fallbackSource.episodes || [];
+      const newTitles = fallbackSource.episodes_titles || [];
       if (newEpisodes.length > currentEpisodeIndex) {
-        const mappedEpisodes = newEpisodes.map((ep, index) => ({
-          url: ep,
-          title: `第 ${index + 1} 集`,
-        }));
+        const mappedEpisodes = newEpisodes.map((ep, index) =>
+          parseEpisode(ep, index, newTitles[index])
+        );
 
         set({
           episodes: mappedEpisodes,

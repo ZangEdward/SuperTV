@@ -30,6 +30,7 @@ export interface VideoDetail {
   actor?: string;
   remarks?: string;
   episodes?: string[];
+  episodes_titles?: string[];
 }
 
 export interface SearchResult {
@@ -37,6 +38,7 @@ export interface SearchResult {
   title: string;
   poster: string;
   episodes: string[];
+  episodes_titles?: string[];
   source: string;
   source_name: string;
   class?: string;

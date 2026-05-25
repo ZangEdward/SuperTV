@@ -128,7 +128,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = memo(({ showControl
               <ArrowLeft color="white" size={24} />
             </TouchableOpacity>
             <Text style={styles.mobileTitle} numberOfLines={1}>
-              {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ` - 第${currentEpisodeIndex + 1}集`}
+              {videoTitle} {currentEpisodeTitle ? ` - ${currentEpisodeTitle}` : ""}
             </Text>
             <TouchableOpacity onPress={() => safeCall(setShowCastModal, true)} style={styles.iconBtn}>
               <Cast color="white" size={22} />

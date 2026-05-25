@@ -193,7 +193,11 @@ export class CacheService {
   /** 暂停 M3U8 下载任务 */
   static pauseTask(itemId: string): void {
     if (NativeDownloadModule) {
-      NativeDownloadModule.stopDownload(itemId);
+      if (itemId) {
+        NativeDownloadModule.stopDownload(itemId);
+      } else {
+        NativeDownloadModule.stopAllCalls();
+      }
     }
   }
 
@@ -410,6 +414,7 @@ export class CacheService {
 
           // 发放任务给后台
           await NativeDownloadModule.downloadSegment(
+            taskId,
             segmentUrls[index],
             normalizedPath,
             keyBase64,

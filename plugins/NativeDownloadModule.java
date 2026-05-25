@@ -5,6 +5,7 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
@@ -15,6 +16,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import javax.crypto.Cipher;
@@ -28,7 +33,12 @@ import okhttp3.Response;
 
 public class NativeDownloadModule extends ReactContextBaseJavaModule {
     public static final String NAME = "NativeDownloadModule";
-    private final List<Call> activeCalls = Collections.synchronizedList(new ArrayList<>());
+    
+    // 线程池：4路并发
+    private final ExecutorService downloadPool = Executors.newFixedThreadPool(4);
+    
+    // 存储 taskId -> 该任务下的所有活跃 Call
+    private final Map<String, List<Call>> taskCalls = new ConcurrentHashMap<>();
     
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -46,18 +56,20 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
     /**
      * 原子任务：下载并解密单个片段
-     * 完成后通过 Promise 异步通知 JS
+     * @param taskId 用于追踪和取消
      */
     @ReactMethod
     public void downloadSegment(
-            String url,
-            String destPath,
-            String keyBase64,
-            String ivHex,
-            ReadableMap headers,
-            Promise promise
+            final String taskId,
+            final String url,
+            final String destPath,
+            final String keyBase64,
+            final String ivHex,
+            final ReadableMap headers,
+            final Promise promise
     ) {
-        new Thread(() -> {
+        // 使用线程池处理，而不是每次创建新线程
+        downloadPool.execute(() -> {
             Request.Builder builder = new Request.Builder().url(url);
             if (headers != null) {
                 ReadableMapKeySetIterator it = headers.keySetIterator();
@@ -68,7 +80,14 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             }
 
             Call call = client.newCall(builder.build());
-            activeCalls.add(call);
+            
+            // 注册 Call 到任务列表
+            List<Call> calls = taskCalls.get(taskId);
+            if (calls == null) {
+                calls = Collections.synchronizedList(new ArrayList<>());
+                taskCalls.put(taskId, calls);
+            }
+            calls.add(call);
 
             try (Response response = call.execute()) {
                 if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
@@ -83,46 +102,64 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                     while ((n = is.read(buffer)) != -1) fos.write(buffer, 0, n);
                 }
 
-                // 实时解密，不占 JS 线程
+                // 实时解密
                 if (keyBase64 != null && !keyBase64.isEmpty()) {
                     decryptInPlace(destFile, keyBase64, ivHex);
                 }
 
-                activeCalls.remove(call);
+                calls.remove(call);
                 promise.resolve(destPath);
             } catch (Exception e) {
-                activeCalls.remove(call);
+                if (calls != null) calls.remove(call);
                 promise.reject("ERR", e.getMessage());
             }
-        }).start();
+        });
     }
 
+    /**
+     * 停止特定任务的所有下载
+     */
+    @ReactMethod
+    public void stopDownload(String taskId) {
+        List<Call> calls = taskCalls.remove(taskId);
+        if (calls != null) {
+            synchronized (calls) {
+                for (Call call : calls) {
+                    try { call.cancel(); } catch (Exception ignored) {}
+                }
+                calls.clear();
+            }
+        }
+    }
+
+    /**
+     * 停止所有下载（清空缓存时使用）
+     */
     @ReactMethod
     public void stopAllCalls() {
-        synchronized (activeCalls) {
-            for (Call call : activeCalls) {
-                try { call.cancel(); } catch (Exception ignored) {}
-            }
-            activeCalls.clear();
+        for (String tid : taskCalls.keySet()) {
+            stopDownload(tid);
         }
     }
 
     @ReactMethod
-    public void mergeSegments(com.facebook.react.bridge.ReadableArray paths, String dest, Promise promise) {
+    public void mergeSegments(ReadableArray filePaths, String destPath, Promise promise) {
         new Thread(() -> {
             try {
-                File d = new File(dest);
-                d.getParentFile().mkdirs();
-                try (FileOutputStream fos = new FileOutputStream(d)) {
-                    for (int i = 0; i < paths.size(); i++) {
-                        File s = new File(paths.getString(i));
-                        if (s.exists()) {
-                            appendToFile(s, fos);
-                            s.delete();
+                File destFile = new File(destPath);
+                destFile.getParentFile().mkdirs();
+                if (destFile.exists()) destFile.delete();
+
+                try (FileOutputStream fos = new FileOutputStream(destFile)) {
+                    for (int i = 0; i < filePaths.size(); i++) {
+                        File src = new File(filePaths.getString(i));
+                        if (src.exists()) {
+                            appendToFile(src, fos);
+                            src.delete();
                         }
                     }
                 }
-                promise.resolve(dest);
+                promise.resolve(destPath);
             } catch (Exception e) {
                 promise.reject("ERR", e.getMessage());
             }
@@ -133,9 +170,9 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
         byte[] iv = hexStringToByteArray(ivHex != null ? ivHex.replace("0x", "") : "");
         if (iv.length < 16) {
-            byte[] p = new byte[16];
-            System.arraycopy(iv, 0, p, 16 - iv.length, iv.length);
-            iv = p;
+            byte[] padded = new byte[16];
+            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
+            iv = padded;
         }
         SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
@@ -143,8 +180,8 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
         byte[] input = new byte[(int) file.length()];
         try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
-            int off = 0, n;
-            while (off < input.length && (n = fis.read(input, off, input.length - off)) >= 0) off += n;
+            int offset = 0, n;
+            while (offset < input.length && (n = fis.read(input, offset, input.length - offset)) >= 0) offset += n;
         }
         byte[] output = cipher.doFinal(input);
         try (FileOutputStream fos = new FileOutputStream(file)) {
@@ -154,17 +191,19 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
     private void appendToFile(File src, FileOutputStream dest) throws IOException {
         try (java.io.FileInputStream fis = new java.io.FileInputStream(src)) {
-            byte[] buf = new byte[32768];
+            byte[] buffer = new byte[32768];
             int n;
-            while ((n = fis.read(buf)) != -1) dest.write(buf, 0, n);
+            while ((n = fis.read(buffer)) != -1) dest.write(buffer, 0, n);
         }
     }
 
     private byte[] hexStringToByteArray(String s) {
         int len = s.length();
         if (len == 0) return new byte[16];
-        byte[] d = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) d[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
-        return d;
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
 }

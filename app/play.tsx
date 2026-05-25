@@ -31,6 +31,7 @@ import useCacheStore from "@/stores/cacheStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
 import { StyledButton } from "@/components/StyledButton";
+import { parseEpisode } from "@/utils/episode";
 import * as ScreenOrientation from "expo-screen-orientation";
 
 const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) => (
@@ -111,7 +112,7 @@ export default function PlayScreen() {
 
   const episodes = useMemo(() => {
     if (!detail || !Array.isArray(detail.episodes)) return [];
-    const list = detail.episodes.map((url: string, i: number) => ({ index: i, url }));
+    const list = detail.episodes.map((raw, i) => ({ ...parseEpisode(raw, i), index: i }));
     return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
@@ -169,7 +170,7 @@ export default function PlayScreen() {
       poster: detail?.poster || "",
       id,
       episodeIndex: currentEpisodeIndex,
-      episodeTitle: `第 ${currentEpisodeIndex + 1} 集`,
+      episodeTitle: currentEpisode.title,
       episodeUrl: currentEpisode.url,
       totalEpisodes: episodes.length,
     });
@@ -371,11 +372,15 @@ export default function PlayScreen() {
             {episodes.map((ep) => (
               <TouchableOpacity
                 key={ep.index}
-                style={[styles.mobileEpItem, ep.index === currentEpisodeIndex && styles.mobileEpItemActive]}
+                style={[
+                  styles.mobileEpItem,
+                  ep.index === currentEpisodeIndex && styles.mobileEpItemActive,
+                  ep.title.length > 2 && { minWidth: 60 }
+                ]}
                 onPress={() => handleEpisodePress(ep.index)}
               >
                 <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
-                  {ep.index + 1}
+                  {ep.title}
                 </Text>
               </TouchableOpacity>
             ))}

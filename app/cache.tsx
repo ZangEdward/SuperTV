@@ -13,6 +13,7 @@ import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import Colors from "../constants/Colors";
 import Toast from 'react-native-toast-message';
+import { parseEpisode } from "@/utils/episode";
 
 export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
@@ -83,7 +84,10 @@ export default function CacheScreen() {
       id: selectedSource.id.toString(),
       title: selectedSource.title,
       poster: selectedSource.poster,
-      episodes: episodeIndexes.map((index) => ({ index, url: selectedSource.episodes[index] })),
+      episodes: episodeIndexes.map((index) => {
+        const ep = parseEpisode(selectedSource.episodes[index], index, selectedSource.episodes_titles?.[index]);
+        return { index, url: ep.url, title: ep.title };
+      }),
     });
     setSelectedEpisodes([]);
   };
@@ -195,7 +199,8 @@ export default function CacheScreen() {
           <View style={dynamicStyles.section}>
             <ThemedText style={dynamicStyles.sectionTitle}>集数列表</ThemedText>
             <View style={dynamicStyles.episodeList}>
-              {selectedSource?.episodes.map((episode, index) => {
+              {selectedSource?.episodes.map((rawEpisode, index) => {
+                const ep = parseEpisode(rawEpisode, index, selectedSource.episodes_titles?.[index]);
                 const buttonId = `${selectedSource.source}_${selectedSource.id}_${index}`;
                 const isSelected = selectedEpisodes.includes(index);
                 const isCached = items.some(it => it.episodeIndex === index && it.title === selectedSource?.title);
@@ -207,16 +212,16 @@ export default function CacheScreen() {
 
                 let btnStyle: any = [dynamicStyles.episodeButton];
                 let textStyle: any = [isSelected ? dynamicStyles.selectedEpisodeText : undefined];
-                let btnText = `第 ${index + 1} 集`;
+                let btnText = ep.title;
 
                 if (isCached) {
                   btnStyle.push({ backgroundColor: 'rgba(33, 150, 243, 0.2)', borderColor: '#2196F3' });
                   textStyle.push({ color: '#2196F3' });
-                  btnText += ' ✓已缓存';
+                  btnText += ' (已缓存)';
                 } else if (isDownloading) {
                   btnStyle.push({ backgroundColor: 'rgba(244, 67, 54, 0.2)', borderColor: '#F44336' });
                   textStyle.push({ color: '#F44336' });
-                  btnText += ' ⏳缓存中';
+                  btnText += ' (中)';
                 } else if (isSelected) {
                   btnStyle.push({ backgroundColor: Colors.dark.primary, borderColor: Colors.dark.primary });
                   textStyle.push({ color: '#fff' });
@@ -224,6 +229,11 @@ export default function CacheScreen() {
 
                 if (isDisabled) {
                   btnStyle.push({ opacity: 0.8 });
+                }
+
+                // 智能调整宽度
+                if (ep.title.length > 3) {
+                  btnStyle.push({ width: '48%', minWidth: 150 });
                 }
 
                 return (

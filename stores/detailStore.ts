@@ -269,10 +269,13 @@ const useDetailStore = create<DetailState>((set, get) => ({
         const fullDetail = await api.getVideoDetail(detail.source, detail.id.toString());
         if (fullDetail && fullDetail.episodes) {
           detail.episodes = fullDetail.episodes;
+          detail.episodes_titles = fullDetail.episodes_titles; // 提取标题
           // 同时更新 searchResults 列表
           set(state => ({
             searchResults: state.searchResults.map(r =>
-              (r.id === detail.id && r.source === detail.source) ? { ...r, episodes: fullDetail.episodes } : r
+              (r.id === detail.id && r.source === detail.source)
+                ? { ...r, episodes: fullDetail.episodes, episodes_titles: fullDetail.episodes_titles }
+                : r
             )
           }));
         }
