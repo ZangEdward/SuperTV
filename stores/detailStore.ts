@@ -4,6 +4,7 @@ import { getResolutionFromM3U8 } from "@/services/m3u8";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { FavoriteManager } from "@/services/storage";
 import { SpeedTestService } from "@/services/speedTestService";
+import useSearchStore from "./searchStore"; // 引入搜索 Store 实现预载入
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
@@ -21,6 +22,28 @@ export interface SearchProgress {
   isComplete: boolean;
 }
 
+/**
+ * 核心评分函数：模仿 Selene-Source 的加权模型
+ */
+export const calculateSourceScore = (r: SearchResultWithResolution) => {
+  let score = 0;
+  // 1. 速度权重 (40%) - 2MB/s 以上即为优秀
+  const speedScore = Math.min((r.speed || 0) / 2, 1) * 40;
+  // 2. 延迟权重 (30%) - 100ms 以下为优秀，1000ms 以上为极差
+  const latencyScore = r.latency ? Math.max(0, (1000 - r.latency) / 900) * 30 : 0;
+  // 3. 分辨率权重 (20%)
+  let resScore = 0;
+  const res = (r.resolution || "").toLowerCase();
+  if (res.includes('1080') || res.includes('bd') || res.includes('hd')) resScore = 20;
+  else if (res.includes('720')) resScore = 15;
+  else if (res.includes('480')) resScore = 10;
+  else resScore = 5;
+  // 4. 稳定性权重 (10%) - 剧集越多通常越稳定
+  const epScore = Math.min((r.episodes?.length || 0) / 30, 1) * 10;
+
+  return speedScore + latencyScore + resScore + epScore;
+};
+
 interface DetailState {
   q: string | null;
   searchResults: SearchResultWithResolution[];
@@ -33,6 +56,7 @@ interface DetailState {
   isFavorited: boolean;
   failedSources: Set<string>;
   searchProgress: SearchProgress;
+  isOptimizing: boolean; // 新增：记录是否正在测速
 
   init: (q: string, preferredSource?: string, id?: string) => Promise<void>;
   setDetail: (detail: SearchResultWithResolution) => Promise<void>;
@@ -62,6 +86,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
   isFavorited: false,
   failedSources: new Set(),
   searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
+  isOptimizing: false,
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
@@ -87,6 +112,28 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     const { videoSource } = useSettingsStore.getState();
 
+    // [预载入优化]：从搜索结果中提取所有匹配项，实现秒开且保留多源列表
+    const allSearchResults = useSearchStore.getState().results;
+    const matchedResults = allSearchResults.filter(r =>
+      r.title.trim().toLowerCase() === q.trim().toLowerCase()
+    );
+
+    if (matchedResults.length > 0) {
+      const preferred = matchedResults.find(r =>
+        r.id.toString() === id?.toString() && r.source === preferredSource
+      ) || matchedResults[0];
+
+      logger.info(`[PRE-CACHE] Hit! Found ${matchedResults.length} sources for ${q}`);
+
+      set({
+        searchResults: matchedResults as SearchResultWithResolution[],
+        detail: preferred as SearchResultWithResolution,
+        loading: false,
+        error: null,
+      });
+      // 依然触发全量加载以确保数据最新，并获取可能缺失的其他源
+    }
+
     const updateProgress = (updates: Partial<SearchProgress>) => {
       if (signal.aborted) return;
       set(state => ({
@@ -108,13 +155,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
       const combinedResults = [...state.searchResults, ...newResults];
 
-      // 智能排序：优先显示剧集多且延迟低的
-      const finalResults = combinedResults.sort((a, b) => {
-        if ((b.episodes?.length || 0) !== (a.episodes?.length || 0)) {
-          return (b.episodes?.length || 0) - (a.episodes?.length || 0);
-        }
-        return (a.latency || 0) - (b.latency || 0);
-      });
+      // [逻辑升级] 初始加载即应用评分逻辑进行初步排序
+      const finalResults = combinedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a));
 
       const preferredId = id?.toString();
       const preferredMatch = preferredId
@@ -225,12 +267,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
         updateProgress({ isComplete: true });
       }
 
-      // 最后同步一下收藏状态
+      // 最后同步一下收藏状态并自动开启测速优化
       const finalState = get();
       if (finalState.detail) {
         const { source, id: vid } = finalState.detail;
         const isFavorited = await FavoriteManager.isFavorited(source, vid.toString());
         set({ isFavorited });
+
+        // [自动优化] 异步启动测速，不阻塞 UI
+        setTimeout(() => get().optimizeSources(), 500);
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
@@ -244,29 +289,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   optimizeSources: async () => {
-    const { searchResults, controller } = get();
-    if (searchResults.length === 0) return;
+    const { searchResults, controller, isOptimizing } = get();
+    if (searchResults.length === 0 || isOptimizing) return;
 
+    set({ isOptimizing: true });
     const signal = controller?.signal;
-    const testBatchSize = 3; // 每次并发测试 3 个，防止互相抢占带宽导致测速不准
-
-    // [逻辑升级] 模仿 Selene 的加权评分排序
-    const calculateScore = (r: SearchResultWithResolution) => {
-      let score = 0;
-      // 1. 速度权重 (40%) - 2MB/s 以上即为优秀
-      const speedScore = Math.min((r.speed || 0) / 2, 1) * 40;
-      // 2. 延迟权重 (30%) - 100ms 以下为优秀，1000ms 以上为极差
-      const latencyScore = r.latency ? Math.max(0, (1000 - r.latency) / 900) * 30 : 0;
-      // 3. 分辨率权重 (20%)
-      let resScore = 0;
-      if (r.resolution?.includes('1080')) resScore = 20;
-      else if (r.resolution?.includes('720')) resScore = 15;
-      else if (r.resolution?.includes('480')) resScore = 10;
-      // 4. 稳定性权重 (10%) - 剧集越多通常越稳定
-      const epScore = Math.min((r.episodes?.length || 0) / 30, 1) * 10;
-
-      return speedScore + latencyScore + resScore + epScore;
-    };
+    const testBatchSize = 4;
 
     // 分批次测速
     for (let i = 0; i < searchResults.length; i += testBatchSize) {
@@ -283,7 +311,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
           if (episodes.length === 0) return;
 
-          // 模仿 Selene：优先测第二集，更接近真实播放情况
           const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
           const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
 
@@ -292,17 +319,16 @@ const useDetailStore = create<DetailState>((set, get) => ({
               r.source === item.source ? { ...r, ...metrics } : r
             );
 
-            // 测速过程中不重排，防止 UI 闪烁导致用户点错，测速完成后再重排
-            return { searchResults: updatedResults };
+            // [实时重排]：每完成一个源的测速，就进行一次全局重排，确保最高分的源立刻置顶
+            return {
+              searchResults: [...updatedResults].sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a))
+            };
           });
         } catch {}
       }));
     }
 
-    // 所有测速完成后，执行一次终极加权重排
-    set(state => ({
-      searchResults: [...state.searchResults].sort((a, b) => calculateScore(b) - calculateScore(a))
-    }));
+    set({ isOptimizing: false });
   },
 
   setDetail: async (detail) => {

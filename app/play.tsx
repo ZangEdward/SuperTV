@@ -203,6 +203,10 @@ export default function PlayScreen() {
   const handleSourcePress = useCallback(async (item: any) => {
     const source = params.source || detail?.source;
     if (item.source === source) return;
+
+    // 切换源时保留当前播放进度
+    const currentPos = status?.isLoaded ? status.positionMillis : undefined;
+
     await safeUnload();
     setDetail?.(item);
     loadVideo?.({
@@ -210,8 +214,9 @@ export default function PlayScreen() {
       id: item.id.toString(),
       episodeIndex: currentEpisodeIndex,
       title: item.title,
+      position: currentPos, // 传递进度实现无缝切换
     });
-  }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex]);
+  }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex, status]);
 
   // 7. 副作用 Hooks
   useEffect(() => {
@@ -259,6 +264,11 @@ export default function PlayScreen() {
         position,
         title: params.title,
       });
+    }
+
+    // [逻辑升级] 进入播放页后，自动在后台启动测速优化，方便用户快速换源
+    if (!isTV) {
+      setTimeout(() => optimizeSources(), 1000);
     }
   }, []);
 
@@ -387,17 +397,27 @@ export default function PlayScreen() {
           </ScrollView>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-            {(searchResults || []).map((item, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={[styles.mobileSourceItem, source === item.source && styles.mobileSourceItemActive]}
-                onPress={() => handleSourcePress(item)}
-              >
-                <Text style={[styles.mobileSourceText, source === item.source && styles.mobileSourceTextActive]} numberOfLines={1}>
-                  {item.source_name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {(searchResults || []).map((item, idx) => {
+              const isSelected = source === item.source;
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.mobileSourceItem, isSelected && styles.mobileSourceItemActive]}
+                  onPress={() => handleSourcePress(item)}
+                >
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={[styles.mobileSourceText, isSelected && styles.mobileSourceTextActive]} numberOfLines={1}>
+                      {item.source_name}
+                    </Text>
+                    {item.speed !== undefined && item.speed > 0 && (
+                      <Text style={{ fontSize: 9, color: item.speed > 1 ? '#00bb5e' : '#888', marginTop: 2 }}>
+                        {SpeedTestService.formatSpeed(item.speed)}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       )}
@@ -477,33 +497,36 @@ const styles = StyleSheet.create({
   mobileBottomBar: {
     flex: 1,
     paddingHorizontal: 10,
-    paddingTop: 8,
+    paddingTop: 12,
   },
-  episodeScroll: { maxHeight: 40, marginBottom: 10 },
+  episodeScroll: { maxHeight: 42, marginBottom: 12 },
   mobileEpItem: {
     backgroundColor: "#1a1a1a",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 6,
-    marginRight: 6,
+    marginRight: 8,
+    justifyContent: 'center',
   },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
   mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600" },
   mobileEpTextActive: { color: "#fff" },
-  sourceScroll: { maxHeight: 38 },
+  sourceScroll: { maxHeight: 50 },
   mobileSourceItem: {
     backgroundColor: "#1a1a1a",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: 6,
     marginRight: 6,
+    minWidth: 80,
+    justifyContent: 'center',
   },
   mobileSourceItemActive: {
     borderColor: "#00bb5e",
     borderWidth: 1,
     backgroundColor: "rgba(0,187,94,0.08)",
   },
-  mobileSourceText: { color: "#bbb", fontSize: 12, maxWidth: 90 },
+  mobileSourceText: { color: "#bbb", fontSize: 12, maxWidth: 100 },
   mobileSourceTextActive: { color: "#00bb5e", fontWeight: "700" },
   fullscreenContainer: { paddingTop: 0, paddingHorizontal: 0 },
 });

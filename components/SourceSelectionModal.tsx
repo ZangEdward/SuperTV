@@ -16,8 +16,15 @@ export const autoSwitchToNextSource = () => {
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();
-  const { searchResults, detail, setDetail } = useDetailStore();
+  const { searchResults, detail, setDetail, optimizeSources } = useDetailStore();
   const { sourceLatencies } = useSettingsStore();
+
+  useEffect(() => {
+    if (showSourceModal) {
+      // 弹窗打开时，静默触发一次测速优化
+      optimizeSources();
+    }
+  }, [showSourceModal]);
 
   const onSelectSource = (index: number) => {
     const selected = searchResults[index];
@@ -45,9 +52,19 @@ export const SourceSelectionModal: React.FC = () => {
 
   const getLatencyText = (item: any) => {
     const ms = item.latency ?? sourceLatencies[item.source];
-    if (ms === undefined) return "";
-    if (ms === Infinity) return "（超时）";
-    return `（${Math.round(ms)}ms）`;
+    const speed = item.speed;
+
+    let text = "";
+    if (ms !== undefined) {
+      if (ms === Infinity) text += "（超时）";
+      else text += `（${Math.round(ms)}ms）`;
+    }
+
+    if (speed !== undefined && speed > 0) {
+      text += ` ${speed.toFixed(1)}MB/s`;
+    }
+
+    return text;
   };
 
   return (

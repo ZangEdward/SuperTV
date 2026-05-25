@@ -114,20 +114,20 @@ const useSearchStore = create<SearchState>((set, get) => ({
       updateProgress({ total: enabledResources.length });
 
       let completed = 0;
-      const batchSize = 3; // 每次并发 3 个，改善 UI 进度反馈并防止网络拥塞
+      const batchSize = 8; // 进一步增加并发数，实现真正的极速搜索
 
-      // 3. 分批并行搜索，动态异步刷新结果（Selene 模式）
+      // 3. 分批并行搜索，动态异步刷新结果（极速模式）
       for (let i = 0; i < enabledResources.length; i += batchSize) {
         if (signal.aborted) break;
         const batch = enabledResources.slice(i, i + batchSize);
 
         await Promise.all(batch.map(async (resource) => {
           try {
-            updateProgress({ currentSource: resource.name });
+            // 移除 currentSource 更新，减少 Bridge 通信开销，加速 UI 响应
 
             // 增加单源超时竞争
             const timeoutPromise = new Promise<null>((_, reject) =>
-              setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+              setTimeout(() => reject(new Error('TIMEOUT')), 5000)
             );
 
             const results = await Promise.race([
@@ -154,7 +154,6 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       // 如果最终完全没有结果，尝试 fallback
       if (get().results.length === 0) {
-        updateProgress({ currentSource: '全局搜索' });
         try {
           const { results: fallbackResults } = await api.searchVideos(term);
           if (!signal.aborted && fallbackResults && fallbackResults.length > 0) {

@@ -120,10 +120,6 @@ export default function SearchScreen() {
 
       {searchProgress.total > 0 && !searchProgress.isComplete && (
         <View style={dynamicStyles.progressContainer}>
-          <ThemedText style={dynamicStyles.progressText}>
-            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '连接资源中...'}
-            {` (${searchProgress.completed}/${searchProgress.total})`}
-          </ThemedText>
           <View style={dynamicStyles.progressBarBg}>
             <View
               style={[

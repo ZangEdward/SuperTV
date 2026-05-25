@@ -233,7 +233,7 @@ export default function DetailScreen() {
                           key={ep.index}
                           style={[
                             styles.episodeBtn,
-                            isLongTitle && { width: '50%', aspectRatio: undefined, height: 50 }
+                            isLongTitle && { width: '45%', aspectRatio: undefined }
                           ]}
                           onPress={() => handlePlay(ep.index)}
                         >
@@ -241,12 +241,12 @@ export default function DetailScreen() {
                             styles.episodeBox,
                             isCached && styles.episodeBoxCached,
                             isDownloading && styles.episodeBoxDownloading,
-                            isLongTitle && { alignItems: 'flex-start', paddingHorizontal: 12 }
+                            isLongTitle && { paddingHorizontal: 8, paddingVertical: 10 }
                           ]}>
                             <Text style={[
                               styles.episodeText,
                               (isCached || isDownloading) && { color: 'white' },
-                              isLongTitle && { fontSize: 13, textAlign: 'left' }
+                              isLongTitle && { fontSize: 12, textAlign: 'center' }
                             ]} numberOfLines={2}>
                               {ep.title}
                             </Text>
