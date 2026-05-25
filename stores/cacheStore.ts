@@ -161,9 +161,12 @@ const useCacheStore = create<CacheState>((set, get) => ({
       id: series.id,
       episodes,
     };
+
+    // 关键修复：先更新内存状态，再异步保存和调度，防止状态被覆盖
     set((state) => ({ queue: [...state.queue, group] }));
     CacheService.saveQueue(get().queue);
-    (get() as any).processQueue?.();
+
+    setTimeout(() => (get() as any).processQueue?.(), 800);
     Toast.show({ type: "success", text1: "已加入下载队列", text2: `已成功添加 ${newEpisodes.length} 个任务` });
   },
 

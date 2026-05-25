@@ -28,11 +28,11 @@ export default function CacheScreen() {
   const { deviceType, spacing } = responsiveConfig;
 
   useEffect(() => {
-    loadCache();
+    // 移除 loadCache() 调用，防止覆盖正在下载的任务状态
     if (q && (!detail || detail.title !== q || searchResults.length === 0)) {
       init(q, source, id);
     }
-  }, [q, source, id, detail, init, searchResults.length, loadCache]);
+  }, [q, source, id, detail, init, searchResults.length]);
 
   useEffect(() => {
     if (detail && detail.source) {

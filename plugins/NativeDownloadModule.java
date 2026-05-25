@@ -85,19 +85,15 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 final AtomicBoolean hasError = new AtomicBoolean(false);
                 final String[] errorMessage = {""};
 
-                // [SCAN] 预扫描已存在的文件，初始化进度和分片路径
-                int initialCompletedCount = 0;
+                // [SCAN] 预扫描，仅确定初始进度百分比用于展示
+                int scannedCount = 0;
                 for (int i = 0; i < total; i++) {
                     File f = new File(tempDir, "seg_" + i + ".ts");
-                    if (f.exists() && f.length() > 0) {
-                        initialCompletedCount++;
-                        segmentFiles[i] = f.getAbsolutePath();
-                    }
+                    if (f.exists() && f.length() > 0) scannedCount++;
                 }
-                completed.set(initialCompletedCount);
-                sendProgress(taskId, initialCompletedCount, total);
+                sendProgress(taskId, scannedCount, total);
 
-                // 2. Download segments in parallel using pool
+                // 2. 线程池分配任务
                 for (int i = 0; i < total; i++) {
                     final int index = i;
                     final String url = segmentUrls.getString(index);
@@ -109,14 +105,16 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                             String segmentFileName = "seg_" + index + ".ts";
                             File segFile = new File(tempDir, segmentFileName);
                             
-                            // [RESUME] 如果文件不存在或不完整，重新下载
-                            if (!segFile.exists() || segFile.length() == 0) {
+                            // [RESUME] 检查本地是否存在
+                            boolean needsDownload = !segFile.exists() || segFile.length() == 0;
+                            
+                            if (needsDownload) {
                                 int retry = 0;
                                 while (retry < 3) {
                                     try {
                                         downloadFile(url, segFile, headers);
                                         if (segFile.length() > 0) break;
-                                        throw new IOException("Downloaded file is empty");
+                                        throw new IOException("Empty file");
                                     } catch (Exception e) {
                                         retry++;
                                         if (retry >= 3) throw e;
@@ -124,17 +122,16 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                                     }
                                 }
                                 
-                                // 解密 (仅对新下载的文件进行解密，避免重复解密导致损坏)
-                                if (keyBase64 != null && !keyBase64.isEmpty()) {
-                                    if (segFile.length() % 16 == 0) {
-                                        decryptInPlace(segFile, keyBase64, ivHex, index);
-                                    }
+                                // 仅对新下载的片段执行解密
+                                if (keyBase64 != null && !keyBase64.isEmpty() && segFile.length() % 16 == 0) {
+                                    decryptInPlace(segFile, keyBase64, ivHex, index);
                                 }
                             }
                             
                             segmentFiles[index] = segFile.getAbsolutePath();
                             int done = completed.incrementAndGet();
                             
+                            // 节流发送进度
                             if (done % 5 == 0 || done == total) {
                                 sendProgress(taskId, done, total);
                             }
@@ -146,14 +143,14 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                     });
                 }
 
-                // 3. 等待所有分片完成
+                // 3. 等待所有线程完成
                 while (completed.get() < total && !hasError.get() && isRunning.get()) {
                     Thread.sleep(300);
                 }
 
                 if (!isRunning.get()) {
                     activeTasks.remove(taskId);
-                    promise.reject("CANCELLED", "Task stopped by user");
+                    promise.reject("CANCELLED", "Stopped");
                     return;
                 }
 
@@ -170,9 +167,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 
                 try (FileOutputStream fos = new FileOutputStream(destFile)) {
                     for (int i = 0; i < total; i++) {
-                        if (segmentFiles[i] == null) {
-                           throw new Exception("Missing segment file at index " + i);
-                        }
                         File f = new File(segmentFiles[i]);
                         appendToFile(f, fos);
                         f.delete(); 
@@ -186,19 +180,16 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             } catch (Exception e) {
                 activeTasks.remove(taskId);
                 promise.reject("DOWNLOAD_ERROR", e.getMessage());
-            } finally {
-                // 如果任务结束（无论是成功还是失败且不可重试），清理临时目录可以放在这里
-                // 但为了支持断点续传，失败时不应删除整个目录
             }
         }).start();
     }
 
     @ReactMethod
     public void stopDownload(String taskId) {
-        AtomicBoolean isRunning = activeTasks.get(taskId);
+        // [FIX] 立即从 Map 移除，允许 UI 立即重新触发 start
+        AtomicBoolean isRunning = activeTasks.remove(taskId);
         if (isRunning != null) {
             isRunning.set(false);
-            activeTasks.remove(taskId);
         }
     }
 
@@ -213,14 +204,12 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         }
 
         try (Response response = client.newCall(builder.build()).execute()) {
-            if (!response.isSuccessful()) throw new IOException("HTTP Error " + response.code());
+            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
             try (InputStream is = response.body().byteStream();
                  FileOutputStream fos = new FileOutputStream(dest)) {
                 byte[] buffer = new byte[16384];
                 int read;
-                while ((read = is.read(buffer)) != -1) {
-                    fos.write(buffer, 0, read);
-                }
+                while ((read = is.read(buffer)) != -1) fos.write(buffer, 0, read);
                 fos.flush();
             }
         }
@@ -228,17 +217,15 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
     private void decryptInPlace(File file, String keyBase64, String ivHex, int index) throws Exception {
         byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
-        
         String finalIvHex = ivHex;
         if (ivHex != null && ivHex.startsWith("SEQ:")) {
             int seq = Integer.parseInt(ivHex.substring(4)) + index;
             finalIvHex = String.format("%032x", seq);
         }
-        
         byte[] iv = hexStringToByteArray(finalIvHex != null ? finalIvHex.replace("0x", "") : "");
         if (iv.length < 16) {
             byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
+            System.arraycopy(iv, 0, 16 - iv.length, iv.length);
             iv = padded;
         }
 
@@ -252,7 +239,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             int offset = 0, n;
             while (offset < input.length && (n = fis.read(input, offset, input.length - offset)) >= 0) offset += n;
         }
-        
         byte[] output = cipher.doFinal(input);
         try (FileOutputStream fos = new FileOutputStream(file)) {
             fos.write(output);
