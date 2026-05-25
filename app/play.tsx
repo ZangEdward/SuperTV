@@ -7,11 +7,13 @@ import {
   ScrollView,
   Text,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
 import { activateKeepAwakeAsync, deactivateKeepAwakeAsync } from "expo-keep-awake";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedView } from "@/components/ThemedView";
 import { PlayerControls } from "@/components/PlayerControls";
 import { EpisodeSelectionModal } from "@/components/EpisodeSelectionModal";
@@ -20,11 +22,12 @@ import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
 import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
-import { ArrowLeft, Cast } from "lucide-react-native";
+import { ArrowLeft, Cast, Download } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
+import useCacheStore from "@/stores/cacheStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
 import { StyledButton } from "@/components/StyledButton";
@@ -39,6 +42,7 @@ const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) =
 export default function PlayScreen() {
   const videoRef = useRef<Video>(null);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { deviceType } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
 
@@ -93,6 +97,8 @@ export default function PlayScreen() {
   const setIsFullscreen = usePlayerStore(state => state.setIsFullscreen);
   const togglePlayPause = usePlayerStore(state => state.togglePlayPause);
   const seekToPosition = usePlayerStore(state => state.seekToPosition);
+
+  const downloadEpisode = useCacheStore(state => state.downloadEpisode);
 
   const panStartPos = useRef<number>(0);
 
@@ -307,22 +313,42 @@ export default function PlayScreen() {
     );
   }
 
+  const handleDownloadPress = useCallback(() => {
+    if (!currentEpisode?.url || !source || !id || !title) return;
+    downloadEpisode({
+      source,
+      source_name: detail?.source_name || source,
+      title: detail?.title || title,
+      poster: detail?.poster || "",
+      id,
+      episodeIndex: currentEpisodeIndex,
+      episodeTitle: `第 ${currentEpisodeIndex + 1} 集`,
+      episodeUrl: currentEpisode.url,
+      totalEpisodes: episodes.length,
+    });
+  }, [currentEpisode, currentEpisodeIndex, episodes.length, source, id, title, detail, downloadEpisode]);
+
   // 移动端布局：使用手势
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
-        <View style={styles.customHeader}>
+        <View style={[styles.customHeader, { paddingTop: Math.max(insets.top, 10) }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || "播放"}</Text>
-          <TouchableOpacity style={styles.overlayIcon} onPress={() => setShowCastModal?.(true)}>
-            <Cast size={20} color="white" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadPress}>
+              <Download size={20} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.overlayIcon, { marginLeft: 8 }]} onPress={() => setShowCastModal?.(true)}>
+              <Cast size={20} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
-      <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 10 }]}>
+      <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 0 }]}>
         {gesture ? (
           <GestureDetector gesture={gesture}>
             <View style={{ flex: 1 }}>
@@ -413,6 +439,10 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#00bb5e",
     marginHorizontal: 8,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   overlayIcon: {
     padding: 6,

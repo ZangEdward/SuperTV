@@ -496,15 +496,22 @@ export class CacheService {
       uri: string;
       iv?: string;
     };
+    mediaSequence: number;
   } {
     const lines = playlist.split(/\r?\n/).map((line) => line.trim());
     const variants: M3U8Variant[] = [];
     const segments: string[] = [];
     let currentVariant: Partial<M3U8Variant> | null = null;
     let encryption: { method: string; uri: string; iv?: string } | undefined;
+    let mediaSequence = 0;
 
     for (const line of lines) {
       if (!line || line.startsWith("#EXTM3U")) continue;
+
+      if (line.startsWith("#EXT-X-MEDIA-SEQUENCE")) {
+        const match = line.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/i);
+        if (match) mediaSequence = parseInt(match[1], 10);
+      }
       if (line.startsWith("#EXT-X-KEY")) {
         const methodMatch = line.match(/METHOD=([^,\s]+)/i);
         const uriMatch = line.match(/URI="([^"]+)"/i);
@@ -544,6 +551,7 @@ export class CacheService {
       variants,
       segments,
       encryption,
+      mediaSequence,
     };
   }
 
@@ -686,6 +694,12 @@ export class CacheService {
       // 2. 准备加密信息
       let keyBase64 = "";
       let ivHex = mediaParsed.encryption?.iv || "";
+
+      // HLS 规范：如果 IV 缺失，则使用 Media Sequence 动态生成
+      if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
+        ivHex = `SEQ:${mediaParsed.mediaSequence}`;
+      }
+
       if (mediaParsed.encryption?.method === 'AES-128') {
         const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
         const keyRes = await RNFetchBlob.fetch('GET', keyUrl, headers);

@@ -100,13 +100,40 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                         try {
                             String segmentFileName = "seg_" + index + ".ts";
                             File segFile = new File(tempDir, segmentFileName);
-                            
-                            // Download
-                            downloadFile(url, segFile, headers);
-                            
+
+                            // Download with retry logic
+                            int retry = 0;
+                            while (retry < 3) {
+                                try {
+                                    downloadFile(url, segFile, headers);
+                                    
+                                    // 关键修复：如果文件长度为 0，视为下载失败触发重试
+                                    if (segFile.length() == 0) {
+                                        throw new Exception("Downloaded empty file");
+                                    }
+                                    break; 
+                                } catch (Exception e) {
+                                    retry++;
+                                    if (retry >= 3) throw e;
+                                    Thread.sleep(800); 
+                                }
+                            }
+
                             // Decrypt if needed
                             if (keyBase64 != null && !keyBase64.isEmpty()) {
-                                decryptInPlace(segFile, keyBase64, ivHex);
+                                long len = segFile.length();
+                                // HLS 规范：加密片段必须是 16 字节倍数。如果不满足，极大概率是该片段本身未加密。
+                                if (len > 0 && len % 16 == 0) {
+                                    // 这里的 ivHex 如果是以 taskId_index 形式传过来的，说明需要动态计算序列号 IV
+                                    String finalIv = ivHex;
+                                    if (ivHex != null && ivHex.startsWith("SEQ:")) {
+                                        int seq = Integer.parseInt(ivHex.substring(4)) + index;
+                                        finalIv = String.format("%032x", seq);
+                                    }
+                                    decryptInPlace(segFile, keyBase64, finalIv);
+                                } else {
+                                    Log.w(TAG, "Segment " + index + " length " + len + " is not multiple of 16, skipping decryption.");
+                                }
                             }
                             
                             segmentFiles[index] = segFile.getAbsolutePath();
@@ -199,20 +226,29 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
     private void decryptInPlace(File file, String keyBase64, String ivHex) throws Exception {
         byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
         byte[] iv = hexStringToByteArray(ivHex != null ? ivHex.replace("0x", "") : "");
+        
+        // HLS 规范：如果 IV 不足 16 字节，必须在左侧（高位）补零
         if (iv.length < 16) {
             byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, padded, 0, iv.length);
+            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
             iv = padded;
         }
 
         SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
+        
+        // 使用更通用的 PKCS7Padding (Java 中 PKCS5 等同于 PKCS7)
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
+        // 使用更健壮的读取方式
         byte[] input = new byte[(int) file.length()];
         try (java.io.FileInputStream fis = new java.io.FileInputStream(file)) {
-            fis.read(input);
+            int offset = 0;
+            int numRead;
+            while (offset < input.length && (numRead = fis.read(input, offset, input.length - offset)) >= 0) {
+                offset += numRead;
+            }
         }
         
         byte[] output = cipher.doFinal(input);
