@@ -114,20 +114,19 @@ const useSearchStore = create<SearchState>((set, get) => ({
       updateProgress({ total: enabledResources.length });
 
       let completed = 0;
-      const batchSize = 8; // 进一步增加并发数，实现真正的极速搜索
+      const MAX_CONCURRENT = 10; // 骁龙 8 级别手机建议 10 路并发
+      const queue = [...enabledResources];
 
-      // 3. 分批并行搜索，动态异步刷新结果（极速模式）
-      for (let i = 0; i < enabledResources.length; i += batchSize) {
-        if (signal.aborted) break;
-        const batch = enabledResources.slice(i, i + batchSize);
+      // [核心重构]：真正的流式加载逻辑。取消批次等待，改为“空闲即补位”模式。
+      const runWorker = async () => {
+        while (queue.length > 0 && !signal.aborted) {
+          const resource = queue.shift();
+          if (!resource) break;
 
-        await Promise.all(batch.map(async (resource) => {
           try {
-            // 移除 currentSource 更新，减少 Bridge 通信开销，加速 UI 响应
-
             // 增加单源超时竞争
             const timeoutPromise = new Promise<null>((_, reject) =>
-              setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+              setTimeout(() => reject(new Error('TIMEOUT')), 10000)
             );
 
             const results = await Promise.race([
@@ -135,8 +134,7 @@ const useSearchStore = create<SearchState>((set, get) => ({
               timeoutPromise
             ]) as SearchResult[] | null;
 
-            if (signal.aborted) return;
-            if (results && results.length > 0) {
+            if (!signal.aborted && results && results.length > 0) {
               processAndAddResults(results);
             }
           } catch (err) {
@@ -145,9 +143,15 @@ const useSearchStore = create<SearchState>((set, get) => ({
             completed++;
             updateProgress({ completed });
           }
-        }));
-      }
+        }
+      };
 
+      // 启动多个并发 worker，实现真正的“搜到一个跳一个”
+      const workers = Array(Math.min(MAX_CONCURRENT, enabledResources.length))
+        .fill(null)
+        .map(() => runWorker());
+
+      await Promise.all(workers);
       updateProgress({ isComplete: true });
 
       if (signal.aborted) return;

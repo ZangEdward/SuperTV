@@ -16,12 +16,12 @@ export const autoSwitchToNextSource = () => {
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();
-  const { searchResults, detail, setDetail, optimizeSources } = useDetailStore();
+  const { searchResults, detail, setDetail, optimizeSources, isOptimizing } = useDetailStore();
   const { sourceLatencies } = useSettingsStore();
 
   useEffect(() => {
     if (showSourceModal) {
-      // 弹窗打开时，静默触发一次测速优化
+      logger.info("Opening SourceSelectionModal, triggering optimization...");
       optimizeSources();
     }
   }, [showSourceModal]);
@@ -71,7 +71,15 @@ export const SourceSelectionModal: React.FC = () => {
     <Modal visible={showSourceModal} transparent={true} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>选择播放源</Text>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>选择播放源</Text>
+            {isOptimizing && (
+              <View style={styles.optimizingBadge}>
+                <ActivityIndicator size="small" color="#00bb5e" />
+                <Text style={styles.optimizingText}>正在优选线路...</Text>
+              </View>
+            )}
+          </View>
 
           <FlatList
             data={searchResults}
@@ -108,12 +116,31 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.85)",
     padding: 20,
   },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 10,
+  },
   modalTitle: {
     color: "white",
-    marginBottom: 12,
-    textAlign: "center",
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
+  },
+  optimizingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,187,94,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+  },
+  optimizingText: {
+    color: '#00bb5e',
+    fontSize: 12,
+    fontWeight: '600',
   },
   sourceList: {
     justifyContent: "flex-start",

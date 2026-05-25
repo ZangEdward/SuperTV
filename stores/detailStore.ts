@@ -289,11 +289,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   optimizeSources: async () => {
-    const { searchResults, controller, isOptimizing } = get();
+    const { searchResults, isOptimizing } = get();
     if (searchResults.length === 0 || isOptimizing) return;
 
     set({ isOptimizing: true });
-    const signal = controller?.signal;
+
+    // 创建测速专用的信号，避免受 init 控制器 abort 的影响
+    const testController = new AbortController();
+    const signal = testController.signal;
+
     const testBatchSize = 4;
 
     // 分批次测速
