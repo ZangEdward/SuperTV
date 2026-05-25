@@ -65,7 +65,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             final ReadableMap headers,
             final Promise promise
     ) {
-        // 如果任务已在运行，不报错，直接 resolve (让 JS 觉得启动成功)
         if (activeTasks.containsKey(taskId)) {
             promise.resolve(destPath);
             return;
@@ -80,14 +79,23 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             try {
                 if (!tempDir.exists()) tempDir.mkdirs();
                 
-                // [SCAN] 预扫描已存在的文件，初始化进度
-                int initialCompleted = 0;
+                final int total = segmentUrls.size();
+                final String[] segmentFiles = new String[total];
+                final AtomicInteger completed = new AtomicInteger(0);
+                final AtomicBoolean hasError = new AtomicBoolean(false);
+                final String[] errorMessage = {""};
+
+                // [SCAN] 预扫描已存在的文件，初始化进度和分片路径
+                int initialCompletedCount = 0;
                 for (int i = 0; i < total; i++) {
                     File f = new File(tempDir, "seg_" + i + ".ts");
-                    if (f.exists() && f.length() > 0) initialCompleted++;
+                    if (f.exists() && f.length() > 0) {
+                        initialCompletedCount++;
+                        segmentFiles[i] = f.getAbsolutePath();
+                    }
                 }
-                completed.set(initialCompleted);
-                sendProgress(taskId, initialCompleted, total); // 立即反馈真实起始进度
+                completed.set(initialCompletedCount);
+                sendProgress(taskId, initialCompletedCount, total);
 
                 // 2. Download segments in parallel using pool
                 for (int i = 0; i < total; i++) {
@@ -101,14 +109,14 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                             String segmentFileName = "seg_" + index + ".ts";
                             File segFile = new File(tempDir, segmentFileName);
                             
-                            // [RESUME] 如果文件已存在且大小不为0，跳过下载
+                            // [RESUME] 如果文件不存在或不完整，重新下载
                             if (!segFile.exists() || segFile.length() == 0) {
                                 int retry = 0;
                                 while (retry < 3) {
                                     try {
                                         downloadFile(url, segFile, headers);
                                         if (segFile.length() > 0) break;
-                                        throw new IOException("Empty file downloaded");
+                                        throw new IOException("Downloaded file is empty");
                                     } catch (Exception e) {
                                         retry++;
                                         if (retry >= 3) throw e;
@@ -116,7 +124,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                                     }
                                 }
                                 
-                                // 解密
+                                // 解密 (仅对新下载的文件进行解密，避免重复解密导致损坏)
                                 if (keyBase64 != null && !keyBase64.isEmpty()) {
                                     if (segFile.length() % 16 == 0) {
                                         decryptInPlace(segFile, keyBase64, ivHex, index);
@@ -138,6 +146,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                     });
                 }
 
+                // 3. 等待所有分片完成
                 while (completed.get() < total && !hasError.get() && isRunning.get()) {
                     Thread.sleep(300);
                 }
@@ -154,11 +163,16 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                     return;
                 }
 
-                // 合并文件
+                // 4. 合并分片
                 File destFile = new File(destPath);
+                if (destFile.exists()) destFile.delete();
                 destFile.getParentFile().mkdirs();
+                
                 try (FileOutputStream fos = new FileOutputStream(destFile)) {
                     for (int i = 0; i < total; i++) {
+                        if (segmentFiles[i] == null) {
+                           throw new Exception("Missing segment file at index " + i);
+                        }
                         File f = new File(segmentFiles[i]);
                         appendToFile(f, fos);
                         f.delete(); 
@@ -172,6 +186,9 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             } catch (Exception e) {
                 activeTasks.remove(taskId);
                 promise.reject("DOWNLOAD_ERROR", e.getMessage());
+            } finally {
+                // 如果任务结束（无论是成功还是失败且不可重试），清理临时目录可以放在这里
+                // 但为了支持断点续传，失败时不应删除整个目录
             }
         }).start();
     }
@@ -196,7 +213,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         }
 
         try (Response response = client.newCall(builder.build()).execute()) {
-            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
+            if (!response.isSuccessful()) throw new IOException("HTTP Error " + response.code());
             try (InputStream is = response.body().byteStream();
                  FileOutputStream fos = new FileOutputStream(dest)) {
                 byte[] buffer = new byte[16384];
@@ -221,7 +238,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         byte[] iv = hexStringToByteArray(finalIvHex != null ? finalIvHex.replace("0x", "") : "");
         if (iv.length < 16) {
             byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, 16 - iv.length, iv.length);
+            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
             iv = padded;
         }
 
@@ -270,13 +287,5 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
         }
         return data;
-    }
-
-    private void deleteRecursive(File fileOrDirectory) {
-        if (fileOrDirectory.isDirectory()) {
-            File[] children = fileOrDirectory.listFiles();
-            if (children != null) for (File child : children) deleteRecursive(child);
-        }
-        fileOrDirectory.delete();
     }
 }
