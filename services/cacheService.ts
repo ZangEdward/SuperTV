@@ -3,7 +3,6 @@ import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import { Platform, NativeModules, DeviceEventEmitter } from "react-native";
 import Logger from "@/utils/Logger";
-import CryptoJS from 'crypto-js';
 import RNFetchBlob from 'react-native-blob-util';
 import { filterM3U8Ads } from './m3u8';
 
@@ -201,13 +200,13 @@ export class CacheService {
     }
   }
 
-  /** 恢复 M3U8 下载任务 (逻辑在 store 中重新启动 startM3U8Download) */
+  /** 继续 M3U8 下载任务 */
   static resumeTask(itemId: string): void {
     // 逻辑在 store 中通过 downloadQueuedEpisode 实现
   }
 
   static isTaskPaused(itemId: string): boolean {
-    return false; // 原生层任务现在通过 JS store 状态管理
+    return false;
   }
 
   static removeTaskState(itemId: string): void {
@@ -225,13 +224,11 @@ export class CacheService {
   static buildFileName(source: string, id: string, episodeIndex: number, url: string): string {
     const extensionMatch = url.match(/\.(mp4|m3u8|ts|mov|webm)(?:[?#].*)?$/i);
     let extension = extensionMatch ? extensionMatch[1].toLowerCase() : "mp4";
-    // 如果是 m3u8 下载，强制使用 .ts 后缀，避免系统 MediaScanner 将其误认为 mp4 导致硬件解码器崩溃
     if (extension === "m3u8") {
       extension = "ts";
     }
     const normalizedSource = source.replace(/[^a-zA-Z0-9_-]/g, "_");
     const normalizedId = id.toString().replace(/[^a-zA-Z0-9_-]/g, "_");
-    // 移除 Date.now()，使文件名在多次运行间保持一致以支持断点续传
     return `${normalizedSource}_${normalizedId}_${episodeIndex + 1}.${extension}`;
   }
 
@@ -326,7 +323,7 @@ export class CacheService {
 
   /**
    * 下载 M3U8 并合并为 MP4
-   * 重构方案：JS 逻辑调度（实现去广告和精准控制） + 原生原子操作（解密和合并加速）
+   * 混合模式：React Native 指挥下载逻辑（利于控制和去广告），原生层负责高性能解密合并。
    */
   static async downloadM3U8AsMp4(
     url: string,
@@ -337,12 +334,11 @@ export class CacheService {
     options: { adFilter?: boolean } = {}
   ): Promise<string> {
     const taskId = itemId || `m3u8_${Date.now()}`;
-    logger.info(`[CacheService] Starting Managed Download: ${taskId}`);
+    logger.info(`[CacheService] Starting RN-Led Download: ${taskId}`);
 
     const authHeaders = await this.getAuthHeaders();
     const headers = { ...DEFAULT_HEADERS, ...authHeaders };
 
-    // 1. 获取并解析 M3U8 (JS 层解析更灵活)
     const fetchText = async (uri: string): Promise<string> => {
       const res = await RNFetchBlob.fetch('GET', uri, headers);
       return await res.text();
@@ -357,7 +353,6 @@ export class CacheService {
       const bestVariant = CacheService.selectBestVariant(parsed.variants);
       mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
       const mediaText = await fetchText(mediaPlaylistUrl);
-      // [底层去广告] 直接过滤 M3U8 文本
       const finalMediaText = options.adFilter ? filterM3U8Ads(mediaText) : mediaText;
       mediaParsed = CacheService.parseM3U8Playlist(finalMediaText);
     } else if (options.adFilter) {
@@ -368,7 +363,6 @@ export class CacheService {
     const total = segmentUrls.length;
     if (total === 0) throw new Error("未找到分片");
 
-    // 2. 准备加密信息
     let keyBase64 = "";
     let ivHex = mediaParsed.encryption?.iv || "";
     if (mediaParsed.encryption?.method === 'AES-128') {
@@ -377,106 +371,88 @@ export class CacheService {
       keyBase64 = await keyRes.base64();
     }
 
-    // 3. JS 维护任务分发逻辑
-    const tempDir = `${FileSystem.cacheDirectory}m3u8_js_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
+    const tempDir = `${FileSystem.cacheDirectory}m3u8_rn_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
     const segmentFiles: string[] = [];
     let completedCount = 0;
     let isCancelled = false;
-    let activeWorkers = 0;
-    const CONCURRENCY = 4; // 最大并发数
+    const CONCURRENCY = 4;
     const queue = Array.from({ length: total }, (_, i) => i);
+    const activeTasksCount = { val: 0 };
+    const currentCalls = new Set<any>();
 
-    // 监听 AbortSignal 物理级停止
-    const abortListener = () => {
-      isCancelled = true;
-      if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
-    };
-    if (signal) signal.addEventListener('abort', abortListener);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        isCancelled = true;
+        currentCalls.forEach(c => c.cancel?.());
+      });
+    }
 
-    const downloadTask = async (index: number, retry = 0): Promise<void> => {
+    const processSegment = async (index: number) => {
       if (isCancelled) return;
+      const segFile = `${tempDir}seg_${index}.ts`;
+      const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
 
-      try {
-        const segFile = `${tempDir}seg_${index}.ts`;
-        const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
+      const info = await FileSystem.getInfoAsync(segFile);
+      if (!info.exists || info.size === 0) {
+        const task = RNFetchBlob.config({ path: normalizedPath }).fetch('GET', segmentUrls[index], headers);
+        currentCalls.add(task);
+        try {
+          const res = await task;
+          currentCalls.delete(task);
+          if (res.info().status !== 200) throw new Error(`HTTP ${res.info().status}`);
 
-        // 断点续传：检查磁盘
-        const info = await FileSystem.getInfoAsync(segFile);
-        if (!info.exists || info.size === 0) {
-          // 精准计算序列号 IV
-          let segmentIv = ivHex;
-          if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
-            const seq = mediaParsed.mediaSequence + index;
-            segmentIv = seq.toString(16).padStart(32, '0');
+          if (keyBase64) {
+            let segmentIv = ivHex;
+            if (!ivHex) {
+              segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
+            }
+            await NativeDownloadModule.decryptFileInPlace(normalizedPath, keyBase64, segmentIv);
           }
-
-          // 发放任务给后台
-          await NativeDownloadModule.downloadSegment(
-            taskId,
-            segmentUrls[index],
-            normalizedPath,
-            keyBase64,
-            segmentIv,
-            headers
-          );
+        } catch (e) {
+          currentCalls.delete(task);
+          throw e;
         }
+      }
 
-        segmentFiles[index] = normalizedPath;
-        completedCount++;
-
-        // 发送真实进度
-        if (completedCount % 5 === 0 || completedCount === total) {
-          progressCb?.(completedCount / total, completedCount);
-        }
-      } catch (err) {
-        if (isCancelled) return;
-        if (retry < 3) {
-          // 指数退避重试
-          await new Promise(r => setTimeout(r, 1000));
-          return downloadTask(index, retry + 1);
-        }
-        throw err;
+      segmentFiles[index] = normalizedPath;
+      completedCount++;
+      if (completedCount % 5 === 0 || completedCount === total) {
+        progressCb?.(completedCount / total, completedCount);
       }
     };
 
-    // [核心]：滑动窗口并发调度（发放-反馈模式）
     await new Promise<void>((resolve, reject) => {
-      const startNext = () => {
-        while (activeWorkers < CONCURRENCY && queue.length > 0 && !isCancelled) {
-          const index = queue.shift()!;
-          activeWorkers++;
-          downloadTask(index)
+      const fillPool = () => {
+        while (activeTasksCount.val < CONCURRENCY && queue.length > 0 && !isCancelled) {
+          const idx = queue.shift()!;
+          activeTasksCount.val++;
+          processSegment(idx)
             .then(() => {
-              activeWorkers--;
-              if (queue.length === 0 && activeWorkers === 0) resolve();
-              else startNext();
+              activeTasksCount.val--;
+              if (queue.length === 0 && activeTasksCount.val === 0) resolve();
+              else fillPool();
             })
             .catch(err => {
               isCancelled = true;
-              if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
+              currentCalls.forEach(c => c.cancel?.());
               reject(err);
             });
         }
-        if (queue.length === 0 && activeWorkers === 0) resolve();
+        if (queue.length === 0 && activeTasksCount.val === 0) resolve();
       };
-      startNext();
+      fillPool();
     });
 
-    if (signal) signal.removeEventListener('abort', abortListener);
     if (isCancelled) throw new Error("CANCELLED");
 
-    // 4. 原生层合并
-    logger.info(`[CacheService] Merging ${total} segments into final file...`);
+    logger.info(`[CacheService] Native merging ${total} segments...`);
     let normalizedDestPath = destinationPath;
     if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
 
-    await NativeDownloadModule.mergeSegments(segmentFiles.filter(p => !!p), normalizedDestPath);
-
-    // 清理碎片
+    await NativeDownloadModule.mergeFiles(segmentFiles.filter(p => !!p), normalizedDestPath);
     await FileSystem.deleteAsync(tempDir, { idempotent: true });
-
     return destinationPath;
   }
 
@@ -486,7 +462,6 @@ export class CacheService {
       if (status !== 'granted') {
         throw new Error('未获得存储权限');
       }
-
       const asset = await MediaLibrary.createAssetAsync(fileUri);
       const album = await MediaLibrary.getAlbumAsync(albumName);
       if (album == null) {
@@ -527,7 +502,6 @@ export class CacheService {
             }
           }
         );
-
         const result = await resumable.downloadAsync();
         progressCb?.(1);
         if (!result || !result.uri) {
