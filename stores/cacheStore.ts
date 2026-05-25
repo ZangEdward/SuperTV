@@ -197,21 +197,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
       return;
     }
 
-    // start downloading
-    const nextQueue = [...state.queue];
-    nextQueue[groupIndex].episodes[epIndex].status = 'downloading';
-    // 保留原有进度，如果是新开始则为0
-    nextQueue[groupIndex].episodes[epIndex].progress = ep.progress || 0;
-
-    set((s) => ({
-      activeCount: s.activeCount + 1,
-      queue: nextQueue
-    }));
-
     const itemId = `${state.queue[groupIndex].source}_${state.queue[groupIndex].id}_${ep.index}`;
-
-    // 如果已经在下载中，不要重复启动
-    if (ep.status === 'downloading') return;
 
     // start downloading
     const nextQueue = [...state.queue];
