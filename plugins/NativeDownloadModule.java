@@ -5,7 +5,6 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 
@@ -46,7 +45,8 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * 原子操作：下载并可选解密单个分片
+     * 原子任务：下载并解密单个片段
+     * 完成后通过 Promise 异步通知 JS
      */
     @ReactMethod
     public void downloadSegment(
@@ -79,11 +79,11 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 try (InputStream is = response.body().byteStream();
                      FileOutputStream fos = new FileOutputStream(destFile)) {
                     byte[] buffer = new byte[16384];
-                    int read;
-                    while ((read = is.read(buffer)) != -1) fos.write(buffer, 0, read);
+                    int n;
+                    while ((n = is.read(buffer)) != -1) fos.write(buffer, 0, n);
                 }
 
-                // 如果有加密，在原生层高性能解密
+                // 实时解密，不占 JS 线程
                 if (keyBase64 != null && !keyBase64.isEmpty()) {
                     decryptInPlace(destFile, keyBase64, ivHex);
                 }
@@ -97,36 +97,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         }).start();
     }
 
-    /**
-     * 原子操作：高性能合并文件列表
-     */
-    @ReactMethod
-    public void mergeSegments(ReadableArray filePaths, String destPath, Promise promise) {
-        new Thread(() -> {
-            try {
-                File destFile = new File(destPath);
-                destFile.getParentFile().mkdirs();
-                if (destFile.exists()) destFile.delete();
-
-                try (FileOutputStream fos = new FileOutputStream(destFile)) {
-                    for (int i = 0; i < filePaths.size(); i++) {
-                        File src = new File(filePaths.getString(i));
-                        if (src.exists()) {
-                            appendToFile(src, fos);
-                            src.delete(); // 合并后立即删除碎片
-                        }
-                    }
-                }
-                promise.resolve(destPath);
-            } catch (Exception e) {
-                promise.reject("ERR", e.getMessage());
-            }
-        }).start();
-    }
-
-    /**
-     * 物理断电：立即停止所有网络请求
-     */
     @ReactMethod
     public void stopAllCalls() {
         synchronized (activeCalls) {
@@ -137,13 +107,35 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         }
     }
 
+    @ReactMethod
+    public void mergeSegments(com.facebook.react.bridge.ReadableArray paths, String dest, Promise promise) {
+        new Thread(() -> {
+            try {
+                File d = new File(dest);
+                d.getParentFile().mkdirs();
+                try (FileOutputStream fos = new FileOutputStream(d)) {
+                    for (int i = 0; i < paths.size(); i++) {
+                        File s = new File(paths.getString(i));
+                        if (s.exists()) {
+                            appendToFile(s, fos);
+                            s.delete();
+                        }
+                    }
+                }
+                promise.resolve(dest);
+            } catch (Exception e) {
+                promise.reject("ERR", e.getMessage());
+            }
+        }).start();
+    }
+
     private void decryptInPlace(File file, String keyBase64, String ivHex) throws Exception {
         byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
         byte[] iv = hexStringToByteArray(ivHex != null ? ivHex.replace("0x", "") : "");
         if (iv.length < 16) {
-            byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
-            iv = padded;
+            byte[] p = new byte[16];
+            System.arraycopy(iv, 0, p, 16 - iv.length, iv.length);
+            iv = p;
         }
         SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
@@ -162,19 +154,17 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
     private void appendToFile(File src, FileOutputStream dest) throws IOException {
         try (java.io.FileInputStream fis = new java.io.FileInputStream(src)) {
-            byte[] buffer = new byte[32768];
+            byte[] buf = new byte[32768];
             int n;
-            while ((n = fis.read(buffer)) != -1) dest.write(buffer, 0, n);
+            while ((n = fis.read(buf)) != -1) dest.write(buf, 0, n);
         }
     }
 
     private byte[] hexStringToByteArray(String s) {
         int len = s.length();
         if (len == 0) return new byte[16];
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
-        }
-        return data;
+        byte[] d = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) d[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
+        return d;
     }
 }

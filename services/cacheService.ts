@@ -333,12 +333,12 @@ export class CacheService {
     options: { adFilter?: boolean } = {}
   ): Promise<string> {
     const taskId = itemId || `m3u8_${Date.now()}`;
-    logger.info(`[CacheService] Starting JS-Led Download: ${taskId}`);
+    logger.info(`[CacheService] Starting Managed Download: ${taskId}`);
 
     const authHeaders = await this.getAuthHeaders();
     const headers = { ...DEFAULT_HEADERS, ...authHeaders };
 
-    // 1. 获取并解析 M3U8
+    // 1. 获取并解析 M3U8 (JS 层解析更灵活)
     const fetchText = async (uri: string): Promise<string> => {
       const res = await RNFetchBlob.fetch('GET', uri, headers);
       return await res.text();
@@ -353,8 +353,7 @@ export class CacheService {
       const bestVariant = CacheService.selectBestVariant(parsed.variants);
       mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
       const mediaText = await fetchText(mediaPlaylistUrl);
-
-      // [底层去广告] 在生成分片列表前，直接过滤 M3U8 文本
+      // [底层去广告] 直接过滤 M3U8 文本
       const finalMediaText = options.adFilter ? filterM3U8Ads(mediaText) : mediaText;
       mediaParsed = CacheService.parseM3U8Playlist(finalMediaText);
     } else if (options.adFilter) {
@@ -374,7 +373,7 @@ export class CacheService {
       keyBase64 = await keyRes.base64();
     }
 
-    // 3. JS 管理并发下载池 (真正的多线程控制)
+    // 3. JS 维护任务分发逻辑
     const tempDir = `${FileSystem.cacheDirectory}m3u8_js_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
@@ -382,10 +381,10 @@ export class CacheService {
     let completedCount = 0;
     let isCancelled = false;
     let activeWorkers = 0;
-    const CONCURRENCY = 4; // 骁龙 8 至尊版可轻松处理 4-8 并发
+    const CONCURRENCY = 4; // 最大并发数
     const queue = Array.from({ length: total }, (_, i) => i);
 
-    // 监听 AbortSignal 实现物理级断电
+    // 监听 AbortSignal 物理级停止
     const abortListener = () => {
       isCancelled = true;
       if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
@@ -399,17 +398,17 @@ export class CacheService {
         const segFile = `${tempDir}seg_${index}.ts`;
         const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
 
-        // 断点续传检查
+        // 断点续传：检查磁盘
         const info = await FileSystem.getInfoAsync(segFile);
         if (!info.exists || info.size === 0) {
-          // 精准计算每个片段的 IV
+          // 精准计算序列号 IV
           let segmentIv = ivHex;
           if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
             const seq = mediaParsed.mediaSequence + index;
             segmentIv = seq.toString(16).padStart(32, '0');
           }
 
-          // [原生原子操作] 调用 Java 执行单片下载 + 解密，不占 JS 线程
+          // 发放任务给后台
           await NativeDownloadModule.downloadSegment(
             segmentUrls[index],
             normalizedPath,
@@ -422,13 +421,14 @@ export class CacheService {
         segmentFiles[index] = normalizedPath;
         completedCount++;
 
-        // 进度汇报 (由 JS 绝对控制，解决秒跳 100%)
+        // 发送真实进度
         if (completedCount % 5 === 0 || completedCount === total) {
           progressCb?.(completedCount / total, completedCount);
         }
       } catch (err) {
         if (isCancelled) return;
         if (retry < 3) {
+          // 指数退避重试
           await new Promise(r => setTimeout(r, 1000));
           return downloadTask(index, retry + 1);
         }
@@ -436,7 +436,7 @@ export class CacheService {
       }
     };
 
-    // 滑动窗口并发执行
+    // [核心]：滑动窗口并发调度（发放-反馈模式）
     await new Promise<void>((resolve, reject) => {
       const startNext = () => {
         while (activeWorkers < CONCURRENCY && queue.length > 0 && !isCancelled) {
@@ -462,7 +462,7 @@ export class CacheService {
     if (signal) signal.removeEventListener('abort', abortListener);
     if (isCancelled) throw new Error("CANCELLED");
 
-    // 4. 原生层合并 (防止 JS 线程因大文件 IO 锁死)
+    // 4. 原生层合并
     logger.info(`[CacheService] Merging ${total} segments into final file...`);
     let normalizedDestPath = destinationPath;
     if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
