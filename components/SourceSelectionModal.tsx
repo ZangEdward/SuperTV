@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Modal, FlatList } from "react-native";
+import { View, Text, StyleSheet, Modal, FlatList, ActivityIndicator } from "react-native";
 import { StyledButton } from "./StyledButton";
 import useDetailStore from "@/stores/detailStore";
 import usePlayerStore from "@/stores/playerStore";
