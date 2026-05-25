@@ -7,7 +7,7 @@ import CryptoJS from 'crypto-js';
 import RNFetchBlob from 'react-native-blob-util';
 import { filterM3U8Ads } from './m3u8';
 
-const { NativeCryptoModule, NativeDownloadModule } = NativeModules;
+const { NativeDownloadModule } = NativeModules;
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
 const QUEUE_STORAGE_KEY = "mytv_cache_queue";
@@ -43,148 +43,7 @@ export interface CachedVideoItem {
   resolution?: string | null;
 }
 
-export interface DetailedProgress {
-  progress: number;
-  speed: number;
-  downloadedBytes: number;
-  totalBytes: number;
-  eta: number;
-  segmentIndex: number;
-  totalSegments: number;
-}
-
-export interface PauseController {
-  pause: () => void;
-  resume: () => void;
-  isPaused: () => boolean;
-}
-
-// ================== 活动任务映射（支持暂停/继续） ==================
-interface ActiveM3U8Task {
-  controller: AbortController;
-  isPaused: boolean;
-  pausePromise: Promise<void> | null;
-  resumeResolve: (() => void) | null;
-  tempDir?: string;
-}
-const activeM3U8Tasks = new Map<string, ActiveM3U8Task>();
-
-// ================== 临时文件管理（类似Chrome .crdownload / .tmp 机制） ==================
-const TEMP_DIR = `${FileSystem.documentDirectory}m3u8_temp/`;
-const TMP_EXTENSION = '.supertv.tmp';
-
-/**
- * 确保临时目录存在
- */
-async function ensureTempDir(): Promise<void> {
-  await FileSystem.makeDirectoryAsync(TEMP_DIR, { intermediates: true });
-}
-
-/**
- * 清理指定任务的临时片段文件
- */
-async function cleanupTaskTemp(taskId: string): Promise<void> {
-  try {
-    const info = await FileSystem.getInfoAsync(TEMP_DIR);
-    if (info.exists) {
-      const files = await FileSystem.readDirectoryAsync(TEMP_DIR);
-      for (const file of files) {
-        if (file.startsWith(taskId) && file.endsWith(TMP_EXTENSION)) {
-          await FileSystem.deleteAsync(`${TEMP_DIR}${file}`, { idempotent: true });
-        }
-      }
-    }
-  } catch (e) {
-    logger.warn(`cleanupTaskTemp failed for ${taskId}`, e);
-  }
-}
-
-/**
- * 全局清理：清理临时目录中所有 .supertv.tmp 文件
- */
-async function cleanTempDir(): Promise<void> {
-  try {
-    const info = await FileSystem.getInfoAsync(TEMP_DIR);
-    if (info.exists) {
-      const files = await FileSystem.readDirectoryAsync(TEMP_DIR);
-      for (const file of files) {
-        if (file.endsWith(TMP_EXTENSION)) {
-          await FileSystem.deleteAsync(`${TEMP_DIR}${file}`, { idempotent: true });
-        }
-      }
-    }
-  } catch (e) {
-    logger.warn('cleanTempDir failed', e);
-  }
-}
-
-// ================== 辅助函数 ==================
-/**
- * 使用 crypto-js 进行 AES-128-CBC 解密
- * @param encryptedBase64 加密数据的 Base64 字符串
- * @param key 16字节密钥 (WordArray)
- * @param iv 16字节初始向量 (WordArray)
- * @returns 解密后的 WordArray
- */
-function aes128CbcDecrypt(encryptedBase64: string, key: CryptoJS.lib.WordArray, iv: CryptoJS.lib.WordArray): CryptoJS.lib.WordArray {
-  const cipherParams = CryptoJS.lib.CipherParams.create({
-    ciphertext: CryptoJS.enc.Base64.parse(encryptedBase64),
-  });
-  const decrypted = CryptoJS.AES.decrypt(
-    cipherParams,
-    key,
-    {
-      iv: iv,
-      mode: CryptoJS.mode.CBC,
-      padding: CryptoJS.pad.Pkcs7,
-    }
-  );
-  return decrypted;
-}
-
-/**
- * 解密单个 TS 片段
- * @param buffer 片段原始字节
- * @param key 密钥
- * @param iv 初始向量
- * @returns 解密后的 ArrayBuffer
- */
-function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array): ArrayBuffer {
-  try {
-    const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(key) as any);
-    const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(iv) as any);
-    const contentWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(buffer) as any);
-
-    const decrypted = CryptoJS.AES.decrypt(
-      { ciphertext: contentWordArray } as any,
-      keyWordArray,
-      {
-        iv: ivWordArray,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7,
-      }
-    );
-    return wordArrayToArrayBuffer(decrypted);
-  } catch (err) {
-    logger.warn('AES decrypt failed, returning original data', err);
-    return buffer;
-  }
-}
-
-function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer {
-  const words = wordArray.words;
-  const sigBytes = wordArray.sigBytes;
-  const uint8 = new Uint8Array(sigBytes);
-  for (let i = 0; i < sigBytes; i++) {
-    uint8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
-  }
-  return uint8.buffer;
-}
-
 export class CacheService {
-  /**
-   * 下载单个 TS 片段，带自动重试和指数退避
-   */
   private static async getAuthHeaders(): Promise<Record<string, string>> {
     try {
       const cookies = await AsyncStorage.getItem("authCookies");
@@ -193,120 +52,6 @@ export class CacheService {
       }
     } catch (e) {}
     return {};
-  }
-
-  /**
-   * 下载单个 TS 片段，保存到磁盘临时文件并返回文件路径
-   */
-  private static async downloadSegment(
-    url: string,
-    index: number,
-    encryption?: { key: Uint8Array; iv: Uint8Array } | null,
-    retryCount: number = 5,
-    taskId?: string
-  ): Promise<string> {
-    let lastError: Error | null = null;
-    const authHeaders = await this.getAuthHeaders();
-
-    // 构造更精确的 Referer 和 Origin
-    let referer = '';
-    let origin = '';
-    try {
-      const safeUrl = url.startsWith('//') ? `https:${url}` : url;
-      const urlObj = new URL(safeUrl);
-      origin = `${urlObj.protocol}//${urlObj.host}`;
-      referer = safeUrl.substring(0, safeUrl.lastIndexOf('/') + 1);
-    } catch (e) {
-      referer = url;
-    }
-
-    const tempPath = taskId
-      ? `${TEMP_DIR}${taskId}_seg_${index}${TMP_EXTENSION}`
-      : `${TEMP_DIR}seg_${index}${TMP_EXTENSION}`;
-
-    // 移除 file:// 前缀，并确保路径对原生层是干净的
-    let normalizedTempPath = tempPath;
-    if (Platform.OS === 'android') {
-      normalizedTempPath = tempPath.startsWith('file://') ? tempPath.slice(7) : tempPath;
-    }
-
-    const tempDir = normalizedTempPath.substring(0, normalizedTempPath.lastIndexOf('/'));
-
-    for (let attempt = 0; attempt <= retryCount; attempt++) {
-      try {
-        // 确保临时目录存在（双重保险）
-        if (attempt === 0) {
-          await RNFetchBlob.fs.mkdir(tempDir).catch(() => {});
-        }
-
-        const fetchHeaders: Record<string, string> = {
-          ...DEFAULT_HEADERS,
-          ...authHeaders,
-          'Referer': referer,
-        };
-        if (origin) {
-          fetchHeaders['Origin'] = origin;
-        }
-
-        // 1. 直接下载到指定的临时磁盘文件
-        const res = await RNFetchBlob.config({
-          path: normalizedTempPath,
-          timeout: 60000,
-        }).fetch('GET', url, fetchHeaders);
-
-        const status = res.info().status;
-        if (status === 403 || status === 401) {
-          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
-          throw new Error(`权限错误 (HTTP ${status})`);
-        }
-        if (status !== 200) {
-          await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
-          throw new Error(`HTTP ${status}`);
-        }
-
-        // 2. 如果有加密，执行原生层异步解密（不阻塞 JS 线程）
-        if (encryption) {
-          try {
-            if (NativeCryptoModule && Platform.OS === 'android') {
-              // 将 Uint8Array 转换为原生层需要的格式 (使用 CryptoJS 避免依赖浏览器 btoa)
-              const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
-              const keyBase64 = CryptoJS.enc.Base64.stringify(keyWordArray);
-              const ivHex = Array.from(encryption.iv).map(b => b.toString(16).padStart(2, '0')).join('');
-
-              // 调用原生模块在后台线程执行解密，JS 线程此时完全空闲
-              await NativeCryptoModule.decryptFileAES128CBC(normalizedTempPath, keyBase64, ivHex);
-            } else {
-              // 回退方案：如果原生模块未加载，使用之前的“分时”JS解密逻辑
-              await new Promise(r => setTimeout(r, 10));
-              const b64 = await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
-              const contentWordArray = CryptoJS.enc.Base64.parse(b64);
-              const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
-              const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.iv) as any);
-              const decrypted = CryptoJS.AES.decrypt(
-                { ciphertext: contentWordArray } as any,
-                keyWordArray,
-                { iv: ivWordArray, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
-              );
-              await RNFetchBlob.fs.writeFile(normalizedTempPath, CryptoJS.enc.Base64.stringify(decrypted), 'base64');
-            }
-          } catch (decryptErr) {
-            logger.error(`Decryption failed for segment ${index}`, decryptErr);
-            throw decryptErr;
-          }
-        }
-
-        // 返回分片的本地路径
-        return normalizedTempPath;
-      } catch (err: any) {
-        lastError = err;
-        await RNFetchBlob.fs.unlink(normalizedTempPath).catch(() => {});
-        if (attempt < retryCount) {
-          const delay = 1000 * Math.pow(2, attempt);
-          await new Promise(r => setTimeout(r, delay));
-        }
-      }
-    }
-    throw lastError || new Error(`片段 ${index + 1} 下载失败`);
   }
 
   static async getAll(): Promise<CachedVideoItem[]> {
@@ -452,18 +197,25 @@ export class CacheService {
     }
   }
 
-  /** 继续 M3U8 下载任务 */
+  /** 恢复 M3U8 下载任务 (逻辑在 store 中重新启动 startM3U8Download) */
   static resumeTask(itemId: string): void {
-    CacheService.resumeM3U8Task(itemId);
+    // 逻辑在 store 中通过 downloadQueuedEpisode 实现
   }
 
   static isTaskPaused(itemId: string): boolean {
-    const task = activeM3U8Tasks.get(itemId);
-    return task?.isPaused ?? false;
+    return false; // 原生层任务现在通过 JS store 状态管理
   }
 
   static removeTaskState(itemId: string): void {
-    CacheService.cancelM3U8Task(itemId);
+    if (NativeDownloadModule) {
+      NativeDownloadModule.stopDownload(itemId);
+    }
+  }
+
+  static cancelM3U8Task(itemId: string): void {
+    if (NativeDownloadModule) {
+      NativeDownloadModule.stopDownload(itemId);
+    }
   }
 
   static buildFileName(source: string, id: string, episodeIndex: number, url: string): string {
@@ -568,71 +320,6 @@ export class CacheService {
     })[0];
   }
 
-  /** 注册一个 M3U8 下载任务（供暂停/继续控制） */
-  static registerM3U8Task(itemId: string): ActiveM3U8Task {
-    const existing = activeM3U8Tasks.get(itemId);
-    if (existing) {
-      // 如果任务已存在但处于暂停状态，不要覆盖
-      if (existing.isPaused) return existing;
-      // 否则取消旧任务
-      existing.controller.abort();
-    }
-    const task: ActiveM3U8Task = {
-      controller: new AbortController(),
-      isPaused: false,
-      pausePromise: null,
-      resumeResolve: null,
-    };
-    activeM3U8Tasks.set(itemId, task);
-    return task;
-  }
-
-  static unregisterM3U8Task(itemId: string): void {
-    activeM3U8Tasks.delete(itemId);
-  }
-
-  static async waitIfPaused(itemId: string): Promise<void> {
-    const task = activeM3U8Tasks.get(itemId);
-    while (task?.isPaused && task.pausePromise) {
-      await task.pausePromise;
-    }
-  }
-
-  static pauseTask(itemId: string): void {
-    if (NativeDownloadModule) {
-      NativeDownloadModule.stopDownload(itemId);
-    }
-  }
-
-  static resumeM3U8Task(itemId: string): void {
-    // 逻辑在 store 中调用 downloadQueuedEpisode 重新启动
-  }
-
-  static cancelM3U8Task(itemId: string, tempDir?: string): void {
-    if (NativeDownloadModule) {
-      NativeDownloadModule.stopDownload(itemId);
-    }
-    if (tempDir) {
-      CacheService.cleanupTempDir(tempDir).catch(() => {});
-    }
-  }
-
-  /** 清理临时目录 */
-  private static async cleanupTempDir(tempDir: string): Promise<void> {
-    try {
-      const dirInfo = await FileSystem.getInfoAsync(tempDir);
-      if (dirInfo.exists) {
-        const files = await FileSystem.readDirectoryAsync(tempDir);
-        for (const f of files) {
-          await FileSystem.deleteAsync(`${tempDir}${f}`, { idempotent: true });
-        }
-        await FileSystem.deleteAsync(tempDir, { idempotent: true });
-      }
-    } catch (e) {
-      logger.warn('清理临时目录失败', e);
-    }
-  }
-
   /**
    * 下载 M3U8 并合并为 MP4
    * 原生控制模式：JS 只负责 M3U8 解析，原生层接管下载循环、并发和暂停
@@ -651,7 +338,7 @@ export class CacheService {
     const authHeaders = await this.getAuthHeaders();
     const headers = { ...DEFAULT_HEADERS, ...authHeaders };
 
-    // 1. 获取并解析 M3U8 (JS 层解析更灵活)
+    // 1. 获取并解析 M3U8
     const fetchText = async (uri: string): Promise<string> => {
       const res = await RNFetchBlob.fetch('GET', uri, headers);
       return await res.text();
@@ -699,7 +386,7 @@ export class CacheService {
         let normalizedDestPath = destinationPath;
         if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
 
-        // 调用原生层接管：内部包含下载池、暂停逻辑、IO 控制
+        // 调用原生层接管
         await NativeDownloadModule.startM3U8Download(
           taskId,
           segmentUrls,
