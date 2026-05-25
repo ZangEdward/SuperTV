@@ -66,7 +66,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             final Promise promise
     ) {
         if (activeTasks.containsKey(taskId)) {
-            promise.resolve(destPath);
+            promise.reject("ALREADY_RUNNING", "Task is already active: " + taskId);
             return;
         }
 
@@ -84,14 +84,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 final AtomicInteger completed = new AtomicInteger(0);
                 final AtomicBoolean hasError = new AtomicBoolean(false);
                 final String[] errorMessage = {""};
-
-                // [SCAN] 预扫描，仅确定初始进度百分比用于展示
-                int scannedCount = 0;
-                for (int i = 0; i < total; i++) {
-                    File f = new File(tempDir, "seg_" + i + ".ts");
-                    if (f.exists() && f.length() > 0) scannedCount++;
-                }
-                sendProgress(taskId, scannedCount, total);
 
                 // 2. 线程池分配任务
                 for (int i = 0; i < total; i++) {
