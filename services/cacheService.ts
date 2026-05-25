@@ -171,21 +171,6 @@ function decryptTSFragment(buffer: ArrayBuffer, key: Uint8Array, iv: Uint8Array)
   }
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const len = bytes.byteLength;
-  const CHUNK_SIZE = 8192;
-
-  for (let i = 0; i < len; i += CHUNK_SIZE) {
-    const chunk = bytes.subarray(i, Math.min(i + CHUNK_SIZE, len));
-    // @ts-ignore
-    binary += String.fromCharCode.apply(null, Array.from(chunk) as any);
-  }
-
-  return btoa(binary);
-}
-
 function wordArrayToArrayBuffer(wordArray: CryptoJS.lib.WordArray): ArrayBuffer {
   const words = wordArray.words;
   const sigBytes = wordArray.sigBytes;
@@ -283,8 +268,9 @@ export class CacheService {
         if (encryption) {
           try {
             if (NativeCryptoModule && Platform.OS === 'android') {
-              // 将 Uint8Array 转换为原生层需要的格式
-              const keyBase64 = arrayBufferToBase64(encryption.key.buffer);
+              // 将 Uint8Array 转换为原生层需要的格式 (使用 CryptoJS 避免依赖浏览器 btoa)
+              const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
+              const keyBase64 = CryptoJS.enc.Base64.stringify(keyWordArray);
               const ivHex = Array.from(encryption.iv).map(b => b.toString(16).padStart(2, '0')).join('');
 
               // 调用原生模块在后台线程执行解密，JS 线程此时完全空闲
@@ -304,10 +290,6 @@ export class CacheService {
               await RNFetchBlob.fs.writeFile(normalizedTempPath, CryptoJS.enc.Base64.stringify(decrypted), 'base64');
             }
           } catch (decryptErr) {
-            logger.error(`Decryption failed for segment ${index}`, decryptErr);
-            throw decryptErr;
-          }
-        }
             logger.error(`Decryption failed for segment ${index}`, decryptErr);
             throw decryptErr;
           }
