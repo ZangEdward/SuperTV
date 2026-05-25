@@ -18,6 +18,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -30,6 +33,7 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -40,6 +44,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
     
     private final ExecutorService downloadPool = Executors.newFixedThreadPool(4);
     private final Map<String, AtomicBoolean> activeTasks = new ConcurrentHashMap<>();
+    private final Map<String, List<Call>> activeCalls = new ConcurrentHashMap<>();
     
     private final OkHttpClient client = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -72,6 +77,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
         final AtomicBoolean isRunning = new AtomicBoolean(true);
         activeTasks.put(taskId, isRunning);
+        activeCalls.put(taskId, Collections.synchronizedList(new ArrayList<>()));
 
         new Thread(() -> {
             File tempDir = new File(getReactApplicationContext().getCacheDir(), "m3u8_native_" + taskId.replaceAll("[^a-zA-Z0-9]", "_"));
@@ -102,20 +108,20 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                             
                             if (needsDownload) {
                                 int retry = 0;
-                                while (retry < 3) {
+                                while (retry < 3 && isRunning.get()) {
                                     try {
-                                        downloadFile(url, segFile, headers);
+                                        downloadFile(taskId, url, segFile, headers);
                                         if (segFile.length() > 0) break;
                                         throw new IOException("Empty file");
                                     } catch (Exception e) {
                                         retry++;
-                                        if (retry >= 3) throw e;
+                                        if (retry >= 3 || !isRunning.get()) throw e;
                                         Thread.sleep(800);
                                     }
                                 }
                                 
                                 // 仅对新下载的片段执行解密
-                                if (keyBase64 != null && !keyBase64.isEmpty() && segFile.length() % 16 == 0) {
+                                if (isRunning.get() && keyBase64 != null && !keyBase64.isEmpty() && segFile.length() % 16 == 0) {
                                     decryptInPlace(segFile, keyBase64, ivHex, index);
                                 }
                             }
@@ -128,9 +134,11 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                                 sendProgress(taskId, done, total);
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "Segment " + index + " failed: " + e.getMessage());
-                            hasError.set(true);
-                            errorMessage[0] = e.getMessage();
+                            if (isRunning.get()) {
+                                Log.e(TAG, "Segment " + index + " failed: " + e.getMessage());
+                                hasError.set(true);
+                                errorMessage[0] = e.getMessage();
+                            }
                         }
                     });
                 }
@@ -141,13 +149,13 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 }
 
                 if (!isRunning.get()) {
-                    activeTasks.remove(taskId);
+                    cleanTask(taskId);
                     promise.reject("CANCELLED", "Stopped");
                     return;
                 }
 
                 if (hasError.get()) {
-                    activeTasks.remove(taskId);
+                    cleanTask(taskId);
                     promise.reject("DOWNLOAD_FAILED", errorMessage[0]);
                     return;
                 }
@@ -159,18 +167,20 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 
                 try (FileOutputStream fos = new FileOutputStream(destFile)) {
                     for (int i = 0; i < total; i++) {
-                        File f = new File(segmentFiles[i]);
-                        appendToFile(f, fos);
-                        f.delete(); 
+                        if (segmentFiles[i] != null) {
+                            File f = new File(segmentFiles[i]);
+                            appendToFile(f, fos);
+                            f.delete(); 
+                        }
                     }
                 }
 
-                activeTasks.remove(taskId);
+                cleanTask(taskId);
                 tempDir.delete();
                 promise.resolve(destPath);
                 
             } catch (Exception e) {
-                activeTasks.remove(taskId);
+                cleanTask(taskId);
                 promise.reject("DOWNLOAD_ERROR", e.getMessage());
             }
         }).start();
@@ -178,14 +188,26 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void stopDownload(String taskId) {
-        // [FIX] 立即从 Map 移除，允许 UI 立即重新触发 start
         AtomicBoolean isRunning = activeTasks.remove(taskId);
         if (isRunning != null) {
             isRunning.set(false);
         }
+        
+        // 关键修复：取消该任务的所有活跃请求
+        List<Call> calls = activeCalls.remove(taskId);
+        if (calls != null) {
+            for (Call call : calls) {
+                try { call.cancel(); } catch (Exception ignored) {}
+            }
+        }
     }
 
-    private void downloadFile(String url, File dest, ReadableMap headers) throws IOException {
+    private void cleanTask(String taskId) {
+        activeTasks.remove(taskId);
+        activeCalls.remove(taskId);
+    }
+
+    private void downloadFile(String taskId, String url, File dest, ReadableMap headers) throws IOException {
         Request.Builder builder = new Request.Builder().url(url);
         if (headers != null) {
             ReadableMapKeySetIterator it = headers.keySetIterator();
@@ -195,7 +217,12 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             }
         }
 
-        try (Response response = client.newCall(builder.build()).execute()) {
+        Call call = client.newCall(builder.build());
+        List<Call> taskCalls = activeCalls.get(taskId);
+        if (taskCalls != null) taskCalls.add(call);
+
+        try (Response response = call.execute()) {
+            if (taskCalls != null) taskCalls.remove(call);
             if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
             try (InputStream is = response.body().byteStream();
                  FileOutputStream fos = new FileOutputStream(dest)) {
@@ -204,6 +231,9 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
                 while ((read = is.read(buffer)) != -1) fos.write(buffer, 0, read);
                 fos.flush();
             }
+        } catch (IOException e) {
+            if (taskCalls != null) taskCalls.remove(call);
+            throw e;
         }
     }
 
@@ -217,7 +247,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         byte[] iv = hexStringToByteArray(finalIvHex != null ? finalIvHex.replace("0x", "") : "");
         if (iv.length < 16) {
             byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, iv, 16 - iv.length, iv.length);
+            System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
             iv = padded;
         }
 

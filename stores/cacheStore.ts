@@ -209,7 +209,23 @@ const useCacheStore = create<CacheState>((set, get) => ({
     }));
 
     const itemId = `${state.queue[groupIndex].source}_${state.queue[groupIndex].id}_${ep.index}`;
-    set({ currentDownloadId: itemId, downloadProgress: { ...(get().downloadProgress || {}), [itemId]: ep.progress || 0 } });
+
+    // 如果已经在下载中，不要重复启动
+    if (ep.status === 'downloading') return;
+
+    // start downloading
+    const nextQueue = [...state.queue];
+    nextQueue[groupIndex].episodes[epIndex].status = 'downloading';
+    // 保留原有进度，如果是新开始则为0
+    nextQueue[groupIndex].episodes[epIndex].progress = ep.progress || 0;
+
+    set((s) => ({
+      activeCount: s.activeCount + 1,
+      queue: nextQueue,
+      currentDownloadId: itemId
+    }));
+
+    set({ downloadProgress: { ...(get().downloadProgress || {}), [itemId]: ep.progress || 0 } });
 
     try {
       await CacheService.ensureDownloadDirectory();
@@ -223,40 +239,51 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
         // 传递 itemId 以支持暂停/继续，并支持断点续传 (completedCount)
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
-        downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
-          // [FIX] 使用函数式更新 state，彻底解决多任务并发时的进度跳变/覆盖问题
-          set((state) => {
-            const newQueue = state.queue.map(group => {
-              if (group.groupId !== groupId) return group;
+
+        try {
+          downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
+            // [FIX] 使用函数式更新 state，彻底解决多任务并发时的进度跳变/覆盖问题
+            set((state) => {
+              const newQueue = state.queue.map(group => {
+                if (group.groupId !== groupId) return group;
+                return {
+                  ...group,
+                  episodes: group.episodes.map(e => {
+                    if (e.index !== episodeIndex) return e;
+                    // 确保进度只会前进
+                    const newProgress = Math.max(e.progress || 0, p);
+                    return { ...e, progress: newProgress, completedCount: cc, status: 'downloading' };
+                  })
+                };
+              });
+
               return {
-                ...group,
-                episodes: group.episodes.map(e => {
-                  if (e.index !== episodeIndex) return e;
-                  // 确保进度只会前进
-                  const newProgress = Math.max(e.progress || 0, p);
-                  return { ...e, progress: newProgress, completedCount: cc };
-                })
+                queue: newQueue,
+                downloadProgress: {
+                  ...(state.downloadProgress || {}),
+                  [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
+                }
               };
             });
 
-            return {
-              queue: newQueue,
-              downloadProgress: {
-                ...(state.downloadProgress || {}),
-                [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
-              }
-            };
+            // 降低保存频率：每 20 个片段或完成时保存一次，减少 I/O 阻塞
+            if (cc % 20 === 0) {
+              CacheService.saveQueue(get().queue);
+            }
+          }, {
+            resumeIndex: ep.completedCount || 0,
+            adFilter: downloadAdFilterEnabled,
+            concurrency: 4
           });
-
-          // 降低保存频率：每 20 个片段或完成时保存一次，减少 I/O 阻塞
-          if (cc % 20 === 0) {
-            CacheService.saveQueue(get().queue);
+        } catch (m3u8Err: any) {
+          // 如果原生层反馈任务已在运行，我们静默忽略，不作为失败处理，让现有任务继续
+          if (m3u8Err?.message?.includes("ALREADY_RUNNING")) {
+            logger.info("Task already running natively, skipping duplicate start.");
+            return;
           }
-        }, {
-          resumeIndex: ep.completedCount || 0,
-          adFilter: downloadAdFilterEnabled,
-          concurrency: 4
-        });
+          throw m3u8Err;
+        }
+
         delete (get() as any)._controllers[itemId];
       } else {
         // create DownloadResumable here so we can cancel later
