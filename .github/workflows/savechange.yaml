@@ -24,10 +24,10 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: 📅 Get date code
-        id: date_code
+      - name: ⏱️ Get timestamp
+        id: timestamp
         run: |
-          DATE_CODE=$(date +'%Y%m%d')
+          DATE_CODE=$(date +%s)
           echo "DATE_CODE=$DATE_CODE" >> $GITHUB_ENV
 
       - name: 📝 Generate change log
@@ -37,7 +37,7 @@ jobs:
 
           echo "SuperTV 更新内容" > $FILE
           echo "版本: v${{ env.VERSION }}" >> $FILE
-          echo "日期: ${{ env.DATE_CODE }}" >> $FILE
+          echo "时间戳: ${{ env.DATE_CODE }}" >> $FILE
           echo "" >> $FILE
 
           echo "📌 Commit 信息：" >> $FILE

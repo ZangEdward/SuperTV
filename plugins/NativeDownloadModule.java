@@ -225,7 +225,7 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
         byte[] iv = hexStringToByteArray(finalIvHex != null ? finalIvHex.replace("0x", "") : "");
         if (iv.length < 16) {
             byte[] padded = new byte[16];
-            System.arraycopy(iv, 0, 16 - iv.length, iv.length);
+            System.arraycopy(iv, 0, iv,16 - iv.length, iv.length);
             iv = padded;
         }
 
