@@ -105,9 +105,6 @@ export default function PlayScreen() {
     }
   };
 
-  // ---------------------------
-  // 修复后的手势（YouTube 风格：双击前进/后退 + 滑动调节 + 单击显隐控制）
-  // ---------------------------
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
     const hasPan = typeof Gesture?.Pan === "function";
@@ -119,63 +116,57 @@ export default function PlayScreen() {
         .runOnJS(true)
         .onEnd(() => {
           const { showControls, setShowControls } = usePlayerStore.getState();
-          if (typeof setShowControls === 'function') {
-            setShowControls(!showControls);
-          }
+          setShowControls(!showControls);
         });
 
       const doubleTap = Gesture.Tap()
         .numberOfTaps(2)
         .maxDuration(250)
         .runOnJS(true)
-        .onEnd((e) => {
-          const { seek, status } = usePlayerStore.getState();
-          if (!status?.isLoaded) return;
-
-          // YouTube 风格：双击左侧后退 10s，双击右侧前进 10s
-          // e.x 是相对于手势容器的点击位置
-          const isRightSide = e.x > 250;
-          if (typeof seek === 'function') {
-            seek(isRightSide ? 10000 : -10000);
+        .onEnd(() => {
+          const { showControls, togglePlayPause } = usePlayerStore.getState();
+          // 仅在控件隐藏时响应背景双击切换播放
+          if (!showControls) {
+            togglePlayPause();
           }
         });
 
       const panGesture = Gesture.Pan()
-        .minDist(20) // 增加起始距离以防误触
+        .minDist(20)
         .runOnJS(true)
         .onStart(() => {
-          const s = usePlayerStore.getState();
-          panStartPos.current = s.status?.positionMillis || 0;
+          const { showControls, status } = usePlayerStore.getState();
+          // 控件显示时，禁用背景滑动（防止与进度条触摸冲突）
+          if (showControls) return;
+          panStartPos.current = status?.positionMillis || 0;
         })
         .onUpdate((e) => {
-          const s = usePlayerStore.getState();
-          if (!s.status?.durationMillis) return;
-          const duration = s.status.durationMillis;
-          // 灵敏度 1px = 200ms
+          const { showControls, status, seekToPosition } = usePlayerStore.getState();
+          if (showControls || !status?.durationMillis) return;
+
+          const duration = status.durationMillis;
           const target = Math.max(
             0,
             Math.min(panStartPos.current + e.translationX * 200, duration)
           );
-          if (typeof s.seekToPosition === 'function') {
-            s.seekToPosition(target / duration, false);
+          if (typeof seekToPosition === 'function') {
+            seekToPosition(target / duration, false);
           }
         })
         .onEnd((e) => {
-          const s = usePlayerStore.getState();
-          if (!s.status?.durationMillis) return;
-          const duration = s.status.durationMillis;
+          const { showControls, status, seekToPosition } = usePlayerStore.getState();
+          if (showControls || !status?.durationMillis) return;
+
+          const duration = status.durationMillis;
           const target = Math.max(
             0,
             Math.min(panStartPos.current + e.translationX * 200, duration)
           );
-          if (typeof s.seekToPosition === 'function') {
-            s.seekToPosition(target / duration, true);
+          if (typeof seekToPosition === 'function') {
+            seekToPosition(target / duration, true);
           }
         });
 
-      // 组合手势逻辑：
-      // 1. DoubleTap 和 SingleTap 是互斥的 (Exclusive)，双击优先
-      // 2. PanGesture 和 Tap 可以同时识别 (Simultaneous)，允许滑动
       const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
       return Gesture.Simultaneous(tapGestures, panGesture).runOnJS(true);

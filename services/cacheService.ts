@@ -1,12 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
-import { Platform } from "react-native";
+import { Platform, NativeModules } from "react-native";
 import Logger from "@/utils/Logger";
 import CryptoJS from 'crypto-js';
 import RNFetchBlob from 'react-native-blob-util';
 import { filterM3U8Ads } from './m3u8';
 
+const { NativeCryptoModule } = NativeModules;
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
 const QUEUE_STORAGE_KEY = "mytv_cache_queue";
@@ -278,28 +279,35 @@ export class CacheService {
           throw new Error(`HTTP ${status}`);
         }
 
-        // 2. 如果有加密，执行磁盘文件解密（直接读写文件，不长期驻留内存）
+        // 2. 如果有加密，执行原生层异步解密（不阻塞 JS 线程）
         if (encryption) {
           try {
-            const b64 = await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
-            const contentWordArray = CryptoJS.enc.Base64.parse(b64);
+            if (NativeCryptoModule && Platform.OS === 'android') {
+              // 将 Uint8Array 转换为原生层需要的格式
+              const keyBase64 = arrayBufferToBase64(encryption.key.buffer);
+              const ivHex = Array.from(encryption.iv).map(b => b.toString(16).padStart(2, '0')).join('');
 
-            const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
-            const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.iv) as any);
-
-            const decrypted = CryptoJS.AES.decrypt(
-              { ciphertext: contentWordArray } as any,
-              keyWordArray,
-              {
-                iv: ivWordArray,
-                mode: CryptoJS.mode.CBC,
-                padding: CryptoJS.pad.Pkcs7,
-              }
-            );
-
-            // 将解密后的数据写回临时文件（磁盘同步）
-            await RNFetchBlob.fs.writeFile(normalizedTempPath, CryptoJS.enc.Base64.stringify(decrypted), 'base64');
+              // 调用原生模块在后台线程执行解密，JS 线程此时完全空闲
+              await NativeCryptoModule.decryptFileAES128CBC(normalizedTempPath, keyBase64, ivHex);
+            } else {
+              // 回退方案：如果原生模块未加载，使用之前的“分时”JS解密逻辑
+              await new Promise(r => setTimeout(r, 10));
+              const b64 = await RNFetchBlob.fs.readFile(normalizedTempPath, 'base64');
+              const contentWordArray = CryptoJS.enc.Base64.parse(b64);
+              const keyWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.key) as any);
+              const ivWordArray = CryptoJS.lib.WordArray.create(new Uint8Array(encryption.iv) as any);
+              const decrypted = CryptoJS.AES.decrypt(
+                { ciphertext: contentWordArray } as any,
+                keyWordArray,
+                { iv: ivWordArray, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
+              );
+              await RNFetchBlob.fs.writeFile(normalizedTempPath, CryptoJS.enc.Base64.stringify(decrypted), 'base64');
+            }
           } catch (decryptErr) {
+            logger.error(`Decryption failed for segment ${index}`, decryptErr);
+            throw decryptErr;
+          }
+        }
             logger.error(`Decryption failed for segment ${index}`, decryptErr);
             throw decryptErr;
           }
@@ -822,19 +830,32 @@ export class CacheService {
           while (resultsBuffer[nextIndexToWrite] !== undefined && !writeError) {
             const segmentFilePath = resultsBuffer[nextIndexToWrite];
 
-            // 从磁盘读取当前分片，并追加写入主文件
-            const data = await RNFetchBlob.fs.readFile(segmentFilePath, 'base64');
-            if (data) {
-              await writeStream.write(data);
-            }
+            // [PERF] 核心优化：如果分片已经在磁盘上（已解密或无需解密），直接调用原生 append，不经过 JS Base64 转换
+            try {
+              // 使用 RNFetchBlob 的原生 readFile + writeStream.write 仍然比直接 append 慢
+              // 这里我们直接将临时文件追加到目标文件，数据流完全在 Native 层完成
+              await RNFetchBlob.fs.appendFile(normalizedDestPath, segmentFilePath, 'uri');
 
-            // 写入完成后立即删除磁盘上的临时分片，释放空间
-            await RNFetchBlob.fs.unlink(segmentFilePath).catch(() => {});
+              // 写入完成后立即删除磁盘上的临时分片，释放空间
+              await RNFetchBlob.fs.unlink(segmentFilePath).catch(() => {});
+            } catch (appendErr) {
+              // 备用方案：如果 append 失败，退回到流式写入
+              const data = await RNFetchBlob.fs.readFile(segmentFilePath, 'base64');
+              if (data) await writeStream.write(data);
+              await RNFetchBlob.fs.unlink(segmentFilePath).catch(() => {});
+            }
 
             delete resultsBuffer[nextIndexToWrite];
             nextIndexToWrite++;
             completedCount++;
-            progressCb?.(completedCount / total, completedCount);
+
+            // [PERF] 极其关键：大幅降低进度更新频率。
+            if (completedCount % 10 === 0 || completedCount === total) {
+              progressCb?.(completedCount / total, completedCount);
+            }
+
+            // [PERF] 让出线程，确保 UI 响应
+            await new Promise(resolve => setTimeout(resolve, 5));
           }
         } catch (err) {
           logger.error("Sequentially writing from disk failed", err);
@@ -865,6 +886,7 @@ export class CacheService {
 
           // 磁盘缓存模式下，依然限制结果队列大小，防止下载过快导致大量分片堆积在磁盘
           while (Object.keys(resultsBuffer).length > BUFFER_LIMIT && !writeError && !mergeSignal.aborted) {
+            // [PERF] 等待期间大幅增加释放频率，防止阻塞
             await new Promise(r => setTimeout(r, 100));
             await flushWriter();
           }

@@ -26,6 +26,11 @@ module.exports = function withMulticastPlugin(config) {
         fs.readFileSync(path.join(__dirname, "MulticastPackage.java"), "utf8")
       );
 
+      fs.writeFileSync(
+        path.join(androidSrcMainPath, "NativeCryptoModule.java"),
+        fs.readFileSync(path.join(__dirname, "NativeCryptoModule.java"), "utf8")
+      );
+
       return config;
     },
   ]);
