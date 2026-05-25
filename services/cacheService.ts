@@ -6,7 +6,7 @@ import Logger from "@/utils/Logger";
 import RNFetchBlob from 'react-native-blob-util';
 import { filterM3U8Ads } from './m3u8';
 
-const { NativeDownloadModule } = NativeModules;
+const { NativeCryptoModule } = NativeModules;
 const logger = Logger.withTag("CacheService");
 const STORAGE_KEY = "mytv_cached_videos";
 const QUEUE_STORAGE_KEY = "mytv_cache_queue";
@@ -191,13 +191,7 @@ export class CacheService {
 
   /** 暂停 M3U8 下载任务 */
   static pauseTask(itemId: string): void {
-    if (NativeDownloadModule) {
-      if (itemId) {
-        NativeDownloadModule.stopDownload(itemId);
-      } else {
-        NativeDownloadModule.stopAllCalls();
-      }
-    }
+    // 指挥由 React Native 承担，物理停止由 store 通过 AbortController 触发
   }
 
   /** 继续 M3U8 下载任务 */
@@ -210,15 +204,11 @@ export class CacheService {
   }
 
   static removeTaskState(itemId: string): void {
-    if (NativeDownloadModule) {
-      NativeDownloadModule.stopDownload(itemId);
-    }
+    // 状态管理已移至 JS store
   }
 
   static cancelM3U8Task(itemId: string): void {
-    if (NativeDownloadModule) {
-      NativeDownloadModule.stopDownload(itemId);
-    }
+    // 状态管理已移至 JS store
   }
 
   static buildFileName(source: string, id: string, episodeIndex: number, url: string): string {
@@ -408,7 +398,8 @@ export class CacheService {
             if (!ivHex) {
               segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
             }
-            await NativeDownloadModule.decryptFileInPlace(normalizedPath, keyBase64, segmentIv);
+            // 使用 NativeCryptoModule 承担解密任务
+            await NativeCryptoModule.decryptFileAES128CBC(normalizedPath, keyBase64, segmentIv);
           }
         } catch (e) {
           currentCalls.delete(task);
@@ -447,11 +438,29 @@ export class CacheService {
 
     if (isCancelled) throw new Error("CANCELLED");
 
-    logger.info(`[CacheService] Native merging ${total} segments...`);
+    // 4. JS 承担分片合成任务
+    logger.info(`[CacheService] JS merging ${total} segments...`);
     let normalizedDestPath = destinationPath;
     if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
 
-    await NativeDownloadModule.mergeFiles(segmentFiles.filter(p => !!p), normalizedDestPath);
+    // 确保目录存在
+    const destDir = normalizedDestPath.substring(0, normalizedDestPath.lastIndexOf('/'));
+    await RNFetchBlob.fs.mkdir(destDir).catch(() => {});
+
+    // 如果目标文件已存在，先删除
+    if (await RNFetchBlob.fs.exists(normalizedDestPath)) {
+      await RNFetchBlob.fs.unlink(normalizedDestPath);
+    }
+
+    // 顺序合并：压榨手机存储流式写入性能
+    for (let i = 0; i < segmentFiles.length; i++) {
+      const path = segmentFiles[i];
+      if (path && await RNFetchBlob.fs.exists(path)) {
+        await RNFetchBlob.fs.appendFile(normalizedDestPath, path, 'uri');
+        await RNFetchBlob.fs.unlink(path).catch(() => {});
+      }
+    }
+
     await FileSystem.deleteAsync(tempDir, { idempotent: true });
     return destinationPath;
   }
