@@ -1,4 +1,4 @@
-name: Build and Release APK
+name: Sync Changes Only
 
 on:
   push:
@@ -9,79 +9,59 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build and Release
+  sync:
     runs-on: ubuntu-latest
 
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'yarn'
-
-      - name: ☕ Setup JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: 🏗️ Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 📦 Install dependencies
-        run: yarn install
-
-      - name: 🧹 Clear Metro cache
-        run: rm -rf node_modules/.cache/metro
+          fetch-depth: 0   # 必须，否则无法获取 diff
 
       - name: 🔢 Get version
         id: get_version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: 📅 Get date code
         id: date_code
         run: |
           DATE_CODE=$(date +'%Y%m%d')
           echo "DATE_CODE=$DATE_CODE" >> $GITHUB_ENV
-          echo "DATE_CODE=$DATE_CODE" >> $GITHUB_OUTPUT
 
-      - name: 🛠️ Expo Prebuild
-        run: npx expo prebuild --platform android --no-install --clean
-        env:
-          EXPO_TV: 1
-
-      - name: 🏗️ Build Android APK (Debug)
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: 📁 Prepare Artifact
+      - name: 📝 Generate change log
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-            output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
+          FILE="output/changes-v${{ env.VERSION }}-${{ env.DATE_CODE }}.txt"
+
+          echo "SuperTV 更新内容" > $FILE
+          echo "版本: v${{ env.VERSION }}" >> $FILE
+          echo "日期: ${{ env.DATE_CODE }}" >> $FILE
+          echo "" >> $FILE
+
+          echo "📌 Commit 信息：" >> $FILE
+          git log -1 --pretty=format:"%h %s" >> $FILE
+          echo "" >> $FILE
+
+          echo "📁 变动文件：" >> $FILE
+          git diff --name-only HEAD~1 HEAD >> $FILE
+          echo "" >> $FILE
+
+          echo "🔍 Diff 内容：" >> $FILE
+          git diff HEAD~1 HEAD >> $FILE
 
       - name: 🚀 Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}
-          name: "SuperTV v${{ env.VERSION }} (${ { env.DATE_CODE } })"
-          files: output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
-          draft: false
-          prerelease: false
+          name: "SuperTV 更新 v${{ env.VERSION }} (${ { env.DATE_CODE } })"
+          files: output/changes-v${{ env.VERSION }}-${{ env.DATE_CODE }}.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 📁 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}
-          path: output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
+          name: changes-v${{ env.VERSION }}-${{ env.DATE_CODE }}
+          path: output/changes-v${{ env.VERSION }}-${{ env.DATE_CODE }}.txt
