@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Animated } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -39,14 +39,12 @@ export default function SearchScreen() {
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
 
-  // 响应式布局配置
   const responsiveConfig = useResponsiveLayout();
   const commonStyles = getCommonResponsiveStyles(responsiveConfig);
   const { deviceType, spacing } = responsiveConfig;
 
   useEffect(() => {
     loadHistory();
-    // 自动聚焦
     setTimeout(() => textInputRef.current?.focus(), 100);
   }, []);
 
@@ -72,7 +70,7 @@ export default function SearchScreen() {
   };
 
   const clearHistory = () => {
-    Alert.alert("清空搜索历史", "确定要清空所有搜索历史吗？此操作无法撤销。", [
+    Alert.alert("清空搜索历史", "确定要清空所有搜索历史吗？", [
       { text: "取消", style: "cancel" },
       { text: "清空", style: "destructive", onPress: () => saveHistory([]) }
     ]);
@@ -101,7 +99,6 @@ export default function SearchScreen() {
 
   const onSearchPress = () => handleSearchInternal();
 
-  // --- 核心逻辑：筛选与聚合 (Selene 1:1 复刻) ---
   const filteredResults = useMemo(() => {
     let list = [...results];
     if (selectedSource !== 'all') list = list.filter(r => r.source_name === selectedSource);
@@ -129,7 +126,6 @@ export default function SearchScreen() {
         const existing = groups.get(key)!;
         existing.sourceCount += 1;
         if (r.id > existing.id) {
-          // 保留 ID 较大的作为主显，但维持计数
           const count = existing.sourceCount;
           Object.assign(existing, r);
           existing.sourceCount = count;
@@ -149,7 +145,7 @@ export default function SearchScreen() {
     return ['all', ...years];
   }, [results]);
 
-  const renderItem = ({ item }: { item: SearchResult & { sourceCount?: number }; index: number }) => (
+  const renderItem = useCallback(({ item }: { item: SearchResult & { sourceCount?: number }; index: number }) => (
     <VideoCard
       id={item.id.toString()}
       source={item.source}
@@ -160,9 +156,9 @@ export default function SearchScreen() {
       totalEpisodes={item.episodes?.length}
       sourceCount={item.sourceCount}
       api={api}
-      from={useAggregatedView ? "agg" : "search"} // 关键：Selene 风格角标
+      from={useAggregatedView ? "agg" : "search"}
     />
-  );
+  ), [useAggregatedView]);
 
   const dynamicStyles = createResponsiveStyles(deviceType, spacing);
 
@@ -170,10 +166,11 @@ export default function SearchScreen() {
     <View style={dynamicStyles.historyContainer}>
       <View style={dynamicStyles.sectionHeader}>
         <View style={dynamicStyles.sectionTitleRow}>
+          <History size={18} color="#ccc" style={{ marginRight: 8 }} />
           <ThemedText style={dynamicStyles.sectionTitle}>搜索历史</ThemedText>
         </View>
         {history.length > 0 && (
-          <TouchableOpacity onPress={clearHistory}>
+          <TouchableOpacity onPress={clearHistory} style={dynamicStyles.clearBtn}>
             <ThemedText style={dynamicStyles.clearText}>清空</ThemedText>
           </TouchableOpacity>
         )}
@@ -182,7 +179,6 @@ export default function SearchScreen() {
         <View style={dynamicStyles.emptyHistory}>
           <History size={64} color="#222" />
           <ThemedText style={{ color: '#555', marginTop: 16 }}>暂无搜索历史</ThemedText>
-          <ThemedText style={{ color: '#333', marginTop: 4 }}>开始搜索你喜欢的内容吧</ThemedText>
         </View>
       ) : (
         <View style={dynamicStyles.historyList}>
@@ -218,9 +214,8 @@ export default function SearchScreen() {
           }}
         >
           <ThemedText style={[dynamicStyles.filterLabel, selectedSource !== 'all' && dynamicStyles.filterLabelActive]}>
-            来源
+            来源: {selectedSource === 'all' ? '全部' : selectedSource}
           </ThemedText>
-          <ArrowDownUp size={12} color={selectedSource !== 'all' ? '#27ae60' : '#888'} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -231,9 +226,8 @@ export default function SearchScreen() {
           }}
         >
           <ThemedText style={[dynamicStyles.filterLabel, selectedYear !== 'all' && dynamicStyles.filterLabelActive]}>
-            年份
+            年份: {selectedYear === 'all' ? '全部' : selectedYear}
           </ThemedText>
-          <ArrowDownUp size={12} color={selectedYear !== 'all' ? '#27ae60' : '#888'} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -244,11 +238,11 @@ export default function SearchScreen() {
           }}
         >
           <ThemedText style={[dynamicStyles.filterLabel, yearSortOrder !== 'none' && dynamicStyles.filterLabelActive]}>
-            年份排序
+            排序: {yearSortOrder === 'none' ? '默认' : yearSortOrder === 'desc' ? '最新' : '最早'}
           </ThemedText>
-          {yearSortOrder === 'desc' ? <ArrowDown10 size={14} color="#27ae60" /> :
-           yearSortOrder === 'asc' ? <ArrowUp10 size={14} color="#27ae60" /> :
-           <ArrowDownUp size={14} color="#888" />}
+          {yearSortOrder !== 'none' && (
+            yearSortOrder === 'desc' ? <ArrowDown10 size={14} color={Colors.dark.primary} /> : <ArrowUp10 size={14} color={Colors.dark.primary} />
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -306,7 +300,7 @@ export default function SearchScreen() {
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => setUseAggregatedView(!useAggregatedView)}
-                style={[dynamicStyles.switchTrack, useAggregatedView && { backgroundColor: '#27ae60' }]}
+                style={[dynamicStyles.switchTrack, useAggregatedView && { backgroundColor: Colors.dark.primary }]}
               >
                 <View style={[dynamicStyles.switchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
               </TouchableOpacity>
@@ -325,17 +319,10 @@ export default function SearchScreen() {
             <View style={{ flex: 1, justifyContent: 'center' }}>
                <VideoLoadingAnimation />
             </View>
-          ) : error && aggregatedResults.length === 0 ? (
-            <View style={[commonStyles.center, { flex: 1, paddingBottom: 100 }]}>
-               <FolderSearch size={64} color="#e74c3c" />
-               <ThemedText style={dynamicStyles.errorText}>{error}</ThemedText>
-               <StyledButton text="重试" onPress={onSearchPress} style={{ marginTop: 20 }} />
-            </View>
           ) : aggregatedResults.length === 0 && searchProgress.isComplete ? (
             <View style={[commonStyles.center, { flex: 1, paddingBottom: 100 }]}>
                <FolderSearch size={64} color="#222" />
                <ThemedText style={{ color: '#7f8c8d', marginTop: 16, fontSize: 18, fontWeight: '500' }}>未找到结果</ThemedText>
-               <ThemedText style={{ color: '#555', marginTop: 8 }}>请尝试更换关键词</ThemedText>
             </View>
           ) : (
             <CustomScrollView
@@ -368,8 +355,6 @@ export default function SearchScreen() {
 }
 
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === "mobile";
-
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -520,9 +505,10 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     filterPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 8,
+      paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 16,
+      backgroundColor: '#1c1c1e',
       marginRight: 10,
       gap: 4,
     },
@@ -531,7 +517,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
       color: '#7f8c8d',
     },
     filterLabelActive: {
-      color: '#27ae60',
+      color: Colors.dark.primary,
       fontWeight: '500',
     },
     loadingBarBg: {
@@ -544,312 +530,13 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     },
     loadingBarFill: {
       height: "100%",
-      backgroundColor: '#27ae60',
+      backgroundColor: Colors.dark.primary,
     },
     errorText: {
       color: "#e74c3c",
       fontSize: 15,
       marginTop: 16,
       textAlign: "center",
-    },
-  });
-};
-
-  const content = (
-    <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
-      {renderSearchContent()}
-    </ThemedView>
-  );
-
-  if (deviceType === 'tv') return content;
-
-  return (
-    <ResponsiveNavigation>
-      <ResponsiveHeader title="搜索" showBackButton={false} />
-      {content}
-    </ResponsiveNavigation>
-  );
-}
-
-const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === "mobile";
-  const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
-
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      paddingTop: deviceType === "tv" ? 50 : 0,
-    },
-    searchContainer: {
-      flexDirection: "row",
-      paddingHorizontal: spacing,
-      marginBottom: 12,
-      alignItems: "center",
-      paddingTop: isMobile ? 10 : 0,
-    },
-    inputContainer: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      height: 46,
-      backgroundColor: "#1c1c1e",
-      borderRadius: 12,
-      marginRight: 10,
-      borderWidth: 1.5,
-      borderColor: "transparent",
-    },
-    input: {
-      flex: 1,
-      paddingLeft: 16,
-      color: "white",
-      fontSize: 16,
-    },
-    searchButton: {
-      width: 46,
-      height: 46,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 12,
-      backgroundColor: Colors.dark.primary,
-    },
-    qrButton: {
-      width: 46,
-      height: 46,
-      marginLeft: 10,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 12,
-      backgroundColor: '#2c2c2e',
-    },
-    historyContainer: {
-      paddingHorizontal: spacing,
-      paddingTop: 10,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 16,
-    },
-    sectionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: 'white',
-    },
-    clearText: {
-      fontSize: 14,
-      color: '#888',
-    },
-    emptyHistory: {
-      height: 100,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    historyList: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-    },
-    historyPillWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#2c2c2e',
-      borderRadius: 20,
-      paddingLeft: 14,
-      paddingRight: 8,
-      paddingVertical: 6,
-    },
-    historyPill: {
-      marginRight: 4,
-    },
-    historyText: {
-      fontSize: 14,
-      color: '#ddd',
-    },
-    historyDelete: {
-      padding: 4,
-    },
-    resultsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: spacing,
-      paddingVertical: 10,
-    },
-    resultsTitle: {
-      fontSize: 17,
-      fontWeight: 'bold',
-      color: 'white',
-    },
-    progressMiniText: {
-      fontSize: 14,
-      color: '#888',
-      marginLeft: 6,
-    },
-    aggToggle: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    aggLabel: {
-      fontSize: 14,
-      color: '#888',
-      fontWeight: '600',
-    },
-    switchBg: {
-      width: 32,
-      height: 18,
-      backgroundColor: '#3a3a3c',
-      borderRadius: 9,
-      padding: 2,
-    },
-    switchDot: {
-      width: 14,
-      height: 14,
-      backgroundColor: 'white',
-      borderRadius: 7,
-    },
-    filterScroll: {
-      paddingHorizontal: spacing,
-      marginBottom: 10,
-      flexGrow: 0,
-    },
-    filterPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      backgroundColor: '#1c1c1e',
-      marginRight: 8,
-      gap: 4,
-    },
-    filterPillActive: {
-      backgroundColor: 'rgba(0,187,94,0.1)',
-      borderColor: 'rgba(0,187,94,0.3)',
-      borderWidth: 1,
-    },
-    filterLabel: {
-      fontSize: 13,
-      color: '#888',
-    },
-    filterLabelActive: {
-      color: Colors.dark.primary,
-      fontWeight: '600',
-    },
-    progressBarBg: {
-      height: 2,
-      backgroundColor: "#1c1c1e",
-      marginHorizontal: spacing,
-      marginBottom: 10,
-      borderRadius: 1,
-      overflow: "hidden",
-    },
-    progressBarFill: {
-      height: "100%",
-      backgroundColor: Colors.dark.primary,
-    },
-    errorText: {
-      color: "#ff4444",
-      fontSize: 16,
-      marginTop: 16,
-      textAlign: "center",
-    },
-  });
-};
-
-  const content = (
-    <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
-      {renderSearchContent()}
-    </ThemedView>
-  );
-
-  if (deviceType === 'tv') {
-    return content;
-  }
-
-  return (
-    <ResponsiveNavigation>
-      <ResponsiveHeader title="搜索" showBackButton={false} />
-      {content}
-    </ResponsiveNavigation>
-  );
-}
-
-const createResponsiveStyles = (deviceType: string, spacing: number) => {
-  const isMobile = deviceType === "mobile";
-  const minTouchTarget = DeviceUtils.getMinTouchTargetSize();
-
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      paddingTop: deviceType === "tv" ? 50 : 0,
-    },
-    searchContainer: {
-      flexDirection: "row",
-      paddingHorizontal: spacing,
-      marginBottom: spacing,
-      alignItems: "center",
-      paddingTop: isMobile ? spacing / 2 : 0,
-    },
-    inputContainer: {
-      flex: 1,
-      height: isMobile ? minTouchTarget : 50,
-      backgroundColor: "#2c2c2e",
-      borderRadius: isMobile ? 8 : 8,
-      marginRight: spacing / 2,
-      borderWidth: 2,
-      borderColor: "transparent",
-      justifyContent: "center",
-    },
-    input: {
-      flex: 1,
-      paddingHorizontal: spacing,
-      color: "white",
-      fontSize: isMobile ? 16 : 18,
-    },
-    searchButton: {
-      width: isMobile ? minTouchTarget : 50,
-      height: isMobile ? minTouchTarget : 50,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
-      marginRight: deviceType !== "mobile" ? spacing / 2 : 0,
-    },
-    qrButton: {
-      width: isMobile ? minTouchTarget : 50,
-      height: isMobile ? minTouchTarget : 50,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: isMobile ? 8 : 8,
-    },
-    errorText: {
-      color: "red",
-      fontSize: isMobile ? 14 : 16,
-      textAlign: "center",
-    },
-    progressContainer: {
-      paddingHorizontal: spacing,
-      marginBottom: spacing / 2,
-    },
-    progressText: {
-      fontSize: 12,
-      color: "#888",
-      marginBottom: 4,
-    },
-    progressBarBg: {
-      height: 2,
-      backgroundColor: "#2c2c2e",
-      borderRadius: 1,
-      overflow: "hidden",
-    },
-    progressBarFill: {
-      height: "100%",
-      backgroundColor: Colors.dark.primary,
     },
   });
 };
