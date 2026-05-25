@@ -40,12 +40,12 @@ const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) =
 ));
 
 export default function PlayScreen() {
+  // 1. 基本 Hooks
   const videoRef = useRef<Video>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { deviceType } = useResponsiveLayout();
+  const { deviceType, screenWidth } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
-
   const params = useLocalSearchParams<{
     episodeIndex: string;
     position?: string;
@@ -55,30 +55,17 @@ export default function PlayScreen() {
     fileUri?: string;
   }>();
 
-  const initialEpIndex = parseInt(params.episodeIndex || "0", 10);
-  const position = params.position ? parseInt(params.position, 10) : undefined;
-  const isLocalFile = !!params.fileUri;
+  // 2. 状态 Hooks
+  const [isReverse, setIsReverse] = useState(false);
+  const [isInitFailed, setIsInitFailed] = useState(false);
 
-  // [FIX] 使用 zustand 选择器稳定获取每个状态，减少不必要的 re-render
+  // 3. Store 选择器 Hooks
   const detail = useDetailStore(state => state.detail);
   const searchResults = useDetailStore(state => state.searchResults);
   const setDetail = useDetailStore(state => state.setDetail);
   const detailError = useDetailStore(state => state.error);
   const detailLoading = useDetailStore(state => state.loading);
 
-  const isDetailMatching = useMemo(() => {
-    if (!detail) return false;
-    if (isLocalFile) return true;
-    return String(detail.id || "") === params.id && detail.source === params.source;
-  }, [detail, params.id, params.source, isLocalFile]);
-
-  const source = params.source || detail?.source;
-  const id = params.id || detail?.id?.toString();
-  const title = params.title || detail?.title;
-
-  useTVRemoteHandler(); // 仅用于注册 TV 事件，移动端也会初始化但无负面影响
-
-  // [FIX] 使用 zustand 选择器稳定获取每个状态和函数引用，避免解构导致每次渲染引用变化
   const status = usePlayerStore(state => state.status);
   const isLoading = usePlayerStore(state => state.isLoading);
   const showControls = usePlayerStore(state => state.showControls);
@@ -97,26 +84,45 @@ export default function PlayScreen() {
   const setIsFullscreen = usePlayerStore(state => state.setIsFullscreen);
   const togglePlayPause = usePlayerStore(state => state.togglePlayPause);
   const seekToPosition = usePlayerStore(state => state.seekToPosition);
+  const currentEpisode = usePlayerStore(selectCurrentEpisode);
 
   const downloadEpisode = useCacheStore(state => state.downloadEpisode);
 
-  const panStartPos = useRef<number>(0);
+  // 4. 自定义 Logic Hooks
+  useTVRemoteHandler();
 
-  // 切换选集/切换源前安全卸载视频
-  const safeUnload = async () => {
-    try {
-      await videoRef.current?.unloadAsync();
-    } catch (e) {
-      console.warn("safeUnload error:", e);
-    }
-  };
+  const { videoProps } = useVideoHandlers({
+    videoRef,
+    currentEpisode,
+    initialPosition,
+    introEndTime,
+    playbackRate,
+    handlePlaybackStatusUpdate,
+    deviceType,
+    detail: detail || undefined,
+  });
+
+  // 5. 衍生状态和 Memo Hooks
+  const isDetailMatching = useMemo(() => {
+    if (!detail) return false;
+    if (!!params.fileUri) return true;
+    return String(detail.id || "") === params.id && detail.source === params.source;
+  }, [detail, params.id, params.source, params.fileUri]);
+
+  const episodes = useMemo(() => {
+    if (!detail || !Array.isArray(detail.episodes)) return [];
+    const list = detail.episodes.map((url: string, i: number) => ({ index: i, url }));
+    return isReverse ? [...list].reverse() : list;
+  }, [detail, isReverse]);
+
+  const panStartPos = useRef<number>(0);
 
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
-    if (!hasTap) return null;
+    const hasPan = typeof Gesture?.Pan === "function";
+    if (!hasTap && !hasPan) return null;
 
     try {
-      // 单击手势：切换显示/隐藏控件
       const singleTap = Gesture.Tap()
         .maxDuration(250)
         .runOnJS(true)
@@ -125,14 +131,99 @@ export default function PlayScreen() {
           setShowControls(!showControls);
         });
 
-      return singleTap;
+      const doubleTap = Gesture.Tap()
+        .numberOfTaps(2)
+        .maxDuration(250)
+        .runOnJS(true)
+        .onEnd(() => {
+          const { showControls, togglePlayPause } = usePlayerStore.getState();
+          if (!showControls) {
+            togglePlayPause();
+          }
+        });
+
+      const panGesture = Gesture.Pan()
+        .minDist(20)
+        .runOnJS(true)
+        .onStart(() => {
+          const { showControls, status } = usePlayerStore.getState();
+          if (showControls) return;
+          panStartPos.current = status?.positionMillis || 0;
+        })
+        .onUpdate((e) => {
+          const { showControls, status, seekToPosition } = usePlayerStore.getState();
+          if (showControls || !status?.durationMillis) return;
+
+          const duration = status.durationMillis;
+          const target = Math.max(
+            0,
+            Math.min(panStartPos.current + e.translationX * 200, duration)
+          );
+          if (typeof seekToPosition === 'function') {
+            seekToPosition(target / duration, false);
+          }
+        })
+        .onEnd((e) => {
+          const { showControls, status, seekToPosition } = usePlayerStore.getState();
+          if (showControls || !status?.durationMillis) return;
+
+          const duration = status.durationMillis;
+          const target = Math.max(
+            0,
+            Math.min(panStartPos.current + e.translationX * 200, duration)
+          );
+          if (typeof seekToPosition === 'function') {
+            seekToPosition(target / duration, true);
+          }
+        });
+
+      const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
+      return Gesture.Simultaneous(tapGestures, panGesture).runOnJS(true);
     } catch (err) {
       console.warn("gesture init failed:", err);
       return null;
     }
   }, []);
 
-  // 后备点击（手势不可用时）
+  const videoElement = useMemo(() => (
+    currentEpisode?.url ? (
+      <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+    ) : (
+      <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
+    )
+  ), [currentEpisode?.url, videoProps]);
+
+  const videoContent = useMemo(() => (
+    <View style={styles.videoWrapper}>
+      {videoElement}
+      <SeekingBar />
+      {currentEpisode?.url && isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#00bb5e" />
+        </View>
+      )}
+    </View>
+  ), [videoElement, currentEpisode?.url, isLoading]);
+
+  // 6. 回调 Hooks
+  const handleDownloadPress = useCallback(() => {
+    const source = params.source || detail?.source;
+    const id = params.id || detail?.id?.toString();
+    const title = params.title || detail?.title;
+    if (!currentEpisode?.url || !source || !id || !title) return;
+    downloadEpisode({
+      source,
+      source_name: detail?.source_name || source,
+      title: detail?.title || title,
+      poster: detail?.poster || "",
+      id,
+      episodeIndex: currentEpisodeIndex,
+      episodeTitle: `第 ${currentEpisodeIndex + 1} 集`,
+      episodeUrl: currentEpisode.url,
+      totalEpisodes: episodes.length,
+    });
+  }, [currentEpisode, currentEpisodeIndex, episodes.length, params, detail, downloadEpisode]);
+
   const handleTapFallback = useCallback(() => {
     const { setShowControls, showControls } = usePlayerStore.getState();
     if (typeof setShowControls === 'function') {
@@ -140,7 +231,37 @@ export default function PlayScreen() {
     }
   }, []);
 
-  // ========== KeepAwake 安全调用 ==========
+  const safeUnload = useCallback(async () => {
+    try {
+      await videoRef.current?.unloadAsync();
+    } catch (e) {
+      console.warn("safeUnload error:", e);
+    }
+  }, []);
+
+  const handleEpisodePress = useCallback(async (idx: number) => {
+    const source = params.source || detail?.source;
+    const id = params.id || detail?.id?.toString();
+    const title = params.title || detail?.title;
+    if (idx === currentEpisodeIndex || !source || !id || !title) return;
+    await safeUnload();
+    loadVideo?.({ source, id, episodeIndex: idx, title });
+  }, [currentEpisodeIndex, params, detail, loadVideo, safeUnload]);
+
+  const handleSourcePress = useCallback(async (item: any) => {
+    const source = params.source || detail?.source;
+    if (item.source === source) return;
+    await safeUnload();
+    setDetail?.(item);
+    loadVideo?.({
+      source: item.source,
+      id: item.id.toString(),
+      episodeIndex: currentEpisodeIndex,
+      title: item.title,
+    });
+  }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex]);
+
+  // 7. 副作用 Hooks
   useEffect(() => {
     const doKeepAwake = async () => {
       try {
@@ -156,7 +277,6 @@ export default function PlayScreen() {
       } catch (e) {}
     };
     doKeepAwake();
-
     return () => {
       if (typeof deactivateKeepAwakeAsync === 'function') {
         deactivateKeepAwakeAsync().catch(() => {});
@@ -164,24 +284,11 @@ export default function PlayScreen() {
     };
   }, [status?.isLoaded, status?.isPlaying]);
 
-  const currentEpisode = usePlayerStore(selectCurrentEpisode);
-  const [isReverse, setIsReverse] = useState(false);
-  const [isInitFailed, setIsInitFailed] = useState(false);
-
-  const { videoProps } = useVideoHandlers({
-    videoRef,
-    currentEpisode,
-    initialPosition,
-    introEndTime,
-    playbackRate,
-    handlePlaybackStatusUpdate,
-    deviceType,
-    detail: detail || undefined,
-  });
-
   useEffect(() => {
     setVideoRef?.(videoRef);
     setShowCastModal?.(false);
+    const initialEpIndex = parseInt(params.episodeIndex || "0", 10);
+    const position = params.position ? parseInt(params.position, 10) : undefined;
 
     if (params.fileUri) {
       loadVideo?.({
@@ -203,7 +310,6 @@ export default function PlayScreen() {
     }
   }, []);
 
-  // ========== 清理时屏幕方向安全调用 ==========
   useEffect(() => {
     return () => {
       reset?.();
@@ -211,9 +317,10 @@ export default function PlayScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
       }
     };
-  }, [isMobile]);
+  }, [isMobile, reset]);
 
   useEffect(() => {
+    const isLocalFile = !!params.fileUri;
     if (!isLocalFile && !detail && !detailLoading && !detailError) {
       const timer = setTimeout(() => {
         if (!useDetailStore.getState().detail) setIsInitFailed(true);
@@ -222,7 +329,7 @@ export default function PlayScreen() {
     } else if (detail) {
       setIsInitFailed(false);
     }
-  }, [detail, detailLoading, detailError, isLocalFile]);
+  }, [detail, detailLoading, detailError, params.fileUri]);
 
   useEffect(() => {
     const backAction = () => {
@@ -248,52 +355,8 @@ export default function PlayScreen() {
     return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
   }, [showControls, showCastModal, isFullscreen, deviceType, router, setShowCastModal, setIsFullscreen, setShowControls]);
 
-  const episodes = useMemo(() => {
-    if (!detail || !Array.isArray(detail.episodes)) return [];
-    const list = detail.episodes.map((url: string, i: number) => ({ index: i, url }));
-    return isReverse ? [...list].reverse() : list;
-  }, [detail, isReverse]);
-
-  const handleEpisodePress = async (idx: number) => {
-    if (idx === currentEpisodeIndex || !source || !id || !title) return;
-    await safeUnload();
-    loadVideo?.({ source, id, episodeIndex: idx, title });
-  };
-
-  const handleSourcePress = async (item: any) => {
-    if (item.source === source) return;
-    await safeUnload();
-    setDetail?.(item);
-    loadVideo?.({
-      source: item.source,
-      id: item.id.toString(),
-      episodeIndex: currentEpisodeIndex,
-      title: item.title,
-    });
-  };
-
-  // [FIX] 将所有 Hooks 移到任何 return 语句之前，确保渲染顺序一致
-  // [FIX] 分离 Video 组件和 Loading 遮罩，避免 isLoading 变化导致 Video 重新挂载引发闪烁/无限循环
-  const videoElement = useMemo(() => (
-    currentEpisode?.url ? (
-      <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-    ) : (
-      <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-    )
-  ), [currentEpisode?.url, videoProps]);
-
-  const videoContent = useMemo(() => (
-    <View style={styles.videoWrapper}>
-      {videoElement}
-      <SeekingBar />
-      {currentEpisode?.url && isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#00bb5e" />
-        </View>
-      )}
-    </View>
-  ), [videoElement, currentEpisode?.url, isLoading]);
-
+  // 8. 提前返回语句
+  const isLocalFile = !!params.fileUri;
   if (!isLocalFile && !detail && isInitFailed) {
     return (
       <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: deviceType === "tv" ? "black" : "#151718" }]}>
@@ -313,22 +376,10 @@ export default function PlayScreen() {
     );
   }
 
-  const handleDownloadPress = useCallback(() => {
-    if (!currentEpisode?.url || !source || !id || !title) return;
-    downloadEpisode({
-      source,
-      source_name: detail?.source_name || source,
-      title: detail?.title || title,
-      poster: detail?.poster || "",
-      id,
-      episodeIndex: currentEpisodeIndex,
-      episodeTitle: `第 ${currentEpisodeIndex + 1} 集`,
-      episodeUrl: currentEpisode.url,
-      totalEpisodes: episodes.length,
-    });
-  }, [currentEpisode, currentEpisodeIndex, episodes.length, source, id, title, detail, downloadEpisode]);
+  // 9. 渲染函数
+  const source = params.source || detail?.source;
+  const title = params.title || detail?.title;
 
-  // 移动端布局：使用手势
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
@@ -397,7 +448,6 @@ export default function PlayScreen() {
     </View>
   );
 
-  // TV 端布局：不使用手势，仅依靠遥控器按键
   const renderTVLayout = () => (
     <ThemedView focusable style={styles.tvContainer}>
       <View style={styles.videoWrapper}>
@@ -423,15 +473,12 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
   mobileContainer: { flex: 1 },
-
   customHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingTop: 40,
   },
-
   backBtn: { padding: 4 },
   headerTitle: {
     flex: 1,
@@ -449,42 +496,34 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 20,
   },
-
   playerSection: {
     width: "100%",
     aspectRatio: 16 / 9,
     backgroundColor: "transparent",
   },
-
   playerSectionFullscreen: {
     flex: 1,
     backgroundColor: "#000",
   },
-
   videoWrapper: { flex: 1 },
   videoPlayer: { flex: 1 },
-
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(21, 23, 24, 0.7)",
   },
-
   mobileBottomBar: {
     flex: 1,
     paddingHorizontal: 10,
     paddingTop: 8,
   },
-
   episodeScroll: { maxHeight: 40, marginBottom: 10 },
-
   mobileEpItem: {
     backgroundColor: "#1a1a1a",
     paddingHorizontal: 12,
@@ -493,12 +532,9 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
-
   mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600" },
   mobileEpTextActive: { color: "#fff" },
-
   sourceScroll: { maxHeight: 38 },
-
   mobileSourceItem: {
     backgroundColor: "#1a1a1a",
     paddingHorizontal: 12,
@@ -511,9 +547,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: "rgba(0,187,94,0.08)",
   },
-
   mobileSourceText: { color: "#bbb", fontSize: 12, maxWidth: 90 },
   mobileSourceTextActive: { color: "#00bb5e", fontWeight: "700" },
-
   fullscreenContainer: { paddingTop: 0, paddingHorizontal: 0 },
 });
