@@ -182,14 +182,19 @@ export const PlayerControls: React.FC<PlayerControlsProps> = memo(({ showControl
                 <TouchableOpacity onPress={() => safeCall(setShowEpisodeModal, true)} style={styles.mobileIconBtn}>
                   <List color="white" size={22} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
-                  <Tv color="white" size={22} />
-                </TouchableOpacity>
+
+                {/* 仅在横屏时显示换源按钮 */}
                 {!isPortrait && (
-                  <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
-                    <RotateCw color="white" size={22} />
+                  <TouchableOpacity onPress={() => safeCall(setShowSourceModal, true)} style={styles.mobileIconBtn}>
+                    <Tv color="white" size={22} />
                   </TouchableOpacity>
                 )}
+
+                {/* 始终显示旋转按钮，方便竖屏切换 */}
+                <TouchableOpacity onPress={toggleOrientation} style={styles.mobileIconBtn}>
+                  <RotateCw color="white" size={22} />
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.mobileTextBtn} onPress={() => safeCall(setShowSpeedModal, true)}>
                   <Text style={styles.mobileTextBtnLabel}>{playbackRate}X</Text>
                 </TouchableOpacity>

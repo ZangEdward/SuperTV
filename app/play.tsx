@@ -384,7 +384,7 @@ export default function PlayScreen() {
 
   return (
     <ThemedView style={{ flex: 1, backgroundColor: isFullscreen || deviceType === "tv" ? "black" : "#151718" }}>
-      <StatusBar hidden={isFullscreen ? !showControls : false} animated={true} />
+      <StatusBar hidden={isFullscreen} translucent={isFullscreen} style="light" animated={true} />
       {deviceType === "tv" ? renderTVLayout() : renderMobileLayout()}
       <EpisodeSelectionModal />
       <SourceSelectionModal />
