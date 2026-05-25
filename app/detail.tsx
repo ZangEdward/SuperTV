@@ -31,6 +31,15 @@ export default function DetailScreen() {
 
   const [isReverse, setIsReverse] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [initTimedOut, setInitTimedOut] = useState(false);
+
+  // [修复] 初始化超时保护：至少等待 5 秒才显示"未找到"，避免首选源 fallback 期间闪一下
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInitTimedOut(true);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [q, source, id]); // 当参数变化时重置定时器
 
   const {
     detail,
@@ -152,7 +161,21 @@ export default function DetailScreen() {
     );
   }
 
-  if (!detail) {
+  // [修复] 如果还没超时但 loading 没开始或者 detail 仍为空，继续显示加载动画
+  if (!initTimedOut && !detail) {
+    return (
+      <ThemedView style={[commonStyles.container, { backgroundColor: '#151718', justifyContent: 'center', alignItems: 'center' }]}>
+        <VideoLoadingAnimation />
+        <View style={{ marginTop: 20, alignItems: 'center' }}>
+          <ThemedText style={{ color: '#888', fontSize: 14 }}>
+            {loading ? "正在加载影片详情..." : "准备搜索资源..."}
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  if (initTimedOut && !detail && !loading) {
     return (
       <ResponsiveNavigation>
         <ResponsiveHeader title="详情" showBackButton />
@@ -231,22 +254,17 @@ export default function DetailScreen() {
                       return (
                         <TouchableOpacity
                           key={ep.index}
-                          style={[
-                            styles.episodeBtn,
-                            isLongTitle && { width: '45%', aspectRatio: undefined }
-                          ]}
+                          style={styles.episodeBtn}
                           onPress={() => handlePlay(ep.index)}
                         >
                           <View style={[
                             styles.episodeBox,
                             isCached && styles.episodeBoxCached,
                             isDownloading && styles.episodeBoxDownloading,
-                            isLongTitle && { paddingHorizontal: 8, paddingVertical: 10 }
                           ]}>
                             <Text style={[
                               styles.episodeText,
                               (isCached || isDownloading) && { color: 'white' },
-                              isLongTitle && { fontSize: 12, textAlign: 'center' }
                             ]} numberOfLines={2}>
                               {ep.title}
                             </Text>
@@ -461,10 +479,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#2196F3',
   },
   mobileOptimizeText: { color: Colors.dark.primary, fontSize: 11, fontWeight: 'bold' },
-  episodeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  episodeBtn: { width: '20%', aspectRatio: 1, padding: 4 },
-  episodeBox: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#222' },
-  episodeText: { color: '#eee', fontSize: 15, fontWeight: 'bold' },
+  episodeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+    justifyContent: 'flex-start',
+  },
+  episodeBtn: {
+    padding: 4,
+  },
+  episodeBox: {
+    minWidth: 54,
+    minHeight: 38,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#222',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  episodeText: {
+    color: '#eee',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    maxWidth: 160,
+    lineHeight: 16,
+  },
   sourceGrid: { gap: 10 },
   sourceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#1a1a1a' },
   sourceCardActive: { borderColor: Colors.dark.primary, backgroundColor: 'rgba(0, 187, 94, 0.05)' },

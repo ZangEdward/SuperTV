@@ -60,6 +60,7 @@ export default function PlayScreen() {
   // 2. 状态 Hooks
   const [isReverse, setIsReverse] = useState(false);
   const [isInitFailed, setIsInitFailed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'episodes' | 'sources' | 'desc'>('episodes');
 
   // 3. Store 选择器 Hooks
   const detail = useDetailStore(state => state.detail);
@@ -380,47 +381,82 @@ export default function PlayScreen() {
 
       {!isFullscreen && (
         <View style={styles.mobileBottomBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.episodeScroll}>
-            {episodes.map((ep) => (
-              <TouchableOpacity
-                key={ep.index}
-                style={[
-                  styles.mobileEpItem,
-                  ep.index === currentEpisodeIndex && styles.mobileEpItemActive,
-                  ep.title.length > 2 && { minWidth: 60 }
-                ]}
-                onPress={() => handleEpisodePress(ep.index)}
-              >
-                <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
-                  {ep.title}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <View style={styles.mobileTabBar}>
+            <TouchableOpacity
+              style={[styles.mobileTabItem, activeTab === 'episodes' && styles.mobileTabActive]}
+              onPress={() => setActiveTab('episodes')}
+            >
+              <Text style={[styles.mobileTabLabel, activeTab === 'episodes' && styles.mobileTabLabelActive]}>选集</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.mobileTabItem, activeTab === 'sources' && styles.mobileTabActive]}
+              onPress={() => setActiveTab('sources')}
+            >
+              <Text style={[styles.mobileTabLabel, activeTab === 'sources' && styles.mobileTabLabelActive]}>播放源</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.mobileTabItem, activeTab === 'desc' && styles.mobileTabActive]}
+              onPress={() => setActiveTab('desc')}
+            >
+              <Text style={[styles.mobileTabLabel, activeTab === 'desc' && styles.mobileTabLabelActive]}>详情</Text>
+            </TouchableOpacity>
+          </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-            {(searchResults || []).map((item, idx) => {
-              const isSelected = source === item.source;
-              return (
-                <TouchableOpacity
-                  key={idx}
-                  style={[styles.mobileSourceItem, isSelected && styles.mobileSourceItemActive]}
-                  onPress={() => handleSourcePress(item)}
-                >
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={[styles.mobileSourceText, isSelected && styles.mobileSourceTextActive]} numberOfLines={1}>
-                      {item.source_name}
+          {activeTab === 'episodes' && (
+            <ScrollView style={styles.episodeScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.episodeScrollContent}>
+                {episodes.map((ep) => (
+                  <TouchableOpacity
+                    key={ep.index}
+                    style={[
+                      styles.mobileEpItem,
+                      ep.index === currentEpisodeIndex && styles.mobileEpItemActive,
+                    ]}
+                    onPress={() => handleEpisodePress(ep.index)}
+                  >
+                    <Text style={[styles.mobileEpText, ep.index === currentEpisodeIndex && styles.mobileEpTextActive]}>
+                      {ep.title}
                     </Text>
-                    {item.speed !== undefined && item.speed > 0 && (
-                      <Text style={{ fontSize: 9, color: item.speed > 1 ? '#00bb5e' : '#888', marginTop: 2 }}>
-                        {SpeedTestService.formatSpeed(item.speed)}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          {activeTab === 'sources' && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
+              {(searchResults || []).map((item, idx) => {
+                const isSelected = source === item.source;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.mobileSourceItem, isSelected && styles.mobileSourceItemActive]}
+                    onPress={() => handleSourcePress(item)}
+                  >
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={[styles.mobileSourceText, isSelected && styles.mobileSourceTextActive]} numberOfLines={1}>
+                        {item.source_name}
                       </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                      {item.speed !== undefined && item.speed > 0 && (
+                        <Text style={{ fontSize: 9, color: item.speed > 1 ? '#00bb5e' : '#888', marginTop: 2 }}>
+                          {SpeedTestService.formatSpeed(item.speed)}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {activeTab === 'desc' && (
+            <ScrollView style={styles.descScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.descText}>{detail?.desc || '暂无简介'}</Text>
+              <View style={styles.metaInfo}>
+                <Text style={styles.metaText}>{detail?.year} · {detail?.type_name}</Text>
+              </View>
+            </ScrollView>
+          )}
         </View>
       )}
     </View>
@@ -499,19 +535,65 @@ const styles = StyleSheet.create({
   mobileBottomBar: {
     flex: 1,
     paddingHorizontal: 10,
-    paddingTop: 12,
+    paddingTop: 4,
   },
-  episodeScroll: { maxHeight: 42, marginBottom: 12 },
+  mobileTabBar: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+  },
+  mobileTabItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginRight: 12,
+  },
+  mobileTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#00bb5e',
+  },
+  mobileTabLabel: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mobileTabLabelActive: {
+    color: '#00bb5e',
+  },
+  descScroll: {
+    flex: 1,
+  },
+  descText: {
+    color: '#aaa',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  metaInfo: {
+    marginTop: 8,
+    paddingBottom: 20,
+  },
+  metaText: {
+    color: '#555',
+    fontSize: 12,
+  },
+  episodeScroll: { maxHeight: 100, marginBottom: 12 },
+  episodeScrollContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingBottom: 10,
+  },
   mobileEpItem: {
     backgroundColor: "#1a1a1a",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
     marginRight: 8,
+    marginBottom: 8,
     justifyContent: 'center',
+    minWidth: 50,
   },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
-  mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600" },
+  mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600", textAlign: 'center' },
   mobileEpTextActive: { color: "#fff" },
   sourceScroll: { maxHeight: 50 },
   mobileSourceItem: {

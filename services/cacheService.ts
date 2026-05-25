@@ -361,6 +361,7 @@ export class CacheService {
       keyBase64 = await keyRes.base64();
     }
 
+    // 3. RN 管理下载队列 (标准并发池逻辑)
     const tempDir = `${FileSystem.cacheDirectory}m3u8_rn_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
@@ -369,89 +370,72 @@ export class CacheService {
     let isCancelled = false;
     const CONCURRENCY = 4;
     const queue = Array.from({ length: total }, (_, i) => i);
-    const activeTasksCount = { val: 0 };
     const currentCalls = new Set<any>();
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        isCancelled = true;
+        currentCalls.forEach(c => c.cancel?.());
+        currentCalls.clear();
+      });
+    }
 
     const processSegment = async (index: number) => {
       if (isCancelled) return;
       const segFile = `${tempDir}seg_${index}.ts`;
       const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
 
-      const info = await FileSystem.getInfoAsync(segFile);
-      if (!info.exists || info.size === 0) {
-        const task = RNFetchBlob.config({ path: normalizedPath }).fetch('GET', segmentUrls[index], headers);
-        currentCalls.add(task);
-        try {
-          const res = await task;
-          currentCalls.delete(task);
-          if (res.info().status !== 200) throw new Error(`HTTP ${res.info().status}`);
+      try {
+        const info = await FileSystem.getInfoAsync(segFile);
+        if (!info.exists || info.size === 0) {
+          const task = RNFetchBlob.config({ path: normalizedPath }).fetch('GET', segmentUrls[index], headers);
+          currentCalls.add(task);
 
-          if (keyBase64) {
-            let segmentIv = ivHex;
-            if (!ivHex) {
-              segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
+          try {
+            const res = await task;
+            currentCalls.delete(task);
+            if (res.info().status !== 200) throw new Error(`HTTP ${res.info().status}`);
+
+            if (keyBase64) {
+              let segmentIv = ivHex;
+              if (!ivHex) {
+                segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
+              }
+              await NativeCryptoModule.decryptFileAES128CBC(normalizedPath, keyBase64, segmentIv);
             }
-            // 使用 NativeCryptoModule 承担解密任务
-            await NativeCryptoModule.decryptFileAES128CBC(normalizedPath, keyBase64, segmentIv);
+          } catch (e) {
+            currentCalls.delete(task);
+            throw e;
           }
-        } catch (e) {
-          currentCalls.delete(task);
-          throw e;
         }
-      }
 
-      segmentFiles[index] = normalizedPath;
-      completedCount++;
-      if (completedCount % 5 === 0 || completedCount === total) {
-        progressCb?.(completedCount / total, completedCount);
+        segmentFiles[index] = normalizedPath;
+        completedCount++;
+        if (completedCount % 5 === 0 || completedCount === total) {
+          progressCb?.(completedCount / total, completedCount);
+        }
+      } catch (e) {
+        logger.warn(`Segment ${index} failed:`, e);
+        throw e;
       }
     };
 
-    let rejectPromise: ((reason?: any) => void) | null = null;
+    // 并发池核心逻辑
+    const workers = Array(CONCURRENCY).fill(null).map(async () => {
+      while (queue.length > 0 && !isCancelled) {
+        const index = queue.shift();
+        if (index === undefined) break;
 
-    if (signal) {
-      // 移除旧的监听器，添加新的：abort 时立即拒绝 Promise，防止后续合并
-      signal.addEventListener('abort', () => {
-        isCancelled = true;
-        currentCalls.forEach(c => c.cancel?.());
-        currentCalls.clear();
-        if (rejectPromise) {
-          rejectPromise(new Error('CANCELLED'));
-          rejectPromise = null;
+        try {
+          await processSegment(index);
+        } catch (e) {
+          logger.error(`[CacheService] Segment ${index} failed, skipping...`, e);
+          // 允许单个片段失败，不中止整个下载循环
         }
-      });
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      rejectPromise = reject;
-
-      const fillPool = () => {
-        while (activeTasksCount.val < CONCURRENCY && queue.length > 0 && !isCancelled) {
-          const idx = queue.shift()!;
-          activeTasksCount.val++;
-          processSegment(idx)
-            .then(() => {
-              activeTasksCount.val--;
-              if (queue.length === 0 && activeTasksCount.val === 0) {
-                rejectPromise = null;
-                resolve();
-              }
-              else fillPool();
-            })
-            .catch(err => {
-              isCancelled = true;
-              currentCalls.forEach(c => c.cancel?.());
-              rejectPromise = null;
-              reject(err);
-            });
-        }
-        if (queue.length === 0 && activeTasksCount.val === 0) {
-          rejectPromise = null;
-          resolve();
-        }
-      };
-      fillPool();
+      }
     });
+
+    await Promise.all(workers);
 
     if (isCancelled) throw new Error("CANCELLED");
 

@@ -210,6 +210,7 @@ export default function CacheScreen() {
                 );
                 const isDisabled = isCached || isDownloading;
 
+                // 智能调整宽度：移除硬编码宽度，改用自适应
                 let btnStyle: any = [dynamicStyles.episodeButton];
                 let textStyle: any = [isSelected ? dynamicStyles.selectedEpisodeText : undefined];
                 let btnText = ep.title;
@@ -229,11 +230,6 @@ export default function CacheScreen() {
 
                 if (isDisabled) {
                   btnStyle.push({ opacity: 0.8 });
-                }
-
-                // 智能调整宽度
-                if (ep.title.length > 3) {
-                  btnStyle.push({ width: '48%', minWidth: 150 });
                 }
 
                 return (
@@ -376,7 +372,8 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     episodeButton: {
       marginRight: spacing / 2,
       marginBottom: spacing / 2,
-      minWidth: 110,
+      minWidth: 60,
+      paddingHorizontal: 12,
     },
     selectedEpisodeText: {
       fontWeight: "700",
