@@ -114,37 +114,40 @@ const useSearchStore = create<SearchState>((set, get) => ({
       updateProgress({ total: enabledResources.length });
 
       let completed = 0;
+      const batchSize = 3; // 每次并发 3 个，改善 UI 进度反馈并防止网络拥塞
 
-      // 3. 并行搜索，动态异步刷新结果（Selene 模式）
-      const searchPromises = enabledResources.map(async (resource) => {
-        try {
-          updateProgress({ currentSource: resource.name });
+      // 3. 分批并行搜索，动态异步刷新结果（Selene 模式）
+      for (let i = 0; i < enabledResources.length; i += batchSize) {
+        if (signal.aborted) break;
+        const batch = enabledResources.slice(i, i + batchSize);
 
-          // 增加单源超时竞争
-          const timeoutPromise = new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error('TIMEOUT')), 12000)
-          );
+        await Promise.all(batch.map(async (resource) => {
+          try {
+            updateProgress({ currentSource: resource.name });
 
-          const results = await Promise.race([
-            api.searchVideo(term, resource.key, signal).then(r => r.results),
-            timeoutPromise
-          ]) as SearchResult[] | null;
+            // 增加单源超时竞争
+            const timeoutPromise = new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+            );
 
-          if (signal.aborted) return;
-          if (results && results.length > 0) {
-            processAndAddResults(results);
-          }
-        } catch (err) {
-          if ((err as Error).name !== "AbortError") {
+            const results = await Promise.race([
+              api.searchVideo(term, resource.key, signal).then(r => r.results),
+              timeoutPromise
+            ]) as SearchResult[] | null;
+
+            if (signal.aborted) return;
+            if (results && results.length > 0) {
+              processAndAddResults(results);
+            }
+          } catch (err) {
             logger.debug(`Search failed for source ${resource.name}`);
+          } finally {
+            completed++;
+            updateProgress({ completed });
           }
-        } finally {
-          completed++;
-          updateProgress({ completed });
-        }
-      });
+        }));
+      }
 
-      await Promise.all(searchPromises);
       updateProgress({ isComplete: true });
 
       if (signal.aborted) return;

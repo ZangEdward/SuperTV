@@ -183,42 +183,45 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         let completed = 0;
         let firstResultFound = false;
+        const batchSize = 3; // 采用分批并发模式，使进度条和源名称更新更平滑
 
-        // 并发执行搜索
-        const searchPromises = enabledResources.map(async (resource) => {
-          try {
-            updateProgress({ currentSource: resource.name });
-            const searchStart = performance.now();
+        // 3. 分批并行搜索，动态异步刷新结果
+        for (let i = 0; i < enabledResources.length; i += batchSize) {
+          if (signal.aborted) break;
+          const batch = enabledResources.slice(i, i + batchSize);
 
-            // 为单个源增加超时竞争，防止被某个僵尸源拖死
-            const timeoutPromise = new Promise<null>((_, reject) =>
-              setTimeout(() => reject(new Error('TIMEOUT')), 10000)
-            );
+          await Promise.all(batch.map(async (resource) => {
+            try {
+              updateProgress({ currentSource: resource.name });
+              const searchStart = performance.now();
 
-            const results = await Promise.race([
-              api.searchVideo(q, resource.key, signal).then(r => r.results),
-              timeoutPromise
-            ]) as SearchResult[] | null;
+              const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('TIMEOUT')), 10000)
+              );
 
-            const latency = performance.now() - searchStart;
+              const results = await Promise.race([
+                api.searchVideo(q, resource.key, signal).then(r => r.results),
+                timeoutPromise
+              ]) as SearchResult[] | null;
 
-            if (results && results.length > 0) {
-              await processAndSetResults(results, latency);
-              if (!firstResultFound) {
-                set({ loading: false });
-                firstResultFound = true;
+              const latency = performance.now() - searchStart;
+
+              if (results && results.length > 0) {
+                await processAndSetResults(results, latency);
+                if (!firstResultFound) {
+                  set({ loading: false });
+                  firstResultFound = true;
+                }
               }
+            } catch (e) {
+              logger.debug(`Search failed for ${resource.name}`);
+            } finally {
+              completed++;
+              updateProgress({ completed });
             }
-          } catch (e) {
-            logger.debug(`Search failed for ${resource.name}`);
-          } finally {
-            completed++;
-            updateProgress({ completed });
-          }
-        });
+          }));
+        }
 
-        // 这里的 Promise.all 只是为了等待最终状态，实际 UI 是由内部的 processAndSetResults 实时更新的
-        await Promise.all(searchPromises);
         updateProgress({ isComplete: true });
       }
 
