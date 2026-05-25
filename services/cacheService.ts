@@ -691,63 +691,89 @@ export class CacheService {
       keyBase64 = await keyRes.base64();
     }
 
-    // 3. JS 管理下载队列
+    // 3. JS 管理下载队列 (采用滑动窗口并发池，效率更高)
     const tempDir = `${FileSystem.cacheDirectory}m3u8_js_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
-    const CONCURRENCY = 4;
     const segmentFiles: string[] = [];
     let completedCount = 0;
     let isCancelled = false;
+    let activeWorkers = 0;
+    const CONCURRENCY = 4;
+    const queue = Array.from({ length: total }, (_, i) => i);
 
-    // 监听外部取消信号
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        isCancelled = true;
-        if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
-      });
-    }
+    // 监听取消
+    const abortListener = () => {
+      isCancelled = true;
+      if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
+    };
+    if (signal) signal.addEventListener('abort', abortListener);
 
-    const downloadTask = async (index: number) => {
+    const downloadTask = async (index: number, retry = 0): Promise<void> => {
       if (isCancelled) return;
-      const segFile = `${tempDir}seg_${index}.ts`;
-      const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
 
-      // 检查是否已存在 (断点续传)
-      const info = await FileSystem.getInfoAsync(segFile);
-      if (!info.exists || info.size === 0) {
-        // [FIX] 精准计算每个片段的 IV
-        let segmentIv = ivHex;
-        if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
-          const seq = mediaParsed.mediaSequence + index;
-          segmentIv = seq.toString(16).padStart(32, '0');
+      try {
+        const segFile = `${tempDir}seg_${index}.ts`;
+        const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
+
+        const info = await FileSystem.getInfoAsync(segFile);
+        if (!info.exists || info.size === 0) {
+          let segmentIv = ivHex;
+          if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
+            const seq = mediaParsed.mediaSequence + index;
+            segmentIv = seq.toString(16).padStart(32, '0');
+          }
+
+          await NativeDownloadModule.downloadSegment(
+            segmentUrls[index],
+            normalizedPath,
+            keyBase64,
+            segmentIv,
+            headers
+          );
         }
 
-        // 调用原生执行单片下载
-        await NativeDownloadModule.downloadSegment(
-          segmentUrls[index],
-          normalizedPath,
-          keyBase64,
-          segmentIv,
-          headers
-        );
-      }
+        segmentFiles[index] = normalizedPath;
+        completedCount++;
 
-      segmentFiles[index] = normalizedPath;
-      completedCount++;
-
-      if (!isCancelled) {
-        progressCb?.(completedCount / total, completedCount);
+        // 节流汇报进度
+        if (completedCount % 5 === 0 || completedCount === total) {
+          progressCb?.(completedCount / total, completedCount);
+        }
+      } catch (err) {
+        if (isCancelled) return;
+        if (retry < 2) {
+          logger.info(`[Cache] Retrying segment ${index} (${retry + 1})`);
+          return downloadTask(index, retry + 1);
+        }
+        throw err;
       }
     };
 
-    // 分组执行并发下载
-    for (let i = 0; i < total; i += CONCURRENCY) {
-      if (isCancelled) break;
-      const chunk = Array.from({ length: Math.min(CONCURRENCY, total - i) }, (_, k) => downloadTask(i + k));
-      await Promise.all(chunk);
-    }
+    // 执行并发调度
+    await new Promise<void>((resolve, reject) => {
+      const startNext = () => {
+        while (activeWorkers < CONCURRENCY && queue.length > 0 && !isCancelled) {
+          const index = queue.shift()!;
+          activeWorkers++;
+          downloadTask(index)
+            .then(() => {
+              activeWorkers--;
+              if (queue.length === 0 && activeWorkers === 0) resolve();
+              else startNext();
+            })
+            .catch(err => {
+              isCancelled = true;
+              if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
+              reject(err);
+            });
+        }
+        if (queue.length === 0 && activeWorkers === 0) resolve();
+      };
+      startNext();
+    });
 
+    if (signal) signal.removeEventListener('abort', abortListener);
     if (isCancelled) throw new Error("CANCELLED");
 
     // 4. 调用原生合并
