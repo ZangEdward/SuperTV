@@ -447,7 +447,9 @@ export class CacheService {
 
   /** 暂停 M3U8 下载任务 */
   static pauseTask(itemId: string): void {
-    CacheService.pauseM3U8Task(itemId);
+    if (NativeDownloadModule) {
+      NativeDownloadModule.stopDownload(itemId);
+    }
   }
 
   /** 继续 M3U8 下载任务 */
@@ -596,39 +598,22 @@ export class CacheService {
     }
   }
 
-  static pauseM3U8Task(itemId: string): void {
-    const task = activeM3U8Tasks.get(itemId);
-    if (task && !task.isPaused) {
-      task.isPaused = true;
-      task.pausePromise = new Promise<void>((resolve) => {
-        task.resumeResolve = resolve;
-      });
-      logger.info(`[CacheService] Paused M3U8 task: ${itemId}`);
+  static pauseTask(itemId: string): void {
+    if (NativeDownloadModule) {
+      NativeDownloadModule.stopDownload(itemId);
     }
   }
 
   static resumeM3U8Task(itemId: string): void {
-    const task = activeM3U8Tasks.get(itemId);
-    if (task && task.isPaused && task.resumeResolve) {
-      task.isPaused = false;
-      task.resumeResolve();
-      task.resumeResolve = null;
-      task.pausePromise = null;
-      logger.info(`[CacheService] Resumed M3U8 task: ${itemId}`);
-    }
+    // 逻辑在 store 中调用 downloadQueuedEpisode 重新启动
   }
 
   static cancelM3U8Task(itemId: string, tempDir?: string): void {
-    const task = activeM3U8Tasks.get(itemId);
-    if (task) {
-      task.controller.abort();
-      activeM3U8Tasks.delete(itemId);
-      // 清理临时文件（优先使用传入的 tempDir，或用任务中保存的）
-      const dirToClean = tempDir || task.tempDir;
-      if (dirToClean) {
-        CacheService.cleanupTempDir(dirToClean).catch(() => {});
-      }
-      logger.info(`[CacheService] Canceled M3U8 task: ${itemId}`);
+    if (NativeDownloadModule) {
+      NativeDownloadModule.stopDownload(itemId);
+    }
+    if (tempDir) {
+      CacheService.cleanupTempDir(tempDir).catch(() => {});
     }
   }
 

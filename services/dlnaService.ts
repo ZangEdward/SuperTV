@@ -345,14 +345,17 @@ class DLNAService {
       const xml = await res.text();
 
       const parseTime = (timeStr: string) => {
-        if (!timeStr || timeStr === 'NOT_IMPLEMENTED') return 0;
+        if (!timeStr || timeStr === 'NOT_IMPLEMENTED' || timeStr.indexOf(':') === -1) return 0;
         const parts = timeStr.split(':');
-        if (parts.length !== 3) return 0;
-        return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+        if (parts.length === 3) {
+          return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseFloat(parts[2]);
+        }
+        return 0;
       };
 
+      // 增强正则表达式以适应不同设备的 XML 格式
       const relTimeMatch = xml.match(/<RelTime>(.*?)<\/RelTime>/i);
-      const durationMatch = xml.match(/<TrackDuration>(.*?)<\/duration>/i) || xml.match(/<TrackDuration>(.*?)<\/TrackDuration>/i);
+      const durationMatch = xml.match(/<TrackDuration>(.*?)<\/TrackDuration>/i) || xml.match(/<Duration>(.*?)<\/Duration>/i);
 
       return {
         relTime: parseTime(relTimeMatch ? relTimeMatch[1] : '00:00:00'),

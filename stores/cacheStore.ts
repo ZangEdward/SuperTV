@@ -216,25 +216,38 @@ const useCacheStore = create<CacheState>((set, get) => ({
         // 传递 itemId 以支持暂停/继续，并支持断点续传 (completedCount)
         (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
         downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
-          const q = get().queue;
-          const gi = q.findIndex(g => g.groupId === groupId);
-          if (gi !== -1) {
-            const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
-            if (ei !== -1) {
-              q[gi].episodes[ei].progress = p;
-              q[gi].episodes[ei].completedCount = cc;
-              set({
-                downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
-                queue: [...q]
-              });
-              // 提高保存频率：每5个片段保存一次进度
-              if (cc % 5 === 0) CacheService.saveQueue(q);
-            }
+          // [FIX] 使用函数式更新 state，彻底解决多任务并发时的进度跳变/覆盖问题
+          set((state) => {
+            const newQueue = state.queue.map(group => {
+              if (group.groupId !== groupId) return group;
+              return {
+                ...group,
+                episodes: group.episodes.map(e => {
+                  if (e.index !== episodeIndex) return e;
+                  // 确保进度只会前进
+                  const newProgress = Math.max(e.progress || 0, p);
+                  return { ...e, progress: newProgress, completedCount: cc };
+                })
+              };
+            });
+
+            return {
+              queue: newQueue,
+              downloadProgress: {
+                ...(state.downloadProgress || {}),
+                [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
+              }
+            };
+          });
+
+          // 降低保存频率：每 20 个片段或完成时保存一次，减少 I/O 阻塞
+          if (cc % 20 === 0) {
+            CacheService.saveQueue(get().queue);
           }
         }, {
           resumeIndex: ep.completedCount || 0,
           adFilter: downloadAdFilterEnabled,
-          concurrency: 2 // 内部 M3U8 分片并发
+          concurrency: 4
         });
         delete (get() as any)._controllers[itemId];
       } else {

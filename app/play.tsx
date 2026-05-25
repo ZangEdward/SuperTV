@@ -119,66 +119,17 @@ export default function PlayScreen() {
 
   const gesture = useMemo(() => {
     const hasTap = typeof Gesture?.Tap === "function";
-    const hasPan = typeof Gesture?.Pan === "function";
-    if (!hasTap && !hasPan) return null;
+    if (!hasTap) return null;
 
     try {
-      const singleTap = Gesture.Tap()
+      // 单击手势：切换显示/隐藏控件
+      return Gesture.Tap()
         .maxDuration(250)
         .runOnJS(true)
         .onEnd(() => {
           const { showControls, setShowControls } = usePlayerStore.getState();
           setShowControls(!showControls);
         });
-
-      const doubleTap = Gesture.Tap()
-        .numberOfTaps(2)
-        .maxDuration(250)
-        .runOnJS(true)
-        .onEnd(() => {
-          const { showControls, togglePlayPause } = usePlayerStore.getState();
-          if (!showControls) {
-            togglePlayPause();
-          }
-        });
-
-      const panGesture = Gesture.Pan()
-        .minDist(20)
-        .runOnJS(true)
-        .onStart(() => {
-          const { showControls, status } = usePlayerStore.getState();
-          if (showControls) return;
-          panStartPos.current = status?.positionMillis || 0;
-        })
-        .onUpdate((e) => {
-          const { showControls, status, seekToPosition } = usePlayerStore.getState();
-          if (showControls || !status?.durationMillis) return;
-
-          const duration = status.durationMillis;
-          const target = Math.max(
-            0,
-            Math.min(panStartPos.current + e.translationX * 200, duration)
-          );
-          if (typeof seekToPosition === 'function') {
-            seekToPosition(target / duration, false);
-          }
-        })
-        .onEnd((e) => {
-          const { showControls, status, seekToPosition } = usePlayerStore.getState();
-          if (showControls || !status?.durationMillis) return;
-
-          const duration = status.durationMillis;
-          const target = Math.max(
-            0,
-            Math.min(panStartPos.current + e.translationX * 200, duration)
-          );
-          if (typeof seekToPosition === 'function') {
-            seekToPosition(target / duration, true);
-          }
-        });
-
-      const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
-      return Gesture.Simultaneous(tapGestures, panGesture).runOnJS(true);
     } catch (err) {
       console.warn("gesture init failed:", err);
       return null;

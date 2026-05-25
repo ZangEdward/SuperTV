@@ -119,27 +119,31 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (device) {
       set({ castingDevice: device, isCasting: true });
-      // 启动同步定时器
+      // 启动同步定时器，缩短为 2 秒，增强同步感
       const timer = setInterval(() => {
         get().syncCastProgress();
-      }, 3000);
+      }, 2000);
       set({ _castSyncTimer: timer });
+      // 立即触发一次同步
+      get().syncCastProgress();
     } else {
       set({ castingDevice: null, isCasting: false, _castSyncTimer: undefined });
     }
   },
 
   syncCastProgress: async () => {
-    const { castingDevice, isCasting, currentEpisodeIndex, episodes, playEpisode } = get();
-    if (!isCasting || !castingDevice) return;
+    const { castingDevice, isCasting, currentEpisodeIndex, episodes, playEpisode, isSeeking } = get();
+    if (!isCasting || !castingDevice || isSeeking) return;
 
     try {
-      const posInfo = await dlnaService.getPositionInfo(castingDevice);
-      const transportState = await dlnaService.getTransportInfo(castingDevice);
+      const [posInfo, transportState] = await Promise.all([
+        dlnaService.getPositionInfo(castingDevice),
+        dlnaService.getTransportInfo(castingDevice)
+      ]);
 
-      if (posInfo && posInfo.duration > 0) {
-        const progress = posInfo.relTime / posInfo.duration;
-        const isPlaying = transportState === 'PLAYING';
+      if (posInfo && (posInfo.duration > 0 || posInfo.relTime > 0)) {
+        const progress = posInfo.duration > 0 ? posInfo.relTime / posInfo.duration : 0;
+        const isPlaying = transportState === 'PLAYING' || transportState === 'TRANSITIONING';
 
         // 更新状态，模拟本地 AVPlaybackStatus
         set({
@@ -158,17 +162,16 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
           progressPosition: progress,
         });
 
-        // 自动换集逻辑
+        // 自动换集逻辑：剩余不足 10 秒
         if (posInfo.duration > 0 && posInfo.duration - posInfo.relTime < 10) {
-           // 剩余不足10秒且未显示过下一集提示
            if (currentEpisodeIndex < episodes.length - 1 && !get().showNextEpisodeOverlay) {
              set({ showNextEpisodeOverlay: true });
            }
         }
 
+        // 播放结束判定
         if (transportState === 'STOPPED' || (posInfo.duration > 0 && posInfo.relTime >= posInfo.duration - 1)) {
-           // 播放结束，自动下一集
-           if (currentEpisodeIndex < episodes.length - 1) {
+           if (currentEpisodeIndex < episodes.length - 1 && !get().isSeeking) {
              playEpisode(currentEpisodeIndex + 1);
            }
         }
@@ -176,18 +179,33 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         get()._savePlayRecord();
       }
     } catch (e) {
-      logger.warn('[CastSync] Failed:', e);
+      // logger.warn('[CastSync] Failed:', e);
     }
   },
 
   stopCast: async () => {
-    const { castingDevice } = get();
+    const { castingDevice, status } = get();
     if (castingDevice) {
       try {
         await dlnaService.stopCast(castingDevice);
       } catch (e) {}
     }
-    get().setCastingDevice(null);
+
+    // 清除同步定时器并重置投屏状态
+    const prevTimer = get()._castSyncTimer;
+    if (prevTimer) clearInterval(prevTimer);
+
+    // 关键：在退出投屏时，保留当前进度，以便本地播放器从同一位置继续
+    const currentPosition = status?.positionMillis || 0;
+
+    set({
+      castingDevice: null,
+      isCasting: false,
+      _castSyncTimer: undefined,
+      initialPosition: currentPosition, // 让本地播放器从投屏位置继续
+      status: null, // 重置 status 让 Video 组件重新初始化
+      isLoading: true
+    });
   },
 
   loadVideo: async ({ source, id, episodeIndex, position, title, fileUri }) => {
@@ -477,6 +495,8 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         } else {
           await dlnaService.playCast(castingDevice);
         }
+        // 关键：立即同步状态，反馈 UI
+        setTimeout(() => get().syncCastProgress(), 500);
         return;
       } catch (e) {
         logger.error("Failed to toggle cast play/pause:", e);
@@ -506,6 +526,8 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     if (isCasting && castingDevice) {
       try {
         await dlnaService.seekCast(castingDevice, newPosition / 1000);
+        // 立即同步反馈进度
+        setTimeout(() => get().syncCastProgress(), 800);
         return;
       } catch (e) {}
     }
@@ -546,6 +568,8 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         try {
           await dlnaService.seekCast(castingDevice, newPosition / 1000);
           set({ isSeeking: false });
+          // 立即同步反馈进度
+          setTimeout(() => get().syncCastProgress(), 800);
           return;
         } catch (e) {}
       }

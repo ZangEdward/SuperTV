@@ -137,11 +137,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = memo(({ showControl
 
           {/* 中间播放按钮 (仅在竖屏全屏下显示大的，防止按钮过小) */}
           {isPortrait && (
-            <Pressable onPress={(e) => e.stopPropagation()} style={styles.centerControlArea}>
+            <View style={styles.centerControlArea}>
               <TouchableOpacity onPress={() => safeCall(togglePlayPause)} style={styles.centerPlayBtnBig}>
                 {status?.isLoaded && status.isPlaying ? <Pause color="white" size={40} /> : <Play color="white" size={40} />}
               </TouchableOpacity>
-            </Pressable>
+            </View>
           )}
 
           {/* 底部控制区 */}
