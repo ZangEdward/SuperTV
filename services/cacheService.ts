@@ -635,7 +635,7 @@ export class CacheService {
 
   /**
    * 下载 M3U8 并合并为 MP4
-   * 采用原生层多线程加速方案
+   * 采用 JS 调度 + 原生原子操作的 YouTube 风格方案
    */
   static async downloadM3U8AsMp4(
     url: string,
@@ -643,94 +643,124 @@ export class CacheService {
     itemId?: string,
     signal?: AbortSignal,
     progressCb?: (progress: number, completedCount: number) => void,
-    options: { resumeIndex?: number; adFilter?: boolean; concurrency?: number } = {}
+    options: { adFilter?: boolean } = {}
   ): Promise<string> {
     const taskId = itemId || `m3u8_${Date.now()}`;
-    logger.info(`[CacheService] downloadM3U8AsMp4 START (Native) - ${url}`);
+    logger.info(`[CacheService] Starting Download (JS-Managed): ${taskId}`);
 
-    try {
-      const authHeaders = await this.getAuthHeaders();
-      const headers = { ...DEFAULT_HEADERS, ...authHeaders };
+    const authHeaders = await this.getAuthHeaders();
+    const headers = { ...DEFAULT_HEADERS, ...authHeaders };
 
-      // 1. 获取并解析 M3U8 (JS 层处理解析，灵活且不卡顿)
-      const fetchText = async (uri: string): Promise<string> => {
-        const res = await RNFetchBlob.fetch('GET', uri, headers);
-        return await res.text();
-      };
+    // 1. 获取并解析 M3U8
+    const fetchText = async (uri: string): Promise<string> => {
+      const res = await RNFetchBlob.fetch('GET', uri, headers);
+      return await res.text();
+    };
 
-      let playlistText = await fetchText(url);
-      let parsed = CacheService.parseM3U8Playlist(playlistText);
+    let playlistText = await fetchText(url);
+    let parsed = CacheService.parseM3U8Playlist(playlistText);
 
-      let mediaPlaylistUrl = url;
-      let mediaParsed = parsed;
-      if (parsed.isMaster) {
-        const bestVariant = CacheService.selectBestVariant(parsed.variants);
-        mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
-        const mediaText = await fetchText(mediaPlaylistUrl);
-        const finalMediaText = options.adFilter ? filterM3U8Ads(mediaText) : mediaText;
-        mediaParsed = CacheService.parseM3U8Playlist(finalMediaText);
-      } else if (options.adFilter) {
-        mediaParsed = CacheService.parseM3U8Playlist(filterM3U8Ads(playlistText));
-      }
-
-      const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
-      if (segmentUrls.length === 0) throw new Error("未找到片段");
-
-      // 2. 准备加密信息
-      let keyBase64 = "";
-      let ivHex = mediaParsed.encryption?.iv || "";
-
-      // HLS 规范：如果 IV 缺失，则使用 Media Sequence 动态生成
-      if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
-        ivHex = `SEQ:${mediaParsed.mediaSequence}`;
-      }
-
-      if (mediaParsed.encryption?.method === 'AES-128') {
-        const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
-        const keyRes = await RNFetchBlob.fetch('GET', keyUrl, headers);
-        keyBase64 = await keyRes.base64();
-      }
-
-      // 3. 调用原生模块开始全速下载
-      if (NativeDownloadModule && Platform.OS === 'android') {
-        // 注册进度监听
-        const progressSub = DeviceEventEmitter.addListener('NativeDownloadProgress', (event) => {
-          if (event.taskId === taskId) {
-            progressCb?.(event.progress, event.completedCount);
-          }
-        });
-
-        // 监听取消信号
-        if (signal) {
-          signal.addEventListener('abort', () => {
-            NativeDownloadModule.stopDownload(taskId);
-          });
-        }
-
-        try {
-          // 修正路径
-          let normalizedDestPath = destinationPath;
-          if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
-
-          await NativeDownloadModule.startM3U8Download(
-            taskId,
-            segmentUrls,
-            normalizedDestPath,
-            keyBase64,
-            ivHex,
-            headers
-          );
-          return destinationPath;
-        } finally {
-          progressSub.remove();
-        }
-      } else {
-        throw new Error("原生下载模块不可用");
-      }
-    } catch (err) {
-      logger.error("Native download failed, falling back to legacy", err);
-      throw err;
+    let mediaPlaylistUrl = url;
+    let mediaParsed = parsed;
+    if (parsed.isMaster) {
+      const bestVariant = CacheService.selectBestVariant(parsed.variants);
+      mediaPlaylistUrl = CacheService.resolveUrl(bestVariant.uri, url);
+      const mediaText = await fetchText(mediaPlaylistUrl);
+      const finalMediaText = options.adFilter ? filterM3U8Ads(mediaText) : mediaText;
+      mediaParsed = CacheService.parseM3U8Playlist(finalMediaText);
+    } else if (options.adFilter) {
+      mediaParsed = CacheService.parseM3U8Playlist(filterM3U8Ads(playlistText));
     }
+
+    const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
+    const total = segmentUrls.length;
+    if (total === 0) throw new Error("未找到片段");
+
+    // 2. 准备加密信息
+    let keyBase64 = "";
+    let ivHex = mediaParsed.encryption?.iv || "";
+
+    // HLS 规范：如果 IV 缺失，则使用 Media Sequence 动态生成
+    if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
+      ivHex = `SEQ:${mediaParsed.mediaSequence}`;
+    }
+
+    if (mediaParsed.encryption?.method === 'AES-128') {
+      const keyUrl = CacheService.resolveUrl(mediaParsed.encryption.uri, mediaPlaylistUrl);
+      const keyRes = await RNFetchBlob.fetch('GET', keyUrl, headers);
+      keyBase64 = await keyRes.base64();
+    }
+
+    // 3. JS 管理下载队列
+    const tempDir = `${FileSystem.cacheDirectory}m3u8_js_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
+    await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
+
+    const CONCURRENCY = 4;
+    const segmentFiles: string[] = [];
+    let completedCount = 0;
+    let isCancelled = false;
+
+    // 监听外部取消信号
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        isCancelled = true;
+        if (NativeDownloadModule) NativeDownloadModule.stopAllCalls();
+      });
+    }
+
+    const downloadTask = async (index: number) => {
+      if (isCancelled) return;
+      const segFile = `${tempDir}seg_${index}.ts`;
+      const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
+
+      // 检查是否已存在 (断点续传)
+      const info = await FileSystem.getInfoAsync(segFile);
+      if (!info.exists || info.size === 0) {
+        // [FIX] 精准计算每个片段的 IV
+        let segmentIv = ivHex;
+        if (mediaParsed.encryption?.method === 'AES-128' && !ivHex) {
+          const seq = mediaParsed.mediaSequence + index;
+          segmentIv = seq.toString(16).padStart(32, '0');
+        }
+
+        // 调用原生执行单片下载
+        await NativeDownloadModule.downloadSegment(
+          segmentUrls[index],
+          normalizedPath,
+          keyBase64,
+          segmentIv,
+          headers
+        );
+      }
+
+      segmentFiles[index] = normalizedPath;
+      completedCount++;
+
+      if (!isCancelled) {
+        progressCb?.(completedCount / total, completedCount);
+      }
+    };
+
+    // 分组执行并发下载
+    for (let i = 0; i < total; i += CONCURRENCY) {
+      if (isCancelled) break;
+      const chunk = Array.from({ length: Math.min(CONCURRENCY, total - i) }, (_, k) => downloadTask(i + k));
+      await Promise.all(chunk);
+    }
+
+    if (isCancelled) throw new Error("CANCELLED");
+
+    // 4. 调用原生合并
+    logger.info(`[CacheService] Merging ${total} segments...`);
+    let normalizedDestPath = destinationPath;
+    if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
+
+    await NativeDownloadModule.mergeSegments(segmentFiles.filter(p => !!p), normalizedDestPath);
+
+    // 清理
+    await FileSystem.deleteAsync(tempDir, { idempotent: true });
+
+    return destinationPath;
   }
 
   static async saveToPublicStorage(fileUri: string, albumName: string = "SuperTV"): Promise<string | null> {

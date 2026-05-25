@@ -1,9 +1,6 @@
 package com.supertv.app;
 
 import android.util.Base64;
-import android.util.Log;
-
-import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -11,8 +8,6 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
-import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -21,13 +16,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -40,15 +29,11 @@ import okhttp3.Response;
 
 public class NativeDownloadModule extends ReactContextBaseJavaModule {
     public static final String NAME = "NativeDownloadModule";
-    private static final String TAG = "NativeDownload";
-    
-    private final ExecutorService downloadPool = Executors.newFixedThreadPool(4);
-    private final Map<String, AtomicBoolean> activeTasks = new ConcurrentHashMap<>();
-    private final Map<String, List<Call>> activeCalls = new ConcurrentHashMap<>();
+    private final List<Call> activeCalls = Collections.synchronizedList(new ArrayList<>());
     
     private final OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
             .build();
 
     public NativeDownloadModule(ReactApplicationContext reactContext) {
@@ -61,190 +46,91 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void startM3U8Download(
-            final String taskId,
-            final ReadableArray segmentUrls,
-            final String destPath,
-            final String keyBase64,
-            final String ivHex,
-            final ReadableMap headers,
-            final Promise promise
+    public void downloadSegment(
+            String url,
+            String destPath,
+            String keyBase64,
+            String ivHex,
+            ReadableMap headers,
+            Promise promise
     ) {
-        if (activeTasks.containsKey(taskId)) {
-            promise.reject("ALREADY_RUNNING", "Task is already active: " + taskId);
-            return;
-        }
-
-        final AtomicBoolean isRunning = new AtomicBoolean(true);
-        activeTasks.put(taskId, isRunning);
-        activeCalls.put(taskId, Collections.synchronizedList(new ArrayList<>()));
-
         new Thread(() -> {
-            File tempDir = new File(getReactApplicationContext().getCacheDir(), "m3u8_native_" + taskId.replaceAll("[^a-zA-Z0-9]", "_"));
-            
-            try {
-                if (!tempDir.exists()) tempDir.mkdirs();
+            Request.Builder builder = new Request.Builder().url(url);
+            if (headers != null) {
+                ReadableMapKeySetIterator it = headers.keySetIterator();
+                while (it.hasNextKey()) {
+                    String key = it.nextKey();
+                    builder.addHeader(key, headers.getString(key));
+                }
+            }
+
+            Call call = client.newCall(builder.build());
+            activeCalls.add(call);
+
+            try (Response response = call.execute()) {
+                if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
                 
-                final int total = segmentUrls.size();
-                final String[] segmentFiles = new String[total];
-                final AtomicInteger completed = new AtomicInteger(0);
-                final AtomicBoolean hasError = new AtomicBoolean(false);
-                final String[] errorMessage = {""};
-
-                // 2. 线程池分配任务
-                for (int i = 0; i < total; i++) {
-                    final int index = i;
-                    final String url = segmentUrls.getString(index);
-                    
-                    downloadPool.execute(() -> {
-                        if (!isRunning.get() || hasError.get()) return;
-                        
-                        try {
-                            String segmentFileName = "seg_" + index + ".ts";
-                            File segFile = new File(tempDir, segmentFileName);
-                            
-                            // [RESUME] 检查本地是否存在
-                            boolean needsDownload = !segFile.exists() || segFile.length() == 0;
-                            
-                            if (needsDownload) {
-                                int retry = 0;
-                                while (retry < 3 && isRunning.get()) {
-                                    try {
-                                        downloadFile(taskId, url, segFile, headers);
-                                        if (segFile.length() > 0) break;
-                                        throw new IOException("Empty file");
-                                    } catch (Exception e) {
-                                        retry++;
-                                        if (retry >= 3 || !isRunning.get()) throw e;
-                                        Thread.sleep(800);
-                                    }
-                                }
-                                
-                                // 仅对新下载的片段执行解密
-                                if (isRunning.get() && keyBase64 != null && !keyBase64.isEmpty() && segFile.length() % 16 == 0) {
-                                    decryptInPlace(segFile, keyBase64, ivHex, index);
-                                }
-                            }
-                            
-                            segmentFiles[index] = segFile.getAbsolutePath();
-                            int done = completed.incrementAndGet();
-                            
-                            // 节流发送进度
-                            if (done % 5 == 0 || done == total) {
-                                sendProgress(taskId, done, total);
-                            }
-                        } catch (Exception e) {
-                            if (isRunning.get()) {
-                                Log.e(TAG, "Segment " + index + " failed: " + e.getMessage());
-                                hasError.set(true);
-                                errorMessage[0] = e.getMessage();
-                            }
-                        }
-                    });
-                }
-
-                // 3. 等待所有线程完成
-                while (completed.get() < total && !hasError.get() && isRunning.get()) {
-                    Thread.sleep(300);
-                }
-
-                if (!isRunning.get()) {
-                    cleanTask(taskId);
-                    promise.reject("CANCELLED", "Stopped");
-                    return;
-                }
-
-                if (hasError.get()) {
-                    cleanTask(taskId);
-                    promise.reject("DOWNLOAD_FAILED", errorMessage[0]);
-                    return;
-                }
-
-                // 4. 合并分片
                 File destFile = new File(destPath);
-                if (destFile.exists()) destFile.delete();
                 destFile.getParentFile().mkdirs();
-                
-                try (FileOutputStream fos = new FileOutputStream(destFile)) {
-                    for (int i = 0; i < total; i++) {
-                        if (segmentFiles[i] != null) {
-                            File f = new File(segmentFiles[i]);
-                            appendToFile(f, fos);
-                            f.delete(); 
-                        }
-                    }
+
+                try (InputStream is = response.body().byteStream();
+                     FileOutputStream fos = new FileOutputStream(destFile)) {
+                    byte[] buffer = new byte[16384];
+                    int read;
+                    while ((read = is.read(buffer)) != -1) fos.write(buffer, 0, read);
                 }
 
-                cleanTask(taskId);
-                tempDir.delete();
+                // 如果有加密，顺手在原生层解密
+                if (keyBase64 != null && !keyBase64.isEmpty()) {
+                    decryptInPlace(destFile, keyBase64, ivHex);
+                }
+
+                activeCalls.remove(call);
                 promise.resolve(destPath);
-                
             } catch (Exception e) {
-                cleanTask(taskId);
-                promise.reject("DOWNLOAD_ERROR", e.getMessage());
+                activeCalls.remove(call);
+                promise.reject("DOWNLOAD_FAILED", e.getMessage());
             }
         }).start();
     }
 
     @ReactMethod
-    public void stopDownload(String taskId) {
-        AtomicBoolean isRunning = activeTasks.remove(taskId);
-        if (isRunning != null) {
-            isRunning.set(false);
-        }
-        
-        // 关键修复：取消该任务的所有活跃请求
-        List<Call> calls = activeCalls.remove(taskId);
-        if (calls != null) {
-            for (Call call : calls) {
+    public void mergeSegments(ReadableArray filePaths, String destPath, Promise promise) {
+        new Thread(() -> {
+            try {
+                File destFile = new File(destPath);
+                destFile.getParentFile().mkdirs();
+                if (destFile.exists()) destFile.delete();
+
+                try (FileOutputStream fos = new FileOutputStream(destFile)) {
+                    for (int i = 0; i < filePaths.size(); i++) {
+                        File src = new File(filePaths.getString(i));
+                        if (src.exists()) {
+                            appendToFile(src, fos);
+                            src.delete(); // 合并后立即删除分片，释放空间
+                        }
+                    }
+                }
+                promise.resolve(destPath);
+            } catch (Exception e) {
+                promise.reject("MERGE_FAILED", e.getMessage());
+            }
+        }).start();
+    }
+
+    @ReactMethod
+    public void stopAllCalls() {
+        synchronized (activeCalls) {
+            for (Call call : activeCalls) {
                 try { call.cancel(); } catch (Exception ignored) {}
             }
+            activeCalls.clear();
         }
     }
 
-    private void cleanTask(String taskId) {
-        activeTasks.remove(taskId);
-        activeCalls.remove(taskId);
-    }
-
-    private void downloadFile(String taskId, String url, File dest, ReadableMap headers) throws IOException {
-        Request.Builder builder = new Request.Builder().url(url);
-        if (headers != null) {
-            ReadableMapKeySetIterator it = headers.keySetIterator();
-            while (it.hasNextKey()) {
-                String key = it.nextKey();
-                builder.addHeader(key, headers.getString(key));
-            }
-        }
-
-        Call call = client.newCall(builder.build());
-        List<Call> taskCalls = activeCalls.get(taskId);
-        if (taskCalls != null) taskCalls.add(call);
-
-        try (Response response = call.execute()) {
-            if (taskCalls != null) taskCalls.remove(call);
-            if (!response.isSuccessful()) throw new IOException("HTTP " + response.code());
-            try (InputStream is = response.body().byteStream();
-                 FileOutputStream fos = new FileOutputStream(dest)) {
-                byte[] buffer = new byte[16384];
-                int read;
-                while ((read = is.read(buffer)) != -1) fos.write(buffer, 0, read);
-                fos.flush();
-            }
-        } catch (IOException e) {
-            if (taskCalls != null) taskCalls.remove(call);
-            throw e;
-        }
-    }
-
-    private void decryptInPlace(File file, String keyBase64, String ivHex, int index) throws Exception {
+    private void decryptInPlace(File file, String keyBase64, String ivHex) throws Exception {
         byte[] key = Base64.decode(keyBase64, Base64.DEFAULT);
-        String finalIvHex = ivHex;
-        if (ivHex != null && ivHex.startsWith("SEQ:")) {
-            int seq = Integer.parseInt(ivHex.substring(4)) + index;
-            finalIvHex = String.format("%032x", seq);
-        }
-        byte[] iv = hexStringToByteArray(finalIvHex != null ? finalIvHex.replace("0x", "") : "");
+        byte[] iv = hexStringToByteArray(ivHex != null ? ivHex.replace("0x", "") : "");
         if (iv.length < 16) {
             byte[] padded = new byte[16];
             System.arraycopy(iv, 0, padded, 16 - iv.length, iv.length);
@@ -273,18 +159,6 @@ public class NativeDownloadModule extends ReactContextBaseJavaModule {
             int read;
             while ((read = fis.read(buffer)) != -1) dest.write(buffer, 0, read);
         }
-    }
-
-    private void sendProgress(String taskId, int current, int total) {
-        WritableMap params = Arguments.createMap();
-        params.putString("taskId", taskId);
-        params.putDouble("progress", (double) current / total);
-        params.putInt("completedCount", current);
-        params.putInt("totalSegments", total);
-
-        getReactApplicationContext()
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit("NativeDownloadProgress", params);
     }
 
     private byte[] hexStringToByteArray(String s) {
