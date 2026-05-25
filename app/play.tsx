@@ -47,6 +47,7 @@ export default function PlayScreen() {
   const insets = useSafeAreaInsets();
   const { deviceType, screenWidth } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
+  const isTV = deviceType === "tv";
   const params = useLocalSearchParams<{
     episodeIndex: string;
     position?: string;
@@ -66,6 +67,7 @@ export default function PlayScreen() {
   const setDetail = useDetailStore(state => state.setDetail);
   const detailError = useDetailStore(state => state.error);
   const detailLoading = useDetailStore(state => state.loading);
+  const optimizeSources = useDetailStore(state => state.optimizeSources);
 
   const status = usePlayerStore(state => state.status);
   const isLoading = usePlayerStore(state => state.isLoading);

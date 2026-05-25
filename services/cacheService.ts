@@ -372,13 +372,6 @@ export class CacheService {
     const activeTasksCount = { val: 0 };
     const currentCalls = new Set<any>();
 
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        isCancelled = true;
-        currentCalls.forEach(c => c.cancel?.());
-      });
-    }
-
     const processSegment = async (index: number) => {
       if (isCancelled) return;
       const segFile = `${tempDir}seg_${index}.ts`;
@@ -414,7 +407,24 @@ export class CacheService {
       }
     };
 
+    let rejectPromise: ((reason?: any) => void) | null = null;
+
+    if (signal) {
+      // 移除旧的监听器，添加新的：abort 时立即拒绝 Promise，防止后续合并
+      signal.addEventListener('abort', () => {
+        isCancelled = true;
+        currentCalls.forEach(c => c.cancel?.());
+        currentCalls.clear();
+        if (rejectPromise) {
+          rejectPromise(new Error('CANCELLED'));
+          rejectPromise = null;
+        }
+      });
+    }
+
     await new Promise<void>((resolve, reject) => {
+      rejectPromise = reject;
+
       const fillPool = () => {
         while (activeTasksCount.val < CONCURRENCY && queue.length > 0 && !isCancelled) {
           const idx = queue.shift()!;
@@ -422,16 +432,23 @@ export class CacheService {
           processSegment(idx)
             .then(() => {
               activeTasksCount.val--;
-              if (queue.length === 0 && activeTasksCount.val === 0) resolve();
+              if (queue.length === 0 && activeTasksCount.val === 0) {
+                rejectPromise = null;
+                resolve();
+              }
               else fillPool();
             })
             .catch(err => {
               isCancelled = true;
               currentCalls.forEach(c => c.cancel?.());
+              rejectPromise = null;
               reject(err);
             });
         }
-        if (queue.length === 0 && activeTasksCount.val === 0) resolve();
+        if (queue.length === 0 && activeTasksCount.val === 0) {
+          rejectPromise = null;
+          resolve();
+        }
       };
       fillPool();
     });

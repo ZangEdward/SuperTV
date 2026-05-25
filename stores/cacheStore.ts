@@ -1,4 +1,4 @@
-import { create } from "zustand";
+﻿import { create } from "zustand";
 import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from "react-native-toast-message";
@@ -239,7 +239,11 @@ const useCacheStore = create<CacheState>((set, get) => ({
             itemId,
             abortController.signal,
             (p, cc) => {
-              // [FIX] 函数式更新，且尊重当前状态，防止进度更新将“暂停”状态改回“下载中”
+              // 实时检查当前任务是否已被暂停或取消，若是则忽略本次进度更新
+              const currentState = get();
+              const group = currentState.queue.find(g => g.groupId === groupId);
+              const ep = group?.episodes.find(e => e.index === episodeIndex);
+              if (!ep || ep.status === 'paused' || ep.status === 'cancelled') return;
               set((state) => {
                 const newQueue = state.queue.map(group => {
                   if (group.groupId !== groupId) return group;
@@ -248,13 +252,8 @@ const useCacheStore = create<CacheState>((set, get) => ({
                     episodes: group.episodes.map(e => {
                       if (e.index !== episodeIndex) return e;
 
-                      const currentStatus = e.status;
-                      const nextStatus = (currentStatus === 'paused' || currentStatus === 'cancelled')
-                        ? currentStatus
-                        : 'downloading';
-
                       const newProgress = Math.max(e.progress || 0, p);
-                      return { ...e, progress: newProgress, completedCount: cc, status: nextStatus };
+                      return { ...e, progress: newProgress, completedCount: cc };
                     })
                   };
                 });
@@ -387,11 +386,15 @@ const useCacheStore = create<CacheState>((set, get) => ({
     if (!ep || ep.status !== 'downloading') return;
     const itemId = `${group.source}_${group.id}_${ep.index}`;
 
-    if (ep.url.toLowerCase().includes('.m3u8')) {
-      // 1. 发送原生停止指令
-      CacheService.pauseTask(itemId);
+    // [修复] 先标记暂停状态（同步），确保进度回调能读到暂停状态
+    ep.wasDownloading = true;
+    ep.status = 'paused';
+    set((s) => ({ activeCount: Math.max(0, s.activeCount - 1), queue: [...get().queue] }));
+    CacheService.saveQueue(get().queue);
 
-      // 2. [关键] 同时触发 JS 层的信号中断，强行终止 Promise 阻塞
+    // 再触发物理中止
+    if (ep.url.toLowerCase().includes('.m3u8')) {
+      // 触发 JS 层的信号中断，强行终止 Promise 阻塞
       const controllers = (get() as any)._controllers || {};
       const ctrl = controllers[itemId];
       if (ctrl && typeof ctrl.abort === 'function') {
@@ -410,12 +413,6 @@ const useCacheStore = create<CacheState>((set, get) => ({
         }
       }
     }
-
-    // 保存当前已完成的进度（断点续传用），标记曾处于下载中状态
-        ep.wasDownloading = true;
-        ep.status = 'paused';
-        set((s) => ({ activeCount: Math.max(0, s.activeCount - 1), queue: [...get().queue] }));
-        CacheService.saveQueue(get().queue);
       },
 
   /** 继续下载任务 */
@@ -773,7 +770,6 @@ const useCacheStore = create<CacheState>((set, get) => ({
     for (const item of wasDownloadingItems) {
       await get().resumeQueuedEpisode(item.groupId, item.index);
     }
-
     // 调度任务（含刚刚恢复的 pending 任务）
     (get() as any).processQueue?.();
   },
