@@ -223,54 +223,62 @@ const useCacheStore = create<CacheState>((set, get) => ({
         // 获取全局下载广告过滤设置
         const { downloadAdFilterEnabled } = useSettingsStore.getState();
 
-        // 传递 itemId 以支持暂停/继续，并支持断点续传 (completedCount)
-        (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: 'm3u8' };
+        // [关键修复]：创建 AbortController 并存入 _controllers 映射，实现物理级暂停
+        const abortController = new AbortController();
+        (get() as any)._controllers = {
+            ...(get() as any)._controllers || {},
+            [itemId]: abortController
+        };
 
         try {
-          downloadUri = await CacheService.downloadM3U8AsMp4(ep.url, fileUri, itemId, undefined, (p, cc) => {
-            // [FIX] 使用函数式更新 state，彻底解决多任务并发时的进度跳变/覆盖问题
-            set((state) => {
-              const newQueue = state.queue.map(group => {
-                if (group.groupId !== groupId) return group;
+          downloadUri = await CacheService.downloadM3U8AsMp4(
+            ep.url,
+            fileUri,
+            itemId,
+            abortController.signal,
+            (p, cc) => {
+              // [FIX] 函数式更新，解决并发跳变
+              set((state) => {
+                const newQueue = state.queue.map(group => {
+                  if (group.groupId !== groupId) return group;
+                  return {
+                    ...group,
+                    episodes: group.episodes.map(e => {
+                      if (e.index !== episodeIndex) return e;
+                      const newProgress = Math.max(e.progress || 0, p);
+                      return { ...e, progress: newProgress, completedCount: cc, status: 'downloading' };
+                    })
+                  };
+                });
+
                 return {
-                  ...group,
-                  episodes: group.episodes.map(e => {
-                    if (e.index !== episodeIndex) return e;
-                    // 确保进度只会前进
-                    const newProgress = Math.max(e.progress || 0, p);
-                    return { ...e, progress: newProgress, completedCount: cc, status: 'downloading' };
-                  })
+                  queue: newQueue,
+                  downloadProgress: {
+                    ...(state.downloadProgress || {}),
+                    [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
+                  }
                 };
               });
 
-              return {
-                queue: newQueue,
-                downloadProgress: {
-                  ...(state.downloadProgress || {}),
-                  [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
-                }
-              };
-            });
-
-            // 降低保存频率：每 20 个片段或完成时保存一次，减少 I/O 阻塞
-            if (cc % 20 === 0) {
-              CacheService.saveQueue(get().queue);
+              if (cc % 20 === 0) CacheService.saveQueue(get().queue);
+            }, {
+              adFilter: downloadAdFilterEnabled
             }
-          }, {
-            resumeIndex: ep.completedCount || 0,
-            adFilter: downloadAdFilterEnabled,
-            concurrency: 4
-          });
-        } catch (m3u8Err: any) {
-          // 如果原生层反馈任务已在运行，我们静默忽略，不作为失败处理，让现有任务继续
-          if (m3u8Err?.message?.includes("ALREADY_RUNNING")) {
-            logger.info("Task already running natively, skipping duplicate start.");
-            return;
-          }
-          throw m3u8Err;
+          );
+        } catch (err: any) {
+           // 处理暂停/取消的正常退出
+           if (err.message === "PAUSED" || err.message === "CANCELLED") {
+             logger.info(`Task ${itemId} stopped gracefully.`);
+             return;
+           }
+           if (err?.message?.includes("ALREADY_RUNNING")) {
+              logger.info("Task already running natively, skipping duplicate start.");
+              return;
+           }
+           throw err;
+        } finally {
+          delete (get() as any)._controllers[itemId];
         }
-
-        delete (get() as any)._controllers[itemId];
       } else {
         // create DownloadResumable here so we can cancel later
         const resumable = FileSystem.createDownloadResumable(
@@ -371,8 +379,15 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const itemId = `${group.source}_${group.id}_${ep.index}`;
 
     if (ep.url.toLowerCase().includes('.m3u8')) {
-      // M3U8 下载 -> 使用 CacheService 暂停机制
+      // 1. 发送原生停止指令
       CacheService.pauseTask(itemId);
+
+      // 2. [关键] 同时触发 JS 层的信号中断，强行终止 Promise 阻塞
+      const controllers = (get() as any)._controllers || {};
+      const ctrl = controllers[itemId];
+      if (ctrl && typeof ctrl.abort === 'function') {
+        ctrl.abort();
+      }
     } else {
       // MP4 下载 -> 使用 expo-file-system DownloadResumable.pauseAsync
       const controllers = (get() as any)._controllers || {};
