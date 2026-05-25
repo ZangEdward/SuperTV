@@ -16,7 +16,7 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 必须，否则无法获取 diff
+          fetch-depth: 0
 
       - name: 🔢 Get version
         id: get_version
@@ -55,7 +55,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}
-          name: "SuperTV 更新 v${{ env.VERSION }} (${ { env.DATE_CODE } })"
+          name: "SuperTV 更新 v${{ env.VERSION }} (${{ env.DATE_CODE }})"
           files: output/changes-v${{ env.VERSION }}-${{ env.DATE_CODE }}.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
