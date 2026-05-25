@@ -45,6 +45,13 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: 📅 Get date code
+        id: date_code
+        run: |
+          DATE_CODE=$(date +'%Y%m%d')
+          echo "DATE_CODE=$DATE_CODE" >> $GITHUB_ENV
+          echo "DATE_CODE=$DATE_CODE" >> $GITHUB_OUTPUT
+
       - name: 🛠️ Expo Prebuild
         run: npx expo prebuild --platform android --no-install --clean
         env:
@@ -59,14 +66,15 @@ jobs:
       - name: 📁 Prepare Artifact
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/debug/app-debug.apk output/SuperTV-v${{ env.VERSION }}.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
 
       - name: 🚀 Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VERSION }}
-          name: "SuperTV v${{ env.VERSION }}"
-          files: output/SuperTV-v${{ env.VERSION }}.apk
+          tag_name: SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}
+          name: "SuperTV v${{ env.VERSION }} (${ { env.DATE_CODE } })"
+          files: output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
           draft: false
           prerelease: false
         env:
@@ -75,5 +83,5 @@ jobs:
       - name: 📁 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SuperTV-v${{ env.VERSION }}
-          path: output/SuperTV-v${{ env.VERSION }}.apk
+          name: SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}
+          path: output/SuperTV-v${{ env.VERSION }}-${{ env.DATE_CODE }}.apk
