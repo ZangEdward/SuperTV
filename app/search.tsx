@@ -125,26 +125,34 @@ export default function SearchScreen() {
   const aggregatedResults = useMemo(() => {
     if (!useAggregatedView) return filteredResults;
 
-    const groups = new Map<string, SearchResult & { sourceCount: number }>();
+    const groups = new Map<string, SearchResult & { sourceCount: number; sources: string[] }>();
     filteredResults.forEach(r => {
-      // [智能聚合 Key]：去除清晰度标签、剔除所有空格，确保“火影 忍者”与“火影忍者”聚合
+      // 仅按剧名聚合，不同年份、不同来源的同一部剧合并为一条
       const titleClean = r.title
         .replace(/\[.*?\]|【.*?】|高清版|蓝光版/g, '')
-        .replace(/\s+/g, '') // 物理移除标题中所有空格
+        .replace(/\s+/g, '')
         .trim()
         .toLowerCase();
-      const key = `${titleClean}_${r.year || '0'}`;
 
-      if (!groups.has(key)) {
-        groups.set(key, { ...r, sourceCount: 1 });
+      if (!groups.has(titleClean)) {
+        groups.set(titleClean, { ...r, sourceCount: 1, sources: [r.source] });
       } else {
-        const existing = groups.get(key)!;
-        existing.sourceCount += 1;
+        const existing = groups.get(titleClean)!;
+        // 统计不同播放源数量
+        if (!existing.sources.includes(r.source)) {
+          existing.sources.push(r.source);
+        }
+        existing.sourceCount = existing.sources.length;
         // 保留信息更全（集数更多）的版本作为展示封面
         if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
-           const count = existing.sourceCount;
+           const sources = existing.sources;
            Object.assign(existing, r);
-           existing.sourceCount = count;
+           existing.sources = sources;
+           existing.sourceCount = sources.length;
+        }
+        // 尽量保留年份信息
+        if (r.year && r.year !== 'unknown' && (!existing.year || existing.year === 'unknown')) {
+          existing.year = r.year;
         }
       }
     });
@@ -270,13 +278,20 @@ export default function SearchScreen() {
 
           {aggregatedResults.length === 0 && searchProgress.total > 0 && !searchProgress.isComplete ? (
             <View style={dynamicStyles.centerProgressWrapper}>
-               <ThemedText style={dynamicStyles.searchingText}>全网激进检索中...</ThemedText>
+               <ThemedText style={dynamicStyles.searchingText}>
+                 {searchProgress.phase === 'fuzzy' ? '模糊搜索中...' : '精准搜索中...'}
+               </ThemedText>
                <View style={dynamicStyles.mainProgressBarBg}>
                  <View style={[dynamicStyles.mainProgressBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
                </View>
                <ThemedText style={dynamicStyles.progressPercentage}>
                  {Math.round((searchProgress.completed / searchProgress.total) * 100)}%
                </ThemedText>
+               {searchProgress.currentSource && (
+                 <ThemedText style={{ color: '#555', marginTop: 8, fontSize: 12 }}>
+                   正在搜索: {searchProgress.currentSource}
+                 </ThemedText>
+               )}
             </View>
           ) : aggregatedResults.length === 0 && searchProgress.isComplete ? (
             <View style={[commonStyles.center, { flex: 1, paddingBottom: 100 }]}>
@@ -286,8 +301,13 @@ export default function SearchScreen() {
           ) : (
             <>
               {searchProgress.total > 0 && !searchProgress.isComplete && (
-                <View style={dynamicStyles.loadingBarBg}>
-                  <View style={[dynamicStyles.loadingBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
+                <View>
+                  <View style={dynamicStyles.loadingBarBg}>
+                    <View style={[dynamicStyles.loadingBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
+                  </View>
+                  <ThemedText style={{ color: '#555', fontSize: 11, textAlign: 'center', marginBottom: 4 }}>
+                    {searchProgress.phase === 'fuzzy' ? '模糊搜索中' : '精准搜索中'} · {searchProgress.completed}/{searchProgress.total}
+                  </ThemedText>
                 </View>
               )}
               <CustomScrollView

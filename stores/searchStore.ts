@@ -6,13 +6,69 @@ import Logger from "@/utils/Logger";
 const logger = Logger.withTag("SearchStore");
 
 // [内存级详情池]：用于实现搜索到详情的秒开过渡
+// 存储多种 key 变体，提高详情页命中率
 export const SearchDetailPool = new Map<string, SearchResult>();
+
+/**
+ * 生成搜索词的多种变体，用于模糊匹配
+ * 例如 "海贼王第1季" -> ["海贼王第1季", "海贼王", "海贼王第1季"]
+ */
+export function generateFuzzyTerms(term: string): string[] {
+  const variants: string[] = [];
+
+  // 1. 原始精简版：去空格和常见符号
+  const cleaned = term
+    .replace(/[\s　+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '')
+    .trim();
+  if (cleaned) variants.push(cleaned);
+
+  // 2. 去除季/集后缀：第X季、第X部、第X期
+  const seasonRemoved = cleaned.replace(/第[一二三四五六七八九十\d]+[季部期集].*$/g, '');
+  if (seasonRemoved && seasonRemoved !== cleaned) variants.push(seasonRemoved);
+
+  // 3. 取前N个字符作为核心词（去除可能的长尾描述）
+  if (cleaned.length > 6) {
+    const core = cleaned.substring(0, Math.min(cleaned.length, Math.max(4, Math.floor(cleaned.length * 0.7))));
+    if (core && !variants.includes(core)) variants.push(core);
+  }
+
+  // 4. 去除常见前后缀
+  const stripped = cleaned
+    .replace(/^(?:全集|完整版|高清|国语|日语|英语|中文字幕)/g, '')
+    .replace(/(?:全集|完整版|高清|国语|日语|英语|中文字幕)$/g, '');
+  if (stripped && stripped !== cleaned && !variants.includes(stripped)) variants.push(stripped);
+
+  return variants;
+}
+
+/**
+ * 向详情池填充结果，生成多个 key 变体以提高详情页命中率
+ */
+function populateDetailPool(results: SearchResult[]) {
+  results.forEach(r => {
+    const coreTitle = r.title.trim().toLowerCase();
+    // 标准 key
+    SearchDetailPool.set(`${coreTitle}_${r.source}`, r);
+    // 无符号 key
+    const noSymbol = coreTitle.replace(/[\s+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '');
+    if (noSymbol !== coreTitle) {
+      SearchDetailPool.set(`${noSymbol}_${r.source}`, r);
+    }
+    // 核心词 key（前6字）
+    const core = coreTitle.substring(0, 6);
+    if (core.length >= 3) {
+      SearchDetailPool.set(`${core}_${r.source}`, r);
+    }
+  });
+}
 
 export interface SearchProgress {
   total: number;
   completed: number;
   currentSource: string | null;
   isComplete: boolean;
+  /** 当前搜索阶段: 'precise' | 'fuzzy' */
+  phase?: 'precise' | 'fuzzy';
 }
 
 interface SearchState {
@@ -63,12 +119,25 @@ const useSearchStore = create<SearchState>((set, get) => ({
     }
   },
 
+  /**
+   * 两阶段搜索：精准搜索 → 模糊搜索
+   * Phase 1: 用原始精简词搜索（去除符号）
+   * Phase 2: 若结果不足，用模糊词搜索（提取核心词）
+   */
   search: async (searchText) => {
-    let term = searchText || get().keyword;
-    if (!term.trim()) return;
+    let rawTerm = searchText || get().keyword;
+    if (!rawTerm.trim()) return;
 
-    // 搜索时去除空格，提高源匹配成功率
-    term = term.replace(/\s+/g, '');
+    // Step 1: 清理符号，生成精确词
+    const preciseTerm = rawTerm
+      .replace(/[\s　+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '')
+      .trim();
+
+    // Step 2: 生成模糊词变体
+    const fuzzyVariants = generateFuzzyTerms(rawTerm);
+
+    // 用于搜索的 term 列表（先去重）
+    const searchTerms = [preciseTerm, ...fuzzyVariants.filter(v => v !== preciseTerm)];
 
     // Abort previous search
     get().abort();
@@ -80,7 +149,7 @@ const useSearchStore = create<SearchState>((set, get) => ({
       error: null,
       results: [],
       controller: newController,
-      searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
+      searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false, phase: 'precise' },
       // 重置筛选
       selectedSource: 'all',
       selectedYear: 'all',
@@ -95,34 +164,32 @@ const useSearchStore = create<SearchState>((set, get) => ({
       }));
     };
 
-    // [智能聚合池] 用于在搜索过程中合并同名剧集
-    const resultMap = new Map<string, SearchResult>();
-
     const processAndAddResults = (results: SearchResult[]) => {
       if (signal.aborted || !results || results.length === 0) return;
 
       set((state) => {
-        // [Selene 级存储策略]：不再在存储层进行去重合并，保留所有源的原始数据
-        // 确保“火影忍者”和“火影忍者 疾风传”作为独立条目共存
         const newResults = [...state.results, ...results];
-
         // 仅进行物理去重（同源同ID去重）
         const uniqueResults = Array.from(new Map(newResults.map(r => [`${r.source}_${r.id}`, r])).values());
 
-        // 填充详情池，供详情页秒开使用
-        results.forEach(r => {
-          const coreTitle = r.title.trim().toLowerCase();
-          SearchDetailPool.set(`${coreTitle}_${r.source}`, r);
-        });
+        // 填充详情池，供详情页秒开使用（带多种 key 变体）
+        populateDetailPool(results);
 
         return {
           results: uniqueResults,
-          loading: false
+          loading: false,
         };
       });
     };
 
-    try {
+    /**
+     * 用指定的 term 执行一次完整搜索（32路并发）
+     */
+    const executeSearchPhase = async (term: string, phase: 'precise' | 'fuzzy'): Promise<boolean> => {
+      if (signal.aborted) return false;
+
+      updateProgress({ phase });
+
       const settingsStore = useSettingsStore.getState();
       const { videoSource } = settingsStore;
       let enabledResources = [];
@@ -132,21 +199,19 @@ const useSearchStore = create<SearchState>((set, get) => ({
           ? settingsStore.allSources
           : settingsStore.allSources.filter((r) => videoSource.sources[r.key]);
       } else {
-        const allResources = await api.getResources(signal);
-        enabledResources = videoSource.enabledAll
-          ? allResources
-          : allResources.filter((r) => videoSource.sources[r.key]);
+        try {
+          const allResources = await api.getResources(signal);
+          enabledResources = videoSource.enabledAll
+            ? allResources
+            : allResources.filter((r) => videoSource.sources[r.key]);
+        } catch { return false; }
       }
 
-      if (enabledResources.length === 0) {
-        set({ error: "没有开启的播放源，请在设置中配置", loading: false });
-        return;
-      }
+      if (enabledResources.length === 0 || signal.aborted) return false;
 
-      updateProgress({ total: enabledResources.length });
+      updateProgress({ total: enabledResources.length, completed: 0 });
 
       let completed = 0;
-      // [高性能提升] 针对骁龙 8 系列优化：32 路暴力并发
       const MAX_CONCURRENT = 32;
       const queue = [...enabledResources];
 
@@ -168,7 +233,8 @@ const useSearchStore = create<SearchState>((set, get) => ({
             if (!signal.aborted && results && results.length > 0) {
               processAndAddResults(results);
             }
-          } catch (err) {
+          } catch {
+            // 单个源失败不影响其他源
           } finally {
             completed++;
             if (completed % 2 === 0 || completed === enabledResources.length) {
@@ -182,23 +248,43 @@ const useSearchStore = create<SearchState>((set, get) => ({
         .fill(null)
         .map(() => runWorker());
 
-      // [策略升级]：除了 32 路节点检索，额外同步开启 1 路全网模糊检索，确保“火影忍者”能搜出全系列
+      // 额外同步全网搜索
       const globalSearchTask = api.searchVideos(term).then(res => {
-        if (res && res.results) {
-           processAndAddResults(res.results);
+        if (!signal.aborted && res?.results) {
+          processAndAddResults(res.results);
         }
       }).catch(() => {});
 
       await Promise.all([...workers, globalSearchTask]);
 
-      // 所有任务完成后，最终同步状态
-      if (!signal.aborted) {
-        set({ loading: false });
-        updateProgress({ isComplete: true, completed: enabledResources.length });
+      return !signal.aborted;
+    };
 
-        // 如果结果集仍为空，可能是因为聚合太严格或真的没搜到
-        if (resultMap.size === 0) {
-           set({ error: `未找到 "${term}" 相关内容` });
+    try {
+      // ============ Phase 1: 精准搜索 ============
+      await executeSearchPhase(preciseTerm, 'precise');
+      if (signal.aborted) return;
+
+      // ============ Phase 2: 模糊搜索（全量执行所有变体） ============
+      // 剧名可能包含搜索词，所以始终执行模糊搜索以确保召回率
+      for (const fuzzyTerm of searchTerms) {
+        if (signal.aborted) break;
+        if (fuzzyTerm === preciseTerm) continue;
+        // 检查该模糊词是否与精准词过于相似（防止重复搜索）
+        if (preciseTerm.includes(fuzzyTerm) || fuzzyTerm.includes(preciseTerm)) continue;
+
+        await executeSearchPhase(fuzzyTerm, 'fuzzy');
+        if (signal.aborted) return;
+      }
+
+      // 最终同步状态
+      if (!signal.aborted) {
+        const finalResults = get().results;
+        set({ loading: false });
+        updateProgress({ isComplete: true, completed: get().searchProgress.total });
+
+        if (finalResults.length === 0) {
+          set({ error: `未找到"${rawTerm}"相关内容，建议简化关键词后重试` });
         }
       }
 

@@ -63,16 +63,23 @@ class DLNAService {
     this.scanning = false;
     this.currentCallback = null;
 
-    if (Platform.OS === 'android' && MulticastModule) {
-      try { MulticastModule.release(); } catch (_) {}
-    }
-
     if (this.socket) {
       try {
         this.socket.removeAllListeners();
-        this.socket.close();
-      } catch (_) {}
+        // 安全关闭：先检查和移除多播成员，再关闭 socket
+        try { this.socket.dropMembership?.(this.SSDP_ADDR); } catch (_) {}
+        try { this.socket.close(); } catch (_) {}
+      } catch (_) {
+        // 忽略 socket 关闭时的所有错误，防止 "Socket is closed" 崩溃
+      }
       this.socket = null;
+    }
+
+    // 延迟释放 MulticastModule，确保 socket 已完全关闭
+    if (Platform.OS === 'android' && MulticastModule) {
+      setTimeout(() => {
+        try { MulticastModule.release(); } catch (_) {}
+      }, 100);
     }
   }
 
@@ -81,8 +88,14 @@ class DLNAService {
   // -------------------------
   private async initSocket() {
     try {
+      // 安全关闭旧 socket
       if (this.socket) {
-        try { this.socket.close(); } catch (_) {}
+        try {
+          this.socket.removeAllListeners();
+          try { this.socket.dropMembership?.(this.SSDP_ADDR); } catch (_) {}
+          try { this.socket.close(); } catch (_) {}
+        } catch (_) {}
+        this.socket = null;
       }
 
       const state = await NetInfo.fetch();
@@ -94,27 +107,38 @@ class DLNAService {
 
       this.socket = dgram.createSocket('udp4');
 
+      let socketClosed = false;
+
       this.socket.on('message', (msg, rinfo) => {
+        if (socketClosed) return;
         this.handleSSDPMessage(msg.toString(), rinfo.address);
       });
 
       this.socket.on('error', (err) => {
-        console.log('[DLNA] UDP error:', err);
+        // 只记录日志，不抛出异常，防止 "Socket is closed" 崩溃
+        if (err && err.message && err.message.includes('Socket is closed')) {
+          socketClosed = true;
+        }
+        // 静默处理所有 socket 错误
+      });
+
+      this.socket.on('close', () => {
+        socketClosed = true;
       });
 
       this.socket.bind(1900, localIp, () => {
-        this.socket.setBroadcast(true);
-        this.socket.setMulticastTTL(64);
-
+        if (socketClosed) return;
         try {
+          this.socket.setBroadcast(true);
+          this.socket.setMulticastTTL(64);
           this.socket.addMembership(this.SSDP_ADDR, localIp);
         } catch (e) {
-          console.log('[DLNA] addMembership error:', e);
+          // 静默处理多播成员错误
         }
       });
 
     } catch (e) {
-      console.log('[DLNA] Init failed:', e);
+      // 静默处理初始化错误
     }
   }
 
@@ -122,7 +146,7 @@ class DLNAService {
   // 发送 M-SEARCH
   // -------------------------
   private broadcastMSEARCH() {
-    if (!this.socket) return;
+    if (!this.socket || !this.scanning) return;
 
     const targets = [
       'upnp:rootdevice',
@@ -131,18 +155,21 @@ class DLNAService {
     ];
 
     targets.forEach(st => {
-      const msg =
-        'M-SEARCH * HTTP/1.1\r\n' +
-        'HOST: 239.255.255.250:1900\r\n' +
-        'MAN: "ssdp:discover"\r\n' +
-        'MX: 3\r\n' +
-        'ST: ' + st + '\r\n' +
-        'USER-AGENT: Android/11.0 UPnP/1.1 SuperTV/5.5\r\n' +
-        '\r\n';
-
+      if (!this.socket) return;
       try {
+        const msg =
+          'M-SEARCH * HTTP/1.1\r\n' +
+          'HOST: 239.255.255.250:1900\r\n' +
+          'MAN: "ssdp:discover"\r\n' +
+          'MX: 3\r\n' +
+          'ST: ' + st + '\r\n' +
+          'USER-AGENT: Android/11.0 UPnP/1.1 SuperTV/5.5\r\n' +
+          '\r\n';
+
         this.socket.send(msg, 0, msg.length, this.SSDP_PORT, this.SSDP_ADDR);
-      } catch (_) {}
+      } catch (_) {
+        // 忽略发送错误，防止崩溃
+      }
     });
   }
 

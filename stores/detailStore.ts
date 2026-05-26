@@ -4,7 +4,7 @@ import { getResolutionFromM3U8 } from "@/services/m3u8";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { FavoriteManager } from "@/services/storage";
 import { SpeedTestService } from "@/services/speedTestService";
-import useSearchStore, { SearchDetailPool } from "./searchStore"; // 引入内存详情池
+import useSearchStore, { SearchDetailPool, populateDetailPool } from "./searchStore"; // 引入内存详情池
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
@@ -117,16 +117,31 @@ const useDetailStore = create<DetailState>((set, get) => ({
     // [资料源识别]：豆瓣和 Bangumi 仅提供资料，不提供视频
     const isMetadataSource = preferredSource === "douban" || preferredSource === "bangumi";
 
-    // [预载入优化]：如果是从搜索页点击进入的（非资料源），尝试从内存池秒开
-    if (!isMetadataSource) {
-      const poolResult = SearchDetailPool.get(`${q.trim().toLowerCase()}_${preferredSource}`);
-      if (poolResult) {
-        set({
-          searchResults: [poolResult as SearchResultWithResolution],
-          detail: poolResult as SearchResultWithResolution,
-          loading: false,
-          error: null,
-        });
+    // [预载入优化]：从内存池秒开——尝试多种 key 变体
+    if (!isMetadataSource && preferredSource) {
+      const qLower = q.trim().toLowerCase();
+      // 尝试多种 key 变体
+      const poolKeys = [
+        `${qLower}_${preferredSource}`,
+        `${qLower.replace(/[\s+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '')}_${preferredSource}`,
+      ];
+      // 如果原始 q 较长，再尝试前6个字符
+      if (qLower.length > 6) {
+        poolKeys.push(`${qLower.substring(0, 6)}_${preferredSource}`);
+        poolKeys.push(`${qLower.substring(0, Math.floor(qLower.length * 0.7))}_${preferredSource}`);
+      }
+
+      for (const key of poolKeys) {
+        const poolResult = SearchDetailPool.get(key);
+        if (poolResult) {
+          set({
+            searchResults: [poolResult as SearchResultWithResolution],
+            detail: poolResult as SearchResultWithResolution,
+            loading: false,
+            error: null,
+          });
+          break;
+        }
       }
     }
 
@@ -193,6 +208,9 @@ const useDetailStore = create<DetailState>((set, get) => ({
         })),
         detail: shouldUpdateDetail ? finalResults[0] : get().detail,
       });
+
+      // [关键] 将搜索结果填充到 SearchDetailPool，供下次秒开使用
+      populateDetailPool(results);
 
       // [核心优化] 只要有了搜索结果，立即异步启动测速优化，无需等待 init 结束
       if (finalResults.length > 0 && !get().isOptimizing) {

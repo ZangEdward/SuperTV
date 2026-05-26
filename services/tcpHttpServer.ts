@@ -143,8 +143,8 @@ export class TCPHttpServer {
             }
           });
 
-          socket.on('error', (error: Error) => {
-            logger.info('[TCPHttpServer] Socket error:', error);
+          socket.on('error', (_error: Error) => {
+            // 静默处理 socket 错误，防止 "Socket is closed" 崩溃
           });
         });
 
@@ -155,9 +155,12 @@ export class TCPHttpServer {
         });
 
         this.server.on('error', (error: Error) => {
-          logger.info('[TCPHttpServer] Server error:', error);
+          // 静默处理 "Socket is closed" 等常见错误，防止未处理异常导致崩溃
           this.isRunning = false;
-          reject(error);
+          if (this.server) {
+            try { this.server.close(); } catch (_) {}
+            this.server = null;
+          }
         });
 
       } catch (error) {
@@ -306,7 +309,11 @@ export class TCPHttpServer {
 
   public stop() {
     if (this.server && this.isRunning) {
-      this.server.close();
+      try {
+        this.server.close();
+      } catch (error) {
+        // 静默处理 "Socket is closed" 等关闭错误
+      }
       this.server = null;
       this.isRunning = false;
       logger.debug(`[TCPHttpServer] Server on ${this.port} stopped`);

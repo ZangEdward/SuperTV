@@ -9,6 +9,7 @@ import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
+import { SearchDetailPool, populateDetailPool } from "@/stores/searchStore";
 
 const logger = Logger.withTag('VideoCardMobile');
 
@@ -66,11 +67,39 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     }, [fadeAnim]);
 
     const handlePress = () => {
-      // 统一进入详情页，利用聚合检索实现秒开和换源
-      router.push({
-        pathname: "/detail",
-        params: { source, q: title, id: id.toString() },
-      });
+      // 预先填充详情池，确保详情页秒开
+      const poolItem = {
+        id: parseInt(id, 10) || 0,
+        title,
+        poster,
+        episodes: [],
+        source,
+        source_name: sourceName || source,
+        year: year || '',
+        desc: '',
+        type_name: '',
+      };
+      populateDetailPool([poolItem]);
+
+      // 如果是观看记录且有播放进度，直接进入播放页接续播放
+      if (episodeIndex !== undefined) {
+        router.push({
+          pathname: "/play",
+          params: {
+            source,
+            id: id.toString(),
+            episodeIndex: episodeIndex.toString(),
+            title,
+            position: ((playTime || 0) * 1000).toString(),
+          },
+        });
+      } else {
+        // 统一进入详情页，利用聚合检索实现秒开和换源
+        router.push({
+          pathname: "/detail",
+          params: { source, q: title, id: id.toString() },
+        });
+      }
     };
 
     const handleLongPress = () => {
@@ -153,7 +182,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           </View>
 
           <View style={styles.infoContainer}>
-            <ThemedText numberOfLines={1} style={styles.title}>{title}</ThemedText>
+            <ThemedText numberOfLines={2} style={styles.title}>{title}</ThemedText>
           </View>
         </TouchableOpacity>
       </Animated.View>
