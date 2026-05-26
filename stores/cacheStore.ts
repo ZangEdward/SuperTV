@@ -74,7 +74,7 @@ const useCacheStore = create<CacheState>((set, get) => ({
   currentDownloadId: null,
   downloadProgress: {},
   queue: [],
-  concurrency: 1, // 降低默认并发数，减少 CPU 消耗
+  concurrency: 5, // 默认同时下载 5 集
   activeCount: 0,
 
   setConcurrency: (value) => {

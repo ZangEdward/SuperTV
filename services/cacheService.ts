@@ -782,7 +782,7 @@ export class CacheService {
       const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
       const total = segmentUrls.length;
 
-      const CONCURRENCY = 2; // 默认并发数
+      const CONCURRENCY = 8; // 提升单集分片下载并发
       let completedCount = resumeIndex;
 
       // 允许通过 options 覆盖并发数 (例如由 store 传入)

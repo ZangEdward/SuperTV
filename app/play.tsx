@@ -205,20 +205,24 @@ export default function PlayScreen() {
 
   const handleSourcePress = useCallback(async (item: any) => {
     const source = params.source || detail?.source;
-    if (item.source === source) return;
+    if (!item || item.source === source) return;
 
     // 切换源时保留当前播放进度
     const currentPos = status?.isLoaded ? status.positionMillis : undefined;
 
-    await safeUnload();
-    setDetail?.(item);
-    loadVideo?.({
-      source: item.source,
-      id: item.id.toString(),
-      episodeIndex: currentEpisodeIndex,
-      title: item.title,
-      position: currentPos, // 传递进度实现无缝切换
-    });
+    try {
+      await safeUnload();
+      await setDetail?.(item);
+      loadVideo?.({
+        source: item.source,
+        id: (item.id || "").toString(),
+        episodeIndex: currentEpisodeIndex,
+        title: item.title,
+        position: currentPos,
+      });
+    } catch (e) {
+      console.error("Switch source failed:", e);
+    }
   }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex, status]);
 
   // 7. 副作用 Hooks
@@ -536,17 +540,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 10,
     paddingTop: 4,
+    paddingBottom: Math.max(insets.bottom, 20), // 动态适配安全区域
   },
   mobileTabBar: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#1a1a1a',
   },
   mobileTabItem: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    marginRight: 12,
+    marginRight: 8,
   },
   mobileTabActive: {
     borderBottomWidth: 2,
@@ -554,7 +559,7 @@ const styles = StyleSheet.create({
   },
   mobileTabLabel: {
     color: '#888',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   mobileTabLabelActive: {
@@ -566,21 +571,21 @@ const styles = StyleSheet.create({
   descText: {
     color: '#aaa',
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   metaInfo: {
-    marginTop: 8,
-    paddingBottom: 20,
+    marginTop: 12,
+    paddingBottom: 30,
   },
   metaText: {
     color: '#555',
     fontSize: 12,
   },
-  episodeScroll: { maxHeight: 100, marginBottom: 12 },
+  episodeScroll: { flex: 1, marginBottom: 12 },
   episodeScrollContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingBottom: 10,
+    paddingBottom: 40, // 显著增加底部内边距，确保最后一排不被遮挡
   },
   mobileEpItem: {
     backgroundColor: "#1a1a1a",

@@ -119,8 +119,9 @@ const useDetailStore = create<DetailState>((set, get) => ({
     );
 
     if (matchedResults.length > 0) {
+      const preferredId = id?.toString();
       const preferred = matchedResults.find(r =>
-        r.id.toString() === id?.toString() && r.source === preferredSource
+        r.id.toString() === preferredId && r.source === preferredSource
       ) || matchedResults[0];
 
       logger.info(`[PRE-CACHE] Hit! Found ${matchedResults.length} sources for ${q}`);
@@ -128,10 +129,9 @@ const useDetailStore = create<DetailState>((set, get) => ({
       set({
         searchResults: matchedResults as SearchResultWithResolution[],
         detail: preferred as SearchResultWithResolution,
-        loading: false,
+        loading: false, // 命中预载入，直接关闭 loading 避免闪烁
         error: null,
       });
-      // 依然触发全量加载以确保数据最新，并获取可能缺失的其他源
     }
 
     const updateProgress = (updates: Partial<SearchProgress>) => {
@@ -145,13 +145,17 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
-      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
 
-      // 合并并去重
+      // [源去重加固]：根据 source 唯一 ID 进行物理去重
+      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
       const existingSources = new Set(state.searchResults.map((r) => r.source));
       const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
 
-      if (newResults.length === 0) return;
+      // [关键修复]：即使没有新源，若已有详情也应关闭加载状态
+      if (newResults.length === 0) {
+        if (get().detail) set({ loading: false });
+        return;
+      }
 
       const combinedResults = [...state.searchResults, ...newResults];
 
@@ -185,7 +189,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     try {
       if (preferredSource && id) {
-        // [路径 A] 有首选源：先精准打击，再异步拉取其他
+        // [路径 A] 有首选源：先精准打击
         updateProgress({ total: 1, currentSource: '首选源' });
 
         let preferredResult: SearchResult[] = [];
@@ -200,19 +204,20 @@ const useDetailStore = create<DetailState>((set, get) => ({
         
         if (preferredResult.length > 0) {
           await processAndSetResults(preferredResult, 0);
-          set({ loading: false });
           updateProgress({ completed: 1, isComplete: true });
         } else {
           logger.info(`Preferred source failed, falling back to all-source search`);
         }
         
-        // 异步拉取全量资源（换源备用），不阻塞首屏
-        api.searchVideos(q).then(response => {
-          if (!signal.aborted) processAndSetResults(response.results, 100);
+        // 异步拉取全量资源，此时 loading 状态由结果决定
+        await api.searchVideos(q).then(response => {
+          if (!signal.aborted && response.results.length > 0) {
+            processAndSetResults(response.results, 100);
+          }
         }).catch(() => {});
 
       } else {
-        // [路径 B] 无首选源：模仿 Selene 异步并发加载模式
+        // [路径 B] 无首选源：激进并发加载
         const allResources = await api.getResources(signal);
         const enabledResources = videoSource.enabledAll ? allResources : allResources.filter((r) => videoSource.sources[r.key]);
 
@@ -224,10 +229,9 @@ const useDetailStore = create<DetailState>((set, get) => ({
         updateProgress({ total: enabledResources.length });
 
         let completed = 0;
-        let firstResultFound = false;
-        const batchSize = 3; // 采用分批并发模式，使进度条和源名称更新更平滑
+        // [提升并发] 针对详情页换源需求，提升探测并发
+        const batchSize = 6;
 
-        // 3. 分批并行搜索，动态异步刷新结果
         for (let i = 0; i < enabledResources.length; i += batchSize) {
           if (signal.aborted) break;
           const batch = enabledResources.slice(i, i + batchSize);
@@ -237,8 +241,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
               updateProgress({ currentSource: resource.name });
               const searchStart = performance.now();
 
-              const timeoutPromise = new Promise<null>((_, reject) =>
-                setTimeout(() => reject(new Error('TIMEOUT')), 10000)
+              const timeoutPromise = new Promise<null>((resolve) =>
+                setTimeout(() => resolve(null), 8000)
               );
 
               const results = await Promise.race([
@@ -246,17 +250,13 @@ const useDetailStore = create<DetailState>((set, get) => ({
                 timeoutPromise
               ]) as SearchResult[] | null;
 
+              if (signal.aborted) return;
               const latency = performance.now() - searchStart;
 
               if (results && results.length > 0) {
                 await processAndSetResults(results, latency);
-                if (!firstResultFound) {
-                  set({ loading: false });
-                  firstResultFound = true;
-                }
               }
             } catch (e) {
-              logger.debug(`Search failed for ${resource.name}`);
             } finally {
               completed++;
               updateProgress({ completed });
@@ -294,11 +294,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     set({ isOptimizing: true });
 
-    // 创建测速专用的信号，避免受 init 控制器 abort 的影响
+    // 创建测速专用的信号
     const testController = new AbortController();
     const signal = testController.signal;
 
-    const testBatchSize = 4;
+    // [极速优化] 针对骁龙 8 系列优化：10 路并发测速，秒出结果
+    const testBatchSize = 10;
 
     // 分批次测速
     for (let i = 0; i < searchResults.length; i += testBatchSize) {

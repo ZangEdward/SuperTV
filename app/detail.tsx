@@ -127,7 +127,25 @@ export default function DetailScreen() {
     return isReverse ? list.reverse() : list;
   }, [detail, isReverse]);
 
-  if (loading && !detail) {
+  // [关键修复]：只有当彻底加载完成且确实没有 detail 时才显示错误
+  if (!detail && allSourcesLoaded && !loading) {
+    return (
+      <ResponsiveNavigation>
+        <ResponsiveHeader title="详情" showBackButton />
+        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
+          <ThemedText type="subtitle" style={{ color: '#888' }}>未找到相关影片详情</ThemedText>
+          <StyledButton
+            text="返回重试"
+            onPress={() => router.back()}
+            style={{ marginTop: 20, minWidth: 120 }}
+          />
+        </ThemedView>
+      </ResponsiveNavigation>
+    );
+  }
+
+  // 如果还在加载中或者超时保护未到，且没有 detail，则显示加载动画
+  if (!detail) {
     const progress = searchProgress.total > 0 ? (searchProgress.completed / searchProgress.total) * 100 : 0;
     return (
       <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#151718' }]}>
@@ -143,51 +161,7 @@ export default function DetailScreen() {
             已完成 {searchProgress.completed} / {searchProgress.total}
           </ThemedText>
         </View>
-        {deviceType === 'tv' && (
-          <TouchableOpacity focusable={true} style={{ position: 'absolute', opacity: 0 }} />
-        )}
       </ThemedView>
-    );
-  }
-
-  if (error && !detail) {
-    return (
-      <ResponsiveNavigation>
-        <ResponsiveHeader title="详情" showBackButton />
-        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
-          <ThemedText type="subtitle" style={{ color: '#888' }}>{error}</ThemedText>
-        </ThemedView>
-      </ResponsiveNavigation>
-    );
-  }
-
-  // [修复] 如果还没超时但 loading 没开始或者 detail 仍为空，继续显示加载动画
-  if (!initTimedOut && !detail) {
-    return (
-      <ThemedView style={[commonStyles.container, { backgroundColor: '#151718', justifyContent: 'center', alignItems: 'center' }]}>
-        <VideoLoadingAnimation />
-        <View style={{ marginTop: 20, alignItems: 'center' }}>
-          <ThemedText style={{ color: '#888', fontSize: 14 }}>
-            {loading ? "正在加载影片详情..." : "准备搜索资源..."}
-          </ThemedText>
-        </View>
-      </ThemedView>
-    );
-  }
-
-  if (initTimedOut && !detail && !loading) {
-    return (
-      <ResponsiveNavigation>
-        <ResponsiveHeader title="详情" showBackButton />
-        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
-          <ThemedText type="subtitle" style={{ color: '#888' }}>未找到相关影片详情</ThemedText>
-          <StyledButton
-            text="返回重试"
-            onPress={() => router.back()}
-            style={{ marginTop: 20, minWidth: 120 }}
-          />
-        </ThemedView>
-      </ResponsiveNavigation>
     );
   }
 

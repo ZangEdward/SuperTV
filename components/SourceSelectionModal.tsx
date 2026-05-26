@@ -28,6 +28,7 @@ export const SourceSelectionModal: React.FC = () => {
 
   const onSelectSource = (index: number) => {
     const selected = searchResults[index];
+    if (!selected) return;
 
     if (selected.source !== detail?.source) {
       setDetail(selected);
@@ -36,7 +37,7 @@ export const SourceSelectionModal: React.FC = () => {
 
       loadVideo({
         source: selected.source,
-        id: selected.id.toString(),
+        id: (selected.id || "").toString(),
         episodeIndex: currentEpisodeIndex,
         title: selected.title,
         position: currentPosition,

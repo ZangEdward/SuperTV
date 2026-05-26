@@ -89,25 +89,31 @@ const useSearchStore = create<SearchState>((set, get) => ({
       }));
     };
 
-    const seenTitles = new Set<string>();
+    // [智能聚合池] 用于在搜索过程中合并同名剧集
+    const resultMap = new Map<string, SearchResult>();
 
     const processAndAddResults = (results: SearchResult[]) => {
       if (signal.aborted || !results || results.length === 0) return;
 
       set((state) => {
-        const newResults = results.filter(r => {
-          const normalizedTitle = r.title.trim().toLowerCase();
-          if (seenTitles.has(normalizedTitle)) return false;
-          seenTitles.add(normalizedTitle);
-          return true;
+        results.forEach(r => {
+          // 聚合 Key: 标题 + 年份 (忽略大小写和空格)
+          const key = `${r.title.trim().toLowerCase()}_${r.year}`;
+          const existing = resultMap.get(key);
+
+          if (!existing) {
+            resultMap.set(key, r);
+          } else {
+            // 如果已存在，保留剧集更多的版本
+            if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
+              resultMap.set(key, { ...r });
+            }
+          }
         });
 
-        if (newResults.length === 0) return state;
-
-        // 只要有了结果，就关闭全屏加载状态
         return {
-          results: [...state.results, ...newResults],
-          loading: false
+          results: Array.from(resultMap.values()),
+          // 只要有结果就显示，但 loading 持续直到所有 worker 完成
         };
       });
     };
@@ -136,37 +142,31 @@ const useSearchStore = create<SearchState>((set, get) => ({
       updateProgress({ total: enabledResources.length });
 
       let completed = 0;
-      // 针对骁龙 8 系列优化：激进并发。底层 OkHttp 会自动处理连接复用。
-      const MAX_CONCURRENT = 24;
+      // [高性能提升] 针对骁龙 8 系列优化：32 路暴力并发
+      const MAX_CONCURRENT = 32;
       const queue = [...enabledResources];
 
-      // [高性能调度]：采用原生网络池竞争机制
       const runWorker = async () => {
         while (queue.length > 0 && !signal.aborted) {
           const resource = queue.shift();
           if (!resource) break;
 
           try {
-            // 降低超时到 8s，强制末尾淘汰，保证搜索体感
             const timeoutPromise = new Promise<null>((_, reject) =>
               setTimeout(() => reject(new Error('TIMEOUT')), 8000)
             );
 
-            // 底层使用 RNFetchBlob 触发原生 OkHttp 请求，绕过 JS fetch 的串行队列
             const results = await Promise.race([
               api.searchVideo(term, resource.key, signal).then(r => r.results),
               timeoutPromise
             ]) as SearchResult[] | null;
 
             if (!signal.aborted && results && results.length > 0) {
-              // 搜到一个出一个，立即同步
               processAndAddResults(results);
             }
           } catch (err) {
-            // 吞掉单源错误，保持静默搜索
           } finally {
             completed++;
-            // 进度上报：采用简单的原子加，减少 UI 抖动
             if (completed % 2 === 0 || completed === enabledResources.length) {
               updateProgress({ completed });
             }
@@ -174,13 +174,22 @@ const useSearchStore = create<SearchState>((set, get) => ({
         }
       };
 
-      // 同时拉起 24 个原生网络竞争任务
       const workers = Array(Math.min(MAX_CONCURRENT, enabledResources.length))
         .fill(null)
         .map(() => runWorker());
 
       await Promise.all(workers);
-      updateProgress({ isComplete: true, completed: enabledResources.length });
+
+      // 所有 worker 完成后，最终同步状态
+      if (!signal.aborted) {
+        set({ loading: false });
+        updateProgress({ isComplete: true, completed: enabledResources.length });
+
+        if (resultMap.size === 0) {
+           // 仅在确认完全无结果时显示错误
+           set({ error: `未找到 "${term}" 相关内容` });
+        }
+      }
 
       if (signal.aborted) return;
 
