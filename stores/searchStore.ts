@@ -97,15 +97,16 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       set((state) => {
         results.forEach(r => {
-          // 聚合 Key: 标题 + 年份 (忽略大小写和空格)
-          const key = `${r.title.trim().toLowerCase()}_${r.year}`;
+          // [精准聚合] Key: 标题 + 年份 + 总集数。确保不同季、不同剧场版不被错误合并
+          const episodeCount = r.episodes?.length || 0;
+          const key = `${r.title.trim().toLowerCase()}_${r.year}_${episodeCount}`;
           const existing = resultMap.get(key);
 
           if (!existing) {
             resultMap.set(key, r);
           } else {
-            // 如果已存在，保留剧集更多的版本
-            if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
+            // 同一季/条目，保留 ID 较大（通常更新）且源信息丰富的
+            if (r.id > existing.id) {
               resultMap.set(key, { ...r });
             }
           }

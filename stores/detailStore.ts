@@ -207,15 +207,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
           updateProgress({ completed: 1, isComplete: true });
         } else {
           logger.info(`Preferred source failed, falling back to all-source search`);
-        }
-        
-        // 异步拉取全量资源，此时 loading 状态由结果决定
-        await api.searchVideos(q).then(response => {
+          // [关键修复]：首选源失败，阻塞等待全网搜索结果，防止 UI 闪烁"未找到"
+          const response = await api.searchVideos(q);
           if (!signal.aborted && response.results.length > 0) {
-            processAndSetResults(response.results, 100);
+            await processAndSetResults(response.results, 100);
           }
-        }).catch(() => {});
-
+        }
       } else {
         // [路径 B] 无首选源：激进并发加载
         const allResources = await api.getResources(signal);
@@ -298,8 +295,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const testController = new AbortController();
     const signal = testController.signal;
 
-    // [极速优化] 针对骁龙 8 系列优化：10 路并发测速，秒出结果
-    const testBatchSize = 10;
+    // [极速优化] 针对骁龙 8 系列优化：15 路并发测速
+    const testBatchSize = 15;
 
     // 分批次测速
     for (let i = 0; i < searchResults.length; i += testBatchSize) {

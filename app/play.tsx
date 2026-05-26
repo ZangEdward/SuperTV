@@ -384,7 +384,7 @@ export default function PlayScreen() {
       </View>
 
       {!isFullscreen && (
-        <View style={styles.mobileBottomBar}>
+        <View style={[styles.mobileBottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.mobileTabBar}>
             <TouchableOpacity
               style={[styles.mobileTabItem, activeTab === 'episodes' && styles.mobileTabActive]}
@@ -540,7 +540,6 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 10,
     paddingTop: 4,
-    paddingBottom: Math.max(insets.bottom, 20), // 动态适配安全区域
   },
   mobileTabBar: {
     flexDirection: 'row',
@@ -585,7 +584,7 @@ const styles = StyleSheet.create({
   episodeScrollContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingBottom: 40, // 显著增加底部内边距，确保最后一排不被遮挡
+    paddingBottom: 60, // 进一步增加底部边距，确保在所有手势导航机型下都不被遮挡
   },
   mobileEpItem: {
     backgroundColor: "#1a1a1a",
