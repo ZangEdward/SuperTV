@@ -29,7 +29,7 @@ export default function SearchScreen() {
   const {
     keyword, results, loading, error, setKeyword, search, searchProgress,
     useAggregatedView, setUseAggregatedView,
-    selectedSource, selectedYear, selectedTitle, yearSortOrder, setFilters
+    yearSortOrder
   } = useSearchStore();
 
   const textInputRef = useRef<TextInput>(null);
@@ -112,7 +112,6 @@ export default function SearchScreen() {
 
   const filteredResults = useMemo(() => {
     let list = [...results];
-
     if (yearSortOrder !== 'none') {
       list.sort((a, b) => {
         const yA = parseInt(a.year) || 0;
@@ -247,6 +246,17 @@ export default function SearchScreen() {
                 </ThemedText>
               )}
             </View>
+
+            <View style={dynamicStyles.aggToggleWrapper}>
+              <ThemedText style={[dynamicStyles.aggLabel, useAggregatedView && { color: 'white' }]}>聚合</ThemedText>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setUseAggregatedView(!useAggregatedView)}
+                style={[dynamicStyles.switchTrack, useAggregatedView && { backgroundColor: Colors.dark.primary }]}
+              >
+                <View style={[dynamicStyles.switchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {aggregatedResults.length === 0 && searchProgress.total > 0 && !searchProgress.isComplete ? (
@@ -303,218 +313,37 @@ export default function SearchScreen() {
 
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
   return StyleSheet.create({
-    container: {
-      flex: 1,
-      paddingTop: deviceType === "tv" ? 40 : 0,
-      backgroundColor: '#121212',
-    },
-    searchHeader: {
-      flexDirection: "row",
-      paddingHorizontal: spacing + 4,
-      paddingVertical: 14,
-      alignItems: "center",
-    },
-    inputContainer: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      height: 44,
-      backgroundColor: "#1c1c1e",
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: "transparent",
-    },
-    input: {
-      flex: 1,
-      paddingLeft: 8,
-      color: "white",
-      fontSize: 15,
-    },
-    searchCircleBtn: {
-      width: 44,
-      height: 44,
-      marginLeft: 10,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 22,
-      backgroundColor: Colors.dark.primary,
-    },
-    qrCircleBtn: {
-      width: 44,
-      height: 44,
-      marginLeft: 10,
-      justifyContent: "center",
-      alignItems: "center",
-      borderRadius: 22,
-      backgroundColor: '#2c2c2e',
-    },
-    historyContainer: {
-      paddingHorizontal: spacing + 8,
-      paddingTop: 10,
-    },
-    sectionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      marginBottom: 16,
-    },
-    sectionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: '#fff',
-    },
-    clearText: {
-      fontSize: 14,
-      color: '#7f8c8d',
-    },
-    emptyHistory: {
-      height: 300,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    historyList: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-    },
-    historyPillWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#1e1e1e',
-      borderRadius: 20,
-      paddingLeft: 16,
-      paddingRight: 8,
-      paddingVertical: 8,
-      borderWidth: 1,
-      borderColor: '#333',
-    },
-    historyPill: {
-      marginRight: 4,
-    },
-    historyText: {
-      fontSize: 14,
-      color: '#ffffff',
-    },
-    historyDelete: {
-      padding: 2,
-    },
-    resultsTitleRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'baseline',
-      paddingHorizontal: spacing + 10,
-      paddingVertical: 10,
-    },
-    resultsTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: 'white',
-    },
-    progressText: {
-      fontSize: 14,
-      color: '#7f8c8d',
-      marginLeft: 8,
-    },
-    aggToggleWrapper: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-    },
-    aggLabel: {
-      fontSize: 14,
-      color: '#7f8c8d',
-      fontWeight: '500',
-    },
-    switchTrack: {
-      width: 32,
-      height: 18,
-      backgroundColor: '#3a3a3c',
-      borderRadius: 9,
-      padding: 2,
-    },
-    switchThumb: {
-      width: 14,
-      height: 14,
-      backgroundColor: 'white',
-      borderRadius: 7,
-    },
-    filterSection: {
-      paddingHorizontal: spacing + 6,
-      marginBottom: 12,
-    },
-    filterScroll: {
-      flexGrow: 0,
-    },
-    filterPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      backgroundColor: '#1c1c1e',
-      marginRight: 10,
-      gap: 4,
-    },
-    filterLabel: {
-      fontSize: 13,
-      color: '#7f8c8d',
-    },
-    filterLabelActive: {
-      color: Colors.dark.primary,
-      fontWeight: '500',
-    },
-    loadingBarBg: {
-      height: 2,
-      backgroundColor: "#1c1c1e",
-      marginHorizontal: spacing + 10,
-      marginBottom: 10,
-      borderRadius: 1,
-      overflow: "hidden",
-    },
-    loadingBarFill: {
-      height: "100%",
-      backgroundColor: Colors.dark.primary,
-    },
-    centerProgressWrapper: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingBottom: 100,
-    },
-    searchingText: {
-      fontSize: 16,
-      color: '#7f8c8d',
-      marginBottom: 20,
-      fontWeight: '600',
-      letterSpacing: 1,
-    },
-    mainProgressBarBg: {
-      width: '70%',
-      height: 6,
-      backgroundColor: '#1c1c1e',
-      borderRadius: 3,
-      overflow: 'hidden',
-    },
-    mainProgressBarFill: {
-      height: '100%',
-      backgroundColor: Colors.dark.primary,
-      borderRadius: 3,
-    },
-    progressPercentage: {
-      marginTop: 12,
-      fontSize: 14,
-      color: Colors.dark.primary,
-      fontWeight: 'bold',
-    },
-    errorText: {
-      color: "#e74c3c",
-      fontSize: 15,
-      marginTop: 16,
-      textAlign: "center",
-    },
+    container: { flex: 1, paddingTop: deviceType === "tv" ? 40 : 0, backgroundColor: '#121212' },
+    searchHeader: { flexDirection: "row", paddingHorizontal: spacing + 4, paddingVertical: 14, alignItems: "center" },
+    inputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 44, backgroundColor: "#1c1c1e", borderRadius: 22, borderWidth: 1, borderColor: "transparent" },
+    input: { flex: 1, paddingLeft: 8, color: "white", fontSize: 15 },
+    searchCircleBtn: { width: 44, height: 44, marginLeft: 10, justifyContent: "center", alignItems: "center", borderRadius: 22, backgroundColor: Colors.dark.primary },
+    qrCircleBtn: { width: 44, height: 44, marginLeft: 10, justifyContent: "center", alignItems: "center", borderRadius: 22, backgroundColor: '#2c2c2e' },
+    historyContainer: { paddingHorizontal: spacing + 8, paddingTop: 10 },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 },
+    sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },
+    sectionTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
+    clearText: { fontSize: 14, color: '#7f8c8d' },
+    emptyHistory: { height: 300, justifyContent: 'center', alignItems: 'center' },
+    historyList: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    historyPillWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e1e1e', borderRadius: 20, paddingLeft: 16, paddingRight: 8, paddingVertical: 8, borderWidth: 1, borderColor: '#333' },
+    historyPill: { marginRight: 4 },
+    historyText: { fontSize: 14, color: '#ffffff' },
+    historyDelete: { padding: 2 },
+    resultsTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: spacing + 10, paddingVertical: 10 },
+    resultsTitle: { fontSize: 18, fontWeight: '600', color: 'white' },
+    progressText: { fontSize: 14, color: '#7f8c8d', marginLeft: 8 },
+    aggToggleWrapper: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    aggLabel: { fontSize: 14, color: '#7f8c8d', fontWeight: '500' },
+    switchTrack: { width: 32, height: 18, backgroundColor: '#3a3a3c', borderRadius: 9, padding: 2 },
+    switchThumb: { width: 14, height: 14, backgroundColor: 'white', borderRadius: 7 },
+    centerProgressWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
+    searchingText: { fontSize: 16, color: '#7f8c8d', marginBottom: 20, fontWeight: '600', letterSpacing: 1 },
+    mainProgressBarBg: { width: '70%', height: 6, backgroundColor: '#1c1c1e', borderRadius: 3, overflow: 'hidden' },
+    mainProgressBarFill: { height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 3 },
+    progressPercentage: { marginTop: 12, fontSize: 14, color: Colors.dark.primary, fontWeight: 'bold' },
+    errorText: { color: "#e74c3c", fontSize: 15, marginTop: 16, textAlign: "center" },
+    loadingBarBg: { height: 2, backgroundColor: "#1c1c1e", marginHorizontal: spacing + 10, marginBottom: 10, borderRadius: 1, overflow: "hidden" },
+    loadingBarFill: { height: "100%", backgroundColor: Colors.dark.primary },
   });
 };

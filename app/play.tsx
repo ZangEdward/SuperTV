@@ -7,7 +7,6 @@ import {
   ScrollView,
   Text,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Video } from "expo-av";
@@ -42,11 +41,10 @@ const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) =
 ));
 
 export default function PlayScreen() {
-  // 1. 基本 Hooks
   const videoRef = useRef<Video>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { deviceType, screenWidth } = useResponsiveLayout();
+  const { deviceType } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
   const isTV = deviceType === "tv";
   const params = useLocalSearchParams<{
@@ -58,12 +56,10 @@ export default function PlayScreen() {
     fileUri?: string;
   }>();
 
-  // 2. 状态 Hooks
   const [isReverse, setIsReverse] = useState(false);
   const [isInitFailed, setIsInitFailed] = useState(false);
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources' | 'desc'>('episodes');
 
-  // 3. Store 选择器 Hooks
   const detail = useDetailStore(state => state.detail);
   const searchResults = useDetailStore(state => state.searchResults);
   const setDetail = useDetailStore(state => state.setDetail);
@@ -87,13 +83,10 @@ export default function PlayScreen() {
   const reset = usePlayerStore(state => state.reset);
   const loadVideo = usePlayerStore(state => state.loadVideo);
   const setIsFullscreen = usePlayerStore(state => state.setIsFullscreen);
-  const togglePlayPause = usePlayerStore(state => state.togglePlayPause);
-  const seekToPosition = usePlayerStore(state => state.seekToPosition);
   const currentEpisode = usePlayerStore(selectCurrentEpisode);
 
   const downloadEpisode = useCacheStore(state => state.downloadEpisode);
 
-  // 4. 自定义 Logic Hooks
   useTVRemoteHandler();
 
   const { videoProps } = useVideoHandlers({
@@ -107,7 +100,6 @@ export default function PlayScreen() {
     detail: detail || undefined,
   });
 
-  // 5. 衍生状态和 Memo Hooks
   const isDetailMatching = useMemo(() => {
     if (!detail) return false;
     if (!!params.fileUri) return true;
@@ -120,25 +112,15 @@ export default function PlayScreen() {
     return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
-  const panStartPos = useRef<number>(0);
-
   const gesture = useMemo(() => {
-    const hasTap = typeof Gesture?.Tap === "function";
-    if (!hasTap) return null;
-
-    try {
-      // 单击手势：切换显示/隐藏控件
-      return Gesture.Tap()
-        .maxDuration(250)
-        .runOnJS(true)
-        .onEnd(() => {
-          const { showControls, setShowControls } = usePlayerStore.getState();
-          setShowControls(!showControls);
-        });
-    } catch (err) {
-      console.warn("gesture init failed:", err);
-      return null;
-    }
+    if (typeof Gesture?.Tap !== "function") return null;
+    return Gesture.Tap()
+      .maxDuration(250)
+      .runOnJS(true)
+      .onEnd(() => {
+        const { showControls, setShowControls } = usePlayerStore.getState();
+        setShowControls(!showControls);
+      });
   }, []);
 
   const videoElement = useMemo(() => (
@@ -161,7 +143,6 @@ export default function PlayScreen() {
     </View>
   ), [videoElement, currentEpisode?.url, isLoading]);
 
-  // 6. 回调 Hooks
   const handleDownloadPress = useCallback(() => {
     const source = params.source || detail?.source;
     const id = params.id || detail?.id?.toString();
@@ -180,19 +161,10 @@ export default function PlayScreen() {
     });
   }, [currentEpisode, currentEpisodeIndex, episodes.length, params, detail, downloadEpisode]);
 
-  const handleTapFallback = useCallback(() => {
-    const { setShowControls, showControls } = usePlayerStore.getState();
-    if (typeof setShowControls === 'function') {
-      setShowControls(!showControls);
-    }
-  }, []);
-
   const safeUnload = useCallback(async () => {
     try {
       await videoRef.current?.unloadAsync();
-    } catch (e) {
-      console.warn("safeUnload error:", e);
-    }
+    } catch (e) {}
   }, []);
 
   const handleEpisodePress = useCallback(async (idx: number) => {
@@ -208,7 +180,6 @@ export default function PlayScreen() {
     const source = params.source || detail?.source;
     if (!item || item.source === source) return;
 
-    // 切换源时保留当前播放进度
     const currentPos = status?.isLoaded ? status.positionMillis : undefined;
 
     try {
@@ -221,31 +192,22 @@ export default function PlayScreen() {
         title: item.title,
         position: currentPos,
       });
-    } catch (e) {
-      console.error("Switch source failed:", e);
-    }
+    } catch (e) {}
   }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex, status]);
 
-  // 7. 副作用 Hooks
   useEffect(() => {
     const doKeepAwake = async () => {
       try {
         if (status?.isLoaded && status?.isPlaying) {
-          if (typeof activateKeepAwakeAsync === 'function') {
-            await activateKeepAwakeAsync();
-          }
+          await activateKeepAwakeAsync();
         } else {
-          if (typeof deactivateKeepAwakeAsync === 'function') {
-            await deactivateKeepAwakeAsync();
-          }
+          await deactivateKeepAwakeAsync();
         }
       } catch (e) {}
     };
     doKeepAwake();
     return () => {
-      if (typeof deactivateKeepAwakeAsync === 'function') {
-        deactivateKeepAwakeAsync().catch(() => {});
-      }
+      deactivateKeepAwakeAsync().catch(() => {});
     };
   }, [status?.isLoaded, status?.isPlaying]);
 
@@ -274,7 +236,6 @@ export default function PlayScreen() {
       });
     }
 
-    // [逻辑升级] 进入播放页后，自动在后台启动测速优化，方便用户快速换源
     if (!isTV) {
       setTimeout(() => optimizeSources(), 1000);
     }
@@ -283,7 +244,7 @@ export default function PlayScreen() {
   useEffect(() => {
     return () => {
       reset?.();
-      if (isMobile && typeof ScreenOrientation?.lockAsync === 'function') {
+      if (isMobile) {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
       }
     };
@@ -308,9 +269,7 @@ export default function PlayScreen() {
         return true;
       }
       if (isFullscreen) {
-        if (typeof ScreenOrientation?.lockAsync === 'function') {
-          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
-        }
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
         setIsFullscreen?.(false);
         return true;
       }
@@ -325,11 +284,10 @@ export default function PlayScreen() {
     return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
   }, [showControls, showCastModal, isFullscreen, deviceType, router, setShowCastModal, setIsFullscreen, setShowControls]);
 
-  // 8. 提前返回语句
   const isLocalFile = !!params.fileUri;
   if (!isLocalFile && !detail && isInitFailed) {
     return (
-      <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: deviceType === "tv" ? "black" : "#151718" }]}>
+      <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: isTV ? "black" : "#151718" }]}>
         <View style={{ alignItems: "center", paddingHorizontal: 20 }}>
           <Text style={{ color: "#ff4444", fontSize: 18, marginBottom: 12 }}>无法加载播放源</Text>
           <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
@@ -340,15 +298,13 @@ export default function PlayScreen() {
 
   if (!isLocalFile && (!detail || !isDetailMatching)) {
     return (
-      <ThemedView style={[styles.tvContainer, { backgroundColor: deviceType === "tv" ? "black" : "#151718", justifyContent: "center", alignItems: "center" }]}>
+      <ThemedView style={[styles.tvContainer, { backgroundColor: isTV ? "black" : "#151718", justifyContent: "center", alignItems: "center" }]}>
         <VideoLoadingAnimation showProgressBar />
       </ThemedView>
     );
   }
 
-  // 9. 渲染函数
   const source = params.source || detail?.source;
-  const title = params.title || detail?.title;
 
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
@@ -357,7 +313,7 @@ export default function PlayScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || title || "播放"}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || params.title || "播放"}</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadPress}>
               <Download size={20} color="white" />
@@ -372,12 +328,10 @@ export default function PlayScreen() {
       <View style={isFullscreen ? styles.playerSectionFullscreen : [styles.playerSection, { marginTop: 0 }]}>
         {gesture ? (
           <GestureDetector gesture={gesture}>
-            <View style={{ flex: 1 }}>
-              {videoContent}
-            </View>
+            <View style={{ flex: 1 }}>{videoContent}</View>
           </GestureDetector>
         ) : (
-          <TouchableOpacity activeOpacity={1} onPress={handleTapFallback} style={{ flex: 1 }}>
+          <TouchableOpacity activeOpacity={1} onPress={() => setShowControls(!showControls)} style={{ flex: 1 }}>
             {videoContent}
           </TouchableOpacity>
         )}
@@ -387,24 +341,17 @@ export default function PlayScreen() {
       {!isFullscreen && (
         <View style={[styles.mobileBottomBar, { paddingBottom: Math.max(insets.bottom, 20) }]}>
           <View style={styles.mobileTabBar}>
-            <TouchableOpacity
-              style={[styles.mobileTabItem, activeTab === 'episodes' && styles.mobileTabActive]}
-              onPress={() => setActiveTab('episodes')}
-            >
-              <Text style={[styles.mobileTabLabel, activeTab === 'episodes' && styles.mobileTabLabelActive]}>选集</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.mobileTabItem, activeTab === 'sources' && styles.mobileTabActive]}
-              onPress={() => setActiveTab('sources')}
-            >
-              <Text style={[styles.mobileTabLabel, activeTab === 'sources' && styles.mobileTabLabelActive]}>播放源</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.mobileTabItem, activeTab === 'desc' && styles.mobileTabActive]}
-              onPress={() => setActiveTab('desc')}
-            >
-              <Text style={[styles.mobileTabLabel, activeTab === 'desc' && styles.mobileTabLabelActive]}>详情</Text>
-            </TouchableOpacity>
+            {(['episodes', 'sources', 'desc'] as const).map(tab => (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.mobileTabItem, activeTab === tab && styles.mobileTabActive]}
+                onPress={() => setActiveTab(tab)}
+              >
+                <Text style={[styles.mobileTabLabel, activeTab === tab && styles.mobileTabLabelActive]}>
+                  {tab === 'episodes' ? '选集' : tab === 'sources' ? '播放源' : '详情'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           {activeTab === 'episodes' && (
@@ -438,7 +385,7 @@ export default function PlayScreen() {
                       key={idx}
                       style={[
                         styles.mobileEpItem,
-                        { minWidth: '45%' }, // 双列布局
+                        { minWidth: '45%' },
                         isSelected && styles.mobileEpItemActive,
                       ]}
                       onPress={() => handleSourcePress(item)}
@@ -475,24 +422,22 @@ export default function PlayScreen() {
     </View>
   );
 
-  const renderTVLayout = () => (
-    <ThemedView focusable style={styles.tvContainer}>
-      <View style={styles.videoWrapper}>
-        <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-        <SeekingBar />
-      </View>
-      {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
-    </ThemedView>
-  );
-
   return (
-    <ThemedView style={{ flex: 1, backgroundColor: isFullscreen || deviceType === "tv" ? "black" : "#151718" }}>
+    <ThemedView style={{ flex: 1, backgroundColor: isFullscreen || isTV ? "black" : "#151718" }}>
       <StatusBar hidden={isFullscreen} translucent={isFullscreen} style="light" animated={true} />
-      {deviceType === "tv" ? renderTVLayout() : renderMobileLayout()}
+      {isTV ? (
+        <ThemedView focusable style={styles.tvContainer}>
+          <View style={styles.videoWrapper}>
+            <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
+            <SeekingBar />
+          </View>
+          {showControls && <PlayerControls showControls={showControls} setShowControls={setShowControls} />}
+        </ThemedView>
+      ) : renderMobileLayout()}
       <EpisodeSelectionModal />
       <SourceSelectionModal />
       <SpeedSelectionModal />
-      {deviceType !== "tv" && <CastModal />}
+      {!isTV && <CastModal />}
     </ThemedView>
   );
 }
@@ -500,132 +445,32 @@ export default function PlayScreen() {
 const styles = StyleSheet.create({
   tvContainer: { flex: 1 },
   mobileContainer: { flex: 1 },
-  customHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 12,
-  },
+  customHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 12 },
   backBtn: { padding: 4 },
-  headerTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#00bb5e",
-    marginHorizontal: 8,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  overlayIcon: {
-    padding: 6,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 20,
-  },
-  playerSection: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    backgroundColor: "transparent",
-  },
-  playerSectionFullscreen: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  headerTitle: { flex: 1, fontSize: 16, fontWeight: "bold", color: "#00bb5e", marginHorizontal: 8 },
+  headerActions: { flexDirection: "row", alignItems: "center" },
+  overlayIcon: { padding: 6, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 20 },
+  playerSection: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "transparent" },
+  playerSectionFullscreen: { flex: 1, backgroundColor: "#000" },
   videoWrapper: { flex: 1 },
   videoPlayer: { flex: 1 },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(21, 23, 24, 0.7)",
-  },
-  mobileBottomBar: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingTop: 4,
-  },
-  mobileTabBar: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
-  },
-  mobileTabItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginRight: 8,
-  },
-  mobileTabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#00bb5e',
-  },
-  mobileTabLabel: {
-    color: '#888',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  mobileTabLabelActive: {
-    color: '#00bb5e',
-  },
-  descScroll: {
-    flex: 1,
-  },
-  descText: {
-    color: '#aaa',
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  metaInfo: {
-    marginTop: 12,
-    paddingBottom: 30,
-  },
-  metaText: {
-    color: '#555',
-    fontSize: 12,
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(21, 23, 24, 0.7)" },
+  mobileBottomBar: { flex: 1, paddingHorizontal: 10, paddingTop: 4 },
+  mobileTabBar: { flexDirection: 'row', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  mobileTabItem: { paddingVertical: 10, paddingHorizontal: 16, marginRight: 8 },
+  mobileTabActive: { borderBottomWidth: 2, borderBottomColor: '#00bb5e' },
+  mobileTabLabel: { color: '#888', fontSize: 15, fontWeight: '600' },
+  mobileTabLabelActive: { color: '#00bb5e' },
+  descScroll: { flex: 1 },
+  descText: { color: '#aaa', fontSize: 14, lineHeight: 22 },
+  metaInfo: { marginTop: 12, paddingBottom: 30 },
+  metaText: { color: '#555', fontSize: 12 },
   episodeScroll: { flex: 1, marginBottom: 12 },
-  episodeScrollContent: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingBottom: 60, // 进一步增加底部边距，确保在所有手势导航机型下都不被遮挡
-  },
-  mobileEpItem: {
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
-    justifyContent: 'center',
-    minWidth: 50,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
+  episodeScrollContent: { flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 60 },
+  mobileEpItem: { backgroundColor: "#1a1a1a", paddingHorizontal: 10, paddingVertical: 10, borderRadius: 8, marginRight: 8, marginBottom: 8, justifyContent: 'center', minWidth: 50, borderWidth: 1, borderColor: '#222' },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
   mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600", textAlign: 'center' },
   mobileEpTextActive: { color: "#fff" },
-  sourceScroll: { maxHeight: 50 },
-  mobileSourceItem: {
-    backgroundColor: "#1a1a1a",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 6,
-    minWidth: 80,
-    justifyContent: 'center',
-  },
-  mobileSourceItemActive: {
-    borderColor: "#00bb5e",
-    borderWidth: 1,
-    backgroundColor: "rgba(0,187,94,0.08)",
-  },
-  mobileSourceText: { color: "#bbb", fontSize: 12, maxWidth: 100 },
-  mobileSourceTextActive: { color: "#00bb5e", fontWeight: "700" },
   fullscreenContainer: { paddingTop: 0, paddingHorizontal: 0 },
 });
