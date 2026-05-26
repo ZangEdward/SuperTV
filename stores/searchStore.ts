@@ -5,6 +5,9 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SearchStore");
 
+// [内存级详情池]：用于实现搜索到详情的秒开过渡
+export const SearchDetailPool = new Map<string, SearchResult>();
+
 export interface SearchProgress {
   total: number;
   completed: number;
@@ -97,24 +100,26 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       set((state) => {
         results.forEach(r => {
-          // [精准聚合] Key: 标题 + 年份 + 总集数。确保不同季、不同剧场版不被错误合并
+          // [精准聚合] Key: 标题 + 年份 + 总集数
           const episodeCount = r.episodes?.length || 0;
           const key = `${r.title.trim().toLowerCase()}_${r.year}_${episodeCount}`;
-          const existing = resultMap.get(key);
 
+          const existing = resultMap.get(key);
           if (!existing) {
             resultMap.set(key, r);
+            // 同时更新内存详情池，供详情页秒开使用
+            SearchDetailPool.set(`${r.title.trim().toLowerCase()}_${r.source}`, r);
           } else {
-            // 同一季/条目，保留 ID 较大（通常更新）且源信息丰富的
             if (r.id > existing.id) {
               resultMap.set(key, { ...r });
             }
           }
         });
 
+        // [核心优化]：只要有了第一个有效结果，立即打破全屏加载状态，展现界面
         return {
           results: Array.from(resultMap.values()),
-          // 只要有结果就显示，但 loading 持续直到所有 worker 完成
+          loading: false
         };
       });
     };

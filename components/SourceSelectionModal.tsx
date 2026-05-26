@@ -8,11 +8,6 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag("SourceSelectionModal");
 
-// 自动切换到下一个最快源（播放失败时调用）已禁用
-export const autoSwitchToNextSource = () => {
-  logger.info("autoSwitchToNextSource called but feature is disabled");
-};
-
 export const SourceSelectionModal: React.FC = () => {
   const { showSourceModal, setShowSourceModal, loadVideo, currentEpisodeIndex, status } =
     usePlayerStore();

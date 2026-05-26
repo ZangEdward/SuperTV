@@ -4,7 +4,7 @@ import { getResolutionFromM3U8 } from "@/services/m3u8";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { FavoriteManager } from "@/services/storage";
 import { SpeedTestService } from "@/services/speedTestService";
-import useSearchStore from "./searchStore"; // 引入搜索 Store 实现预载入
+import useSearchStore, { SearchDetailPool } from "./searchStore"; // 引入内存详情池
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
@@ -112,22 +112,27 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     const { videoSource } = useSettingsStore.getState();
 
-    // [预载入优化]：从搜索结果中提取所有匹配项，实现秒开且保留多源列表
+    // [预载入优化]：组合搜索结果和内存详情池，实现秒开
     const allSearchResults = useSearchStore.getState().results;
+    const poolResult = SearchDetailPool.get(`${q.trim().toLowerCase()}_${preferredSource}`);
+
     const matchedResults = allSearchResults.filter(r =>
       r.title.trim().toLowerCase() === q.trim().toLowerCase()
     );
 
-    if (matchedResults.length > 0) {
-      const preferredId = id?.toString();
-      const preferred = matchedResults.find(r =>
-        r.id.toString() === preferredId && r.source === preferredSource
-      ) || matchedResults[0];
+    if (matchedResults.length > 0 || poolResult) {
+      const displayResults = poolResult ? [...matchedResults, poolResult] : matchedResults;
+      const uniqueResults = Array.from(new Map(displayResults.map(r => [r.source, r])).values());
 
-      logger.info(`[PRE-CACHE] Hit! Found ${matchedResults.length} sources for ${q}`);
+      const preferredId = id?.toString();
+      const preferred = uniqueResults.find(r =>
+        r.id.toString() === preferredId && r.source === preferredSource
+      ) || poolResult || uniqueResults[0];
+
+      logger.info(`[PRE-CACHE] Hit! Immediate display from memory pool for ${q}`);
 
       set({
-        searchResults: matchedResults as SearchResultWithResolution[],
+        searchResults: uniqueResults as SearchResultWithResolution[],
         detail: preferred as SearchResultWithResolution,
         loading: false, // 命中预载入，直接关闭 loading 避免闪烁
         error: null,

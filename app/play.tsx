@@ -32,6 +32,7 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVideoHandlers } from "@/hooks/useVideoHandlers";
 import { StyledButton } from "@/components/StyledButton";
 import { parseEpisode } from "@/utils/episode";
+import { SpeedTestService } from "@/services/speedTestService";
 import * as ScreenOrientation from "expo-screen-orientation";
 
 const LoadingContainer = memo(({ style }: { style: any; currentEpisode: any }) => (
