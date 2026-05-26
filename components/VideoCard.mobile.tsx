@@ -57,15 +57,10 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     const router = useRouter();
     const { cardWidth, cardHeight, spacing } = useResponsiveLayout();
     const [fadeAnim] = useState(new Animated.Value(0));
-    const [imageUri, setImageUri] = useState<string | null>(null);
 
-    const handlePress = () => {
-      // 聚合卡片点击逻辑：进入搜索聚合详情（当前详情页已支持自动加载）
-      router.push({
-        pathname: "/detail",
-        params: { source, q: title, id },
-      });
-    };
+    // [优先显示逻辑] 初始值直接使用远程代理，确保秒出图片
+    const proxyUrl = api.getImageProxyUrl(poster);
+    const [imageUri, setImageUri] = useState<string>(proxyUrl);
 
     useEffect(() => {
       Animated.timing(fadeAnim, {
@@ -74,14 +69,16 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         useNativeDriver: true,
       }).start();
 
-      // [核心优化] 获取本地持久化缓存图片
-      const loadCachedImage = async () => {
-        const proxyUrl = api.getImageProxyUrl(poster);
-        const localPath = await ImageCacheService.getLocalPath(proxyUrl);
-        setImageUri(localPath);
+      // 后台执行缓存检查与下载，如果本地已有，下一次加载就会变成本地 file 路径
+      const checkCache = async () => {
+        const finalUri = await ImageCacheService.getLocalOrRemote(proxyUrl);
+        // 只有当本地确实有现成文件时才更新 state，避免重复触发远程加载
+        if (finalUri.startsWith('file://')) {
+          setImageUri(finalUri);
+        }
       };
-      loadCachedImage();
-    }, [fadeAnim, poster]);
+      checkCache();
+    }, [poster]);
 
     // --- Selene 风格角标逻辑 ---
     const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';

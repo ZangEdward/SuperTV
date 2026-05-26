@@ -140,45 +140,51 @@ const useSearchStore = create<SearchState>((set, get) => ({
       updateProgress({ total: enabledResources.length });
 
       let completed = 0;
-      const MAX_CONCURRENT = 10; // 骁龙 8 级别手机建议 10 路并发
+      // 针对骁龙 8 系列优化：激进并发。底层 OkHttp 会自动处理连接复用。
+      const MAX_CONCURRENT = 24;
       const queue = [...enabledResources];
 
-      // [核心重构]：真正的流式加载逻辑。取消批次等待，改为“空闲即补位”模式。
+      // [高性能调度]：采用原生网络池竞争机制
       const runWorker = async () => {
         while (queue.length > 0 && !signal.aborted) {
           const resource = queue.shift();
           if (!resource) break;
 
           try {
-            // 增加单源超时竞争
+            // 降低超时到 8s，强制末尾淘汰，保证搜索体感
             const timeoutPromise = new Promise<null>((_, reject) =>
-              setTimeout(() => reject(new Error('TIMEOUT')), 10000)
+              setTimeout(() => reject(new Error('TIMEOUT')), 8000)
             );
 
+            // 底层使用 RNFetchBlob 触发原生 OkHttp 请求，绕过 JS fetch 的串行队列
             const results = await Promise.race([
               api.searchVideo(term, resource.key, signal).then(r => r.results),
               timeoutPromise
             ]) as SearchResult[] | null;
 
             if (!signal.aborted && results && results.length > 0) {
+              // 搜到一个出一个，立即同步
               processAndAddResults(results);
             }
           } catch (err) {
-            logger.debug(`Search failed for source ${resource.name}`);
+            // 吞掉单源错误，保持静默搜索
           } finally {
             completed++;
-            updateProgress({ completed });
+            // 进度上报：采用简单的原子加，减少 UI 抖动
+            if (completed % 2 === 0 || completed === enabledResources.length) {
+              updateProgress({ completed });
+            }
           }
         }
       };
 
-      // 启动多个并发 worker，实现真正的“搜到一个跳一个”
+      // 同时拉起 24 个原生网络竞争任务
       const workers = Array(Math.min(MAX_CONCURRENT, enabledResources.length))
         .fill(null)
         .map(() => runWorker());
 
       await Promise.all(workers);
-      updateProgress({ isComplete: true });
+      updateProgress({ isComplete: true, completed: enabledResources.length });
 
       if (signal.aborted) return;
 

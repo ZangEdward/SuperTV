@@ -8,6 +8,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { ImageCacheService } from "@/services/imageCacheService";
 
 const logger = Logger.withTag('VideoCardTV');
 
@@ -55,32 +56,9 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const [isFocused, setIsFocused] = useState(false);
     const [fadeAnim] = useState(new Animated.Value(0));
 
-    const handlePress = () => {
-      // TV 端点击逻辑一致
-      router.push({
-        pathname: "/detail",
-        params: { source, q: title, id: id.toString() },
-      });
-    };
-
-    const handleFocus = useCallback(() => {
-      setIsFocused(true);
-      Animated.spring(scale, {
-        toValue: 1.05,
-        damping: 15,
-        stiffness: 200,
-        useNativeDriver: true,
-      }).start();
-      onFocus?.();
-    }, [onFocus]);
-
-    const handleBlur = useCallback(() => {
-      setIsFocused(false);
-      Animated.spring(scale, {
-        toValue: 1.0,
-        useNativeDriver: true,
-      }).start();
-    }, []);
+    // [优先显示逻辑] 初始值直接使用远程代理
+    const proxyUrl = api.getImageProxyUrl(poster);
+    const [imageUri, setImageUri] = useState<string>(proxyUrl);
 
     useEffect(() => {
       Animated.timing(fadeAnim, {
@@ -89,7 +67,15 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         delay: Math.random() * 200,
         useNativeDriver: true,
       }).start();
-    }, [fadeAnim]);
+
+      const checkCache = async () => {
+        const finalUri = await ImageCacheService.getLocalOrRemote(proxyUrl);
+        if (finalUri.startsWith('file://')) {
+          setImageUri(finalUri);
+        }
+      };
+      checkCache();
+    }, [poster]);
 
     const scale = useRef(new Animated.Value(1)).current;
     const animatedStyle = { transform: [{ scale }] };
@@ -109,7 +95,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
           style={styles.pressable}
         >
           <View style={styles.card}>
-            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
+            <Image source={{ uri: imageUri }} style={styles.poster} />
 
             {/* 年份 (Top-Left) */}
             {showYearBadge && (

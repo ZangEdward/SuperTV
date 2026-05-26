@@ -101,9 +101,6 @@ export default function SearchScreen() {
 
   const filteredResults = useMemo(() => {
     let list = [...results];
-    if (selectedSource !== 'all') list = list.filter(r => r.source_name === selectedSource);
-    if (selectedYear !== 'all') list = list.filter(r => r.year === selectedYear);
-    if (selectedTitle !== 'all') list = list.filter(r => r.title === selectedTitle);
 
     if (yearSortOrder !== 'none') {
       list.sort((a, b) => {
@@ -113,7 +110,7 @@ export default function SearchScreen() {
       });
     }
     return list;
-  }, [results, selectedSource, selectedYear, selectedTitle, yearSortOrder]);
+  }, [results, yearSortOrder]);
 
   const aggregatedResults = useMemo(() => {
     if (!useAggregatedView) return filteredResults;
@@ -134,16 +131,6 @@ export default function SearchScreen() {
     });
     return Array.from(groups.values());
   }, [filteredResults, useAggregatedView]);
-
-  const sourceOptions = useMemo(() => {
-    const sources = Array.from(new Set(results.map(r => r.source_name))).sort();
-    return ['all', ...sources];
-  }, [results]);
-
-  const yearOptions = useMemo(() => {
-    const years = Array.from(new Set(results.map(r => r.year))).filter(y => !!y).sort().reverse();
-    return ['all', ...years];
-  }, [results]);
 
   const renderItem = useCallback(({ item }: { item: SearchResult & { sourceCount?: number }; index: number }) => (
     <VideoCard
@@ -203,51 +190,6 @@ export default function SearchScreen() {
     </View>
   );
 
-  const renderFilters = () => (
-    <View style={dynamicStyles.filterSection}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={dynamicStyles.filterScroll}>
-        <TouchableOpacity
-          style={dynamicStyles.filterPill}
-          onPress={() => {
-            const nextIdx = (sourceOptions.indexOf(selectedSource) + 1) % sourceOptions.length;
-            setFilters({ selectedSource: sourceOptions[nextIdx] });
-          }}
-        >
-          <ThemedText style={[dynamicStyles.filterLabel, selectedSource !== 'all' && dynamicStyles.filterLabelActive]}>
-            来源: {selectedSource === 'all' ? '全部' : selectedSource}
-          </ThemedText>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={dynamicStyles.filterPill}
-          onPress={() => {
-            const nextIdx = (yearOptions.indexOf(selectedYear) + 1) % yearOptions.length;
-            setFilters({ selectedYear: yearOptions[nextIdx] });
-          }}
-        >
-          <ThemedText style={[dynamicStyles.filterLabel, selectedYear !== 'all' && dynamicStyles.filterLabelActive]}>
-            年份: {selectedYear === 'all' ? '全部' : selectedYear}
-          </ThemedText>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={dynamicStyles.filterPill}
-          onPress={() => {
-            const next: any = yearSortOrder === 'none' ? 'desc' : yearSortOrder === 'desc' ? 'asc' : 'none';
-            setFilters({ yearSortOrder: next });
-          }}
-        >
-          <ThemedText style={[dynamicStyles.filterLabel, yearSortOrder !== 'none' && dynamicStyles.filterLabelActive]}>
-            排序: {yearSortOrder === 'none' ? '默认' : yearSortOrder === 'desc' ? '最新' : '最早'}
-          </ThemedText>
-          {yearSortOrder !== 'none' && (
-            yearSortOrder === 'desc' ? <ArrowDown10 size={14} color={Colors.dark.primary} /> : <ArrowUp10 size={14} color={Colors.dark.primary} />
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
-  );
-
   const renderSearchContent = () => (
     <>
       <View style={dynamicStyles.searchHeader}>
@@ -294,30 +236,17 @@ export default function SearchScreen() {
                 </ThemedText>
               )}
             </View>
-
-            <View style={dynamicStyles.aggToggleWrapper}>
-              <ThemedText style={[dynamicStyles.aggLabel, useAggregatedView && { color: 'white' }]}>聚合</ThemedText>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setUseAggregatedView(!useAggregatedView)}
-                style={[dynamicStyles.switchTrack, useAggregatedView && { backgroundColor: Colors.dark.primary }]}
-              >
-                <View style={[dynamicStyles.switchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
-              </TouchableOpacity>
-            </View>
           </View>
 
-          {results.length > 0 && renderFilters()}
-
-          {searchProgress.total > 0 && !searchProgress.isComplete && (
-            <View style={dynamicStyles.loadingBarBg}>
-              <View style={[dynamicStyles.loadingBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
-            </View>
-          )}
-
-          {loading && aggregatedResults.length === 0 ? (
-            <View style={{ flex: 1, justifyContent: 'center' }}>
-               <VideoLoadingAnimation />
+          {aggregatedResults.length === 0 && searchProgress.total > 0 && !searchProgress.isComplete ? (
+            <View style={dynamicStyles.centerProgressWrapper}>
+               <ThemedText style={dynamicStyles.searchingText}>全网激进检索中...</ThemedText>
+               <View style={dynamicStyles.mainProgressBarBg}>
+                 <View style={[dynamicStyles.mainProgressBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
+               </View>
+               <ThemedText style={dynamicStyles.progressPercentage}>
+                 {Math.round((searchProgress.completed / searchProgress.total) * 100)}%
+               </ThemedText>
             </View>
           ) : aggregatedResults.length === 0 && searchProgress.isComplete ? (
             <View style={[commonStyles.center, { flex: 1, paddingBottom: 100 }]}>
@@ -325,12 +254,19 @@ export default function SearchScreen() {
                <ThemedText style={{ color: '#7f8c8d', marginTop: 16, fontSize: 18, fontWeight: '500' }}>未找到结果</ThemedText>
             </View>
           ) : (
-            <CustomScrollView
-              data={aggregatedResults}
-              renderItem={renderItem}
-              loading={loading && aggregatedResults.length === 0}
-              error={error}
-            />
+            <>
+              {searchProgress.total > 0 && !searchProgress.isComplete && (
+                <View style={dynamicStyles.loadingBarBg}>
+                  <View style={[dynamicStyles.loadingBarFill, { width: `${(searchProgress.completed / searchProgress.total) * 100}%` }]} />
+                </View>
+              )}
+              <CustomScrollView
+                data={aggregatedResults}
+                renderItem={renderItem}
+                loading={loading && aggregatedResults.length === 0}
+                error={error}
+              />
+            </>
           )}
         </View>
       )}
@@ -531,6 +467,37 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     loadingBarFill: {
       height: "100%",
       backgroundColor: Colors.dark.primary,
+    },
+    centerProgressWrapper: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingBottom: 100,
+    },
+    searchingText: {
+      fontSize: 16,
+      color: '#7f8c8d',
+      marginBottom: 20,
+      fontWeight: '600',
+      letterSpacing: 1,
+    },
+    mainProgressBarBg: {
+      width: '70%',
+      height: 6,
+      backgroundColor: '#1c1c1e',
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    mainProgressBarFill: {
+      height: '100%',
+      backgroundColor: Colors.dark.primary,
+      borderRadius: 3,
+    },
+    progressPercentage: {
+      marginTop: 12,
+      fontSize: 14,
+      color: Colors.dark.primary,
+      fontWeight: 'bold',
     },
     errorText: {
       color: "#e74c3c",

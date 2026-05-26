@@ -1,44 +1,38 @@
 import * as FileSystem from "expo-file-system";
 import Logger from "@/utils/Logger";
+import * as Crypto from 'expo-crypto';
 
 const logger = Logger.withTag("ImageCache");
 const CACHE_DIR = `${FileSystem.cacheDirectory}poster_cache/`;
 
 /**
- * 极速图片持久化缓存 (借鉴 Selene 逻辑)
+ * 极速海报缓存服务
  */
 export class ImageCacheService {
   /**
-   * 获取图片的本地路径，如果不存在则下载
+   * 生成文件名的哈希值 (同步)
    */
-  static async getLocalPath(remoteUrl: string): Promise<string> {
-    if (!remoteUrl) return "";
+  static async getCachePath(remoteUrl: string): Promise<string> {
+    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, remoteUrl);
+    return `${CACHE_DIR}${hash}.img`;
+  }
 
-    // 只有 http 链接需要缓存
-    if (!remoteUrl.startsWith('http')) return remoteUrl;
+  /**
+   * 智能预判：如果本地有，直接返回本地，否则后台触发下载并返回远程
+   */
+  static async getLocalOrRemote(remoteUrl: string): Promise<string> {
+    if (!remoteUrl || !remoteUrl.startsWith('http')) return remoteUrl;
 
     try {
-      // 1. 确保目录存在
-      const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
-      }
+      const localUri = await this.getCachePath(remoteUrl);
+      const info = await FileSystem.getInfoAsync(localUri);
 
-      // 2. 生成本地文件名 (哈希化处理特殊字符)
-      const filename = remoteUrl.split('/').pop()?.split('?')[0] || `img_${Math.random()}`;
-      const localUri = `${CACHE_DIR}${filename}`;
-
-      // 3. 检查本地是否存在
-      const fileInfo = await FileSystem.getInfoAsync(localUri);
-      if (fileInfo.exists) {
+      if (info.exists) {
         return localUri;
       }
 
-      // 4. 后台静默下载并返回原始链接（本次渲染用原始链接，下次渲染用本地）
-      FileSystem.downloadAsync(remoteUrl, localUri).catch(e => {
-        logger.debug(`Background image download failed: ${remoteUrl}`);
-      });
-
+      // 本地没有，不阻塞渲染，直接返回远程地址，并在后台偷偷下载
+      this.downloadToCache(remoteUrl, localUri);
       return remoteUrl;
     } catch (e) {
       return remoteUrl;
@@ -46,8 +40,22 @@ export class ImageCacheService {
   }
 
   /**
-   * 清理过期缓存
+   * 后台下载任务
    */
+  private static async downloadToCache(remoteUrl: string, localUri: string) {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+      }
+
+      await FileSystem.downloadAsync(remoteUrl, localUri);
+      logger.debug(`Cached new poster: ${localUri}`);
+    } catch (e) {
+      // 失败不影响显示
+    }
+  }
+
   static async clearCache(): Promise<void> {
     try {
       await FileSystem.deleteAsync(CACHE_DIR, { idempotent: true });
