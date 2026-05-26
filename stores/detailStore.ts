@@ -90,6 +90,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
+    // 强制去除空格进行搜索，适配某些源的严格匹配
+    q = (q || "").replace(/\s+/g, '');
     logger.info(`[PERF] DetailStore.init START - q: ${q}, preferredSource: ${preferredSource}, id: ${id}`);
     
     const { controller: oldController } = get();

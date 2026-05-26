@@ -120,13 +120,16 @@ export default function DetailScreen() {
     return (
       <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#151718' }]}>
         <VideoLoadingAnimation />
-        <View style={{ marginTop: 20, alignItems: 'center' }}>
-          <ThemedText style={{ color: '#888', fontSize: 14 }}>
-            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '正在智能校准资源...'}
+        <View style={{ marginTop: 40, alignItems: 'center', width: '100%' }}>
+          <ThemedText style={{ color: '#888', fontSize: 16, fontWeight: '600', marginBottom: 20, letterSpacing: 1 }}>
+            全网激进检索中...
           </ThemedText>
-          <View style={{ width: 200, height: 2, backgroundColor: '#333', marginTop: 8, borderRadius: 1, overflow: 'hidden' }}>
-            <View style={{ width: `${progress}%`, height: '100%', backgroundColor: Colors.dark.primary }} />
+          <View style={{ width: '60%', height: 6, backgroundColor: '#1c1c1e', borderRadius: 3, overflow: 'hidden' }}>
+            <View style={{ width: `${progress}%`, height: '100%', backgroundColor: Colors.dark.primary, borderRadius: 3 }} />
           </View>
+          <ThemedText style={{ marginTop: 12, fontSize: 14, color: Colors.dark.primary, fontWeight: 'bold' }}>
+            {Math.round(progress)}%
+          </ThemedText>
         </View>
       </ThemedView>
     );

@@ -36,8 +36,11 @@ const useNetDiskStore = create<NetDiskState>((set, get) => ({
   setKeyword: (keyword) => set({ keyword }),
 
   search: async (query) => {
-    const searchKeyword = query || get().keyword;
+    let searchKeyword = query || get().keyword;
     if (!searchKeyword.trim()) return;
+
+    // 去除空格以匹配更多资源
+    searchKeyword = searchKeyword.replace(/\s+/g, '');
 
     set({ loading: true, error: null });
 

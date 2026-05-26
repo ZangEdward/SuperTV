@@ -64,8 +64,11 @@ const useSearchStore = create<SearchState>((set, get) => ({
   },
 
   search: async (searchText) => {
-    const term = searchText || get().keyword;
+    let term = searchText || get().keyword;
     if (!term.trim()) return;
+
+    // 搜索时去除空格，提高源匹配成功率
+    term = term.replace(/\s+/g, '');
 
     // Abort previous search
     get().abort();
