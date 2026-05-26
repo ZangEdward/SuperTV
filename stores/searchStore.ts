@@ -22,21 +22,9 @@ export function generateFuzzyTerms(term: string): string[] {
     .trim();
   if (cleaned) variants.push(cleaned);
 
-  // 2. 去除季/集后缀：第X季、第X部、第X期
+  // 2. 去除季/集后缀：人搜索通常会少打字（如"海贼王第1季"→"海贼王"）
   const seasonRemoved = cleaned.replace(/第[一二三四五六七八九十\d]+[季部期集].*$/g, '');
   if (seasonRemoved && seasonRemoved !== cleaned) variants.push(seasonRemoved);
-
-  // 3. 取前N个字符作为核心词（去除可能的长尾描述）
-  if (cleaned.length > 6) {
-    const core = cleaned.substring(0, Math.min(cleaned.length, Math.max(4, Math.floor(cleaned.length * 0.7))));
-    if (core && !variants.includes(core)) variants.push(core);
-  }
-
-  // 4. 去除常见前后缀
-  const stripped = cleaned
-    .replace(/^(?:全集|完整版|高清|国语|日语|英语|中文字幕)/g, '')
-    .replace(/(?:全集|完整版|高清|国语|日语|英语|中文字幕)$/g, '');
-  if (stripped && stripped !== cleaned && !variants.includes(stripped)) variants.push(stripped);
 
   return variants;
 }
@@ -44,7 +32,7 @@ export function generateFuzzyTerms(term: string): string[] {
 /**
  * 向详情池填充结果，生成多个 key 变体以提高详情页命中率
  */
-function populateDetailPool(results: SearchResult[]) {
+export function populateDetailPool(results: SearchResult[]) {
   results.forEach(r => {
     const coreTitle = r.title.trim().toLowerCase();
     // 标准 key
@@ -164,22 +152,32 @@ const useSearchStore = create<SearchState>((set, get) => ({
       }));
     };
 
+    // [防白屏] 节流器：将并发结果合并批量更新，避免 JS 线程被海量 set() 阻塞
+    let _batchTimer: ReturnType<typeof setTimeout> | null = null;
+    let _pendingResults: SearchResult[][] = [];
+
+    const flushBatch = () => {
+      if (_pendingResults.length === 0) return;
+      const batch = _pendingResults.splice(0);
+      // Hermes 不支持 Array.flat()，使用 reduce 展开
+      const allResults = batch.reduce((acc: SearchResult[], val: SearchResult[]) => acc.concat(val), []);
+
+      set((state) => {
+        const newResults = [...state.results, ...allResults];
+        const uniqueResults = Array.from(new Map(newResults.map(r => [`${r.source}_${r.id}`, r])).values());
+        populateDetailPool(allResults);
+        return { results: uniqueResults };
+      });
+    };
+
     const processAndAddResults = (results: SearchResult[]) => {
       if (signal.aborted || !results || results.length === 0) return;
 
-      set((state) => {
-        const newResults = [...state.results, ...results];
-        // 仅进行物理去重（同源同ID去重）
-        const uniqueResults = Array.from(new Map(newResults.map(r => [`${r.source}_${r.id}`, r])).values());
+      _pendingResults.push(results);
 
-        // 填充详情池，供详情页秒开使用（带多种 key 变体）
-        populateDetailPool(results);
-
-        return {
-          results: uniqueResults,
-          loading: false,
-        };
-      });
+      if (_batchTimer) clearTimeout(_batchTimer);
+      // 每 120ms 批量 flush 一次，避免高频 set() 阻塞 UI 线程
+      _batchTimer = setTimeout(flushBatch, 120);
     };
 
     /**
@@ -257,6 +255,9 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       await Promise.all([...workers, globalSearchTask]);
 
+      // 阶段结束时强制 flush 一次，确保所有结果已提交
+      flushBatch();
+
       return !signal.aborted;
     };
 
@@ -267,11 +268,16 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       // ============ Phase 2: 模糊搜索（全量执行所有变体） ============
       // 剧名可能包含搜索词，所以始终执行模糊搜索以确保召回率
+      // [防白屏] 每阶段之间暂停 500ms，让 UI 线程有时间刷新界面
       for (const fuzzyTerm of searchTerms) {
         if (signal.aborted) break;
         if (fuzzyTerm === preciseTerm) continue;
         // 检查该模糊词是否与精准词过于相似（防止重复搜索）
         if (preciseTerm.includes(fuzzyTerm) || fuzzyTerm.includes(preciseTerm)) continue;
+
+        // 阶段间间隔，防止 JS 线程被连续阻塞
+        await new Promise(r => setTimeout(r, 500));
+        if (signal.aborted) return;
 
         await executeSearchPhase(fuzzyTerm, 'fuzzy');
         if (signal.aborted) return;

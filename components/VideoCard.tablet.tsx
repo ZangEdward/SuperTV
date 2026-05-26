@@ -9,7 +9,7 @@ import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
-import { SearchDetailPool, populateDetailPool } from "@/stores/searchStore";
+
 
 const logger = Logger.withTag('VideoCardTablet');
 
@@ -63,29 +63,15 @@ const VideoCardTablet = forwardRef<View, VideoCardTabletProps>(
         return;
       }
 
-      // 预先填充详情池，确保详情页秒开
-      const poolItem = {
-        id: parseInt(id, 10) || 0,
-        title,
-        poster,
-        episodes: [],
-        source,
-        source_name: sourceName || source,
-        year: year || '',
-        desc: '',
-        type_name: '',
-      };
-      populateDetailPool([poolItem]);
-
-      if (episodeIndex !== undefined) {
+      if (progress !== undefined && episodeIndex !== undefined) {
         router.push({
           pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: (playTime || 0) * 1000 },
+          params: { source, id, episodeIndex, title, position: playTime * 1000 },
         });
       } else {
         router.push({
           pathname: "/detail",
-          params: { source, q: title, id },
+          params: { source, q: title },
         });
       }
     };
