@@ -112,31 +112,20 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
     const { videoSource } = useSettingsStore.getState();
 
-    // [预载入优化]：组合搜索结果和内存详情池，实现秒开
-    const allSearchResults = useSearchStore.getState().results;
-    const poolResult = SearchDetailPool.get(`${q.trim().toLowerCase()}_${preferredSource}`);
+    // [资料源识别]：豆瓣和 Bangumi 仅提供资料，不提供视频
+    const isMetadataSource = preferredSource === "douban" || preferredSource === "bangumi";
 
-    const matchedResults = allSearchResults.filter(r =>
-      r.title.trim().toLowerCase() === q.trim().toLowerCase()
-    );
-
-    if (matchedResults.length > 0 || poolResult) {
-      const displayResults = poolResult ? [...matchedResults, poolResult] : matchedResults;
-      const uniqueResults = Array.from(new Map(displayResults.map(r => [r.source, r])).values());
-
-      const preferredId = id?.toString();
-      const preferred = uniqueResults.find(r =>
-        r.id.toString() === preferredId && r.source === preferredSource
-      ) || poolResult || uniqueResults[0];
-
-      logger.info(`[PRE-CACHE] Hit! Immediate display from memory pool for ${q}`);
-
-      set({
-        searchResults: uniqueResults as SearchResultWithResolution[],
-        detail: preferred as SearchResultWithResolution,
-        loading: false, // 命中预载入，直接关闭 loading 避免闪烁
-        error: null,
-      });
+    // [预载入优化]：如果是从搜索页点击进入的（非资料源），尝试从内存池秒开
+    if (!isMetadataSource) {
+      const poolResult = SearchDetailPool.get(`${q.trim().toLowerCase()}_${preferredSource}`);
+      if (poolResult) {
+        set({
+          searchResults: [poolResult as SearchResultWithResolution],
+          detail: poolResult as SearchResultWithResolution,
+          loading: false,
+          error: null,
+        });
+      }
     }
 
     const updateProgress = (updates: Partial<SearchProgress>) => {
@@ -154,25 +143,21 @@ const useDetailStore = create<DetailState>((set, get) => ({
       const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
       const currentCore = getCoreKey(q);
 
-      // [Selene 级语义过滤升级]：大幅放宽匹配度，确保不漏掉关联剧集
+      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开
       const strictlyMatchedResults = results.filter(r => {
           const targetTitle = (r.title || "").toLowerCase();
           const targetCore = getCoreKey(r.title);
           const searchCore = q.toLowerCase();
 
-          // 匹配条件（满足其一即可）：
-          // 1. 核心特征包含或被包含
-          // 2. 原始标题包含搜索词
-          // 3. 搜索词包含原始标题
+          // 匹配条件：只要标题包含核心词，或者核心词包含标题
           return targetCore.includes(currentCore) ||
                  currentCore.includes(targetCore) ||
-                 targetTitle.includes(searchCore) ||
-                 searchCore.includes(targetTitle);
+                 targetTitle.includes(searchCore);
       });
 
       if (strictlyMatchedResults.length === 0) {
-        // [关键修复]：如果是在首选源路径下且只有一个结果，无条件信任它（解决首页点击失效）
-        if (state.searchResults.length === 0 && results.length === 1) {
+        // [关键修复]：如果是在资料源路径下且这是第一个结果，无条件信任它（解决首页点击失效）
+        if (isMetadataSource && state.searchResults.length === 0) {
            strictlyMatchedResults.push(results[0]);
         } else {
            if (state.detail) set({ loading: false });
@@ -180,27 +165,22 @@ const useDetailStore = create<DetailState>((set, get) => ({
         }
       }
 
-      // [源去重加固]
+      // [源去重与合并]
       const resultsWithLatency = strictlyMatchedResults.map(r => ({ ...r, latency: defaultLatency }));
       const existingSources = new Set(state.searchResults.map((r) => r.source));
       const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
 
       if (newResults.length === 0) {
-        if (state.detail) set({ loading: false });
+        if (get().detail) set({ loading: false });
         return;
       }
 
+      const combinedResults = [...state.searchResults, ...newResults];
       // [逻辑升级] 初始加载即应用评分逻辑进行初步排序
       const finalResults = combinedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a));
 
-      const preferredId = id?.toString();
-      const preferredMatch = preferredId
-        ? finalResults.find(
-            (result) => result.id.toString() === preferredId && result.source === preferredSource
-          )
-        : null;
-
-      const selectedDetail = preferredMatch || state.detail || finalResults[0] || null;
+      // 如果当前没有有效视频 detail，或者当前 detail 还是资料源占位，执行切换
+      const shouldUpdateDetail = !get().detail || isMetadataSource;
 
       set({
         searchResults: finalResults,
@@ -209,7 +189,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
           source_name: r.source_name,
           resolution: r.resolution,
         })),
-        detail: selectedDetail,
+        detail: shouldUpdateDetail ? finalResults[0] : get().detail,
       });
 
       // [核心优化] 只要有了搜索结果，立即异步启动测速优化，无需等待 init 结束
@@ -218,23 +198,18 @@ const useDetailStore = create<DetailState>((set, get) => ({
       }
 
       // 如果选中的详情还没有剧集数据，异步拉取一次
+      const selectedDetail = shouldUpdateDetail ? finalResults[0] : get().detail;
       if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
         await get().setDetail(selectedDetail);
       }
     };
 
     try {
-      // 核心修复：如果是豆瓣(douban)、动漫(bangumi)或 ID 无效，强制进入全网模糊探测模式
-      const isFuzzySource = !preferredSource ||
-                           preferredSource === "douban" ||
-                           preferredSource === "bangumi" ||
-                           id === "0" || id === "local";
-
-      if (!isFuzzySource && preferredSource && id) {
-        // [路径 A] 有确定的播放源：精准获取，同步开启换源检索
+      // 资料源（路径 B）：不尝试 Path A，直接全网探测
+      if (!isMetadataSource && preferredSource && id && id !== "local" && id !== "0") {
+        // [路径 A] 有确定的视频源：精准获取，同步开启换源检索
         updateProgress({ total: 1, currentSource: '首选源' });
 
-        // 1. 同步获取首选源详情，确保秒开
         try {
           const response = await api.searchVideo(q, preferredSource, signal);
           if (response.results.length > 0) {
@@ -254,7 +229,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
         }).catch(() => {});
 
       } else {
-        // [路径 B] 只有关键词（来自全网搜索或每日动漫）：激进全网并发加载
+        // [路径 B] 资料源或无确定的源：激进全网并发加载
         const allResources = await api.getResources(signal);
         const enabledResources = videoSource.enabledAll ? allResources : allResources.filter((r) => videoSource.sources[r.key]);
 
@@ -266,7 +241,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
         updateProgress({ total: enabledResources.length });
 
         let completed = 0;
-        // [极致并发] 针对骁龙 8 系列优化：同时启动所有源的检索
+        // [极致并发] 同时启动所有源的检索
         const tasks = enabledResources.map(async (resource) => {
           try {
             updateProgress({ currentSource: resource.name });
