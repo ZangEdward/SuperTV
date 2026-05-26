@@ -261,16 +261,16 @@ export default function PlayScreen() {
       });
     }
 
-    // [逻辑升级] 进入播放页后，自动启动测速优化，方便用户快速换源
-    const optimizeTimer = setTimeout(() => {
-      const state = useDetailStore.getState();
-      if (state.searchResults.length > 0 && !state.isOptimizing) {
-        state.optimizeSources().catch(() => {});
-      }
-    }, 1000);
+    // [逻辑升级] 已根据要求关闭进入播放页后的自动测速优化
+    // const optimizeTimer = setTimeout(() => {
+    //   const state = useDetailStore.getState();
+    //   if (state.searchResults.length > 0 && !state.isOptimizing) {
+    //     state.optimizeSources().catch(() => {});
+    //   }
+    // }, 1000);
 
     return () => {
-      clearTimeout(optimizeTimer);
+      // clearTimeout(optimizeTimer);
     };
   }, []);
 
