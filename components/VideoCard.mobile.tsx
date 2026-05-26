@@ -74,29 +74,26 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         return;
       }
       
-      console.log("Navigating to play/detail:", { source, id, episodeIndex, title, playTime });
+      console.log("Navigating to play/detail:", { source, id, episodeIndex, title, playTime, sourceName });
 
-      if (source && id) {
-        if (progress !== undefined && episodeIndex !== undefined) {
-          router.push({
-            pathname: "/play",
-            params: {
-              source,
-              id,
-              episodeIndex,
-              title,
-              position: playTime ? playTime * 1000 : 0
-            },
-          });
-        } else {
-          router.push({
-            pathname: "/detail",
-            params: { source, q: title },
-          });
-        }
+      // 如果有 progress 且 source 不是 douban 且有 sourceName，则直接跳转播放页
+      if (progress !== undefined && episodeIndex !== undefined && source !== 'douban' && sourceName) {
+        router.push({
+          pathname: "/play",
+          params: {
+            source,
+            id,
+            episodeIndex,
+            title,
+            position: playTime ? playTime * 1000 : 0
+          },
+        });
       } else {
-        console.error("Missing source or id for navigation");
-        Alert.alert("错误", "无法获取视频源信息");
+        // 否则跳转到详情页以补全播放源信息
+        router.push({
+          pathname: "/detail",
+          params: { source: source === 'douban' ? 'all' : source, q: title },
+        });
       }
     };
 
