@@ -429,6 +429,11 @@ const useCacheStore = create<CacheState>((set, get) => ({
     if (controllers[itemId]) {
       delete controllers[itemId];
     }
+    const activeTaskIds = (get() as any)._activeTaskIds;
+    if (activeTaskIds) {
+      activeTaskIds.delete(itemId);
+    }
+
     ep.status = 'cancelled';
     set((s) => ({ queue: [...s.queue], activeCount: Math.max(0, s.activeCount - 1) }));
     CacheService.saveQueue(get().queue);
@@ -512,16 +517,23 @@ const useCacheStore = create<CacheState>((set, get) => ({
   removeCacheItem: async (id) => {
     set({ loading: true, error: null });
     try {
-      // 1. 处理已完成的项
+      // 1. 处理活跃任务
+      const controllers = (get() as any)._controllers || {};
+      const ctrl = controllers[id];
+      if (ctrl) {
+        if (typeof ctrl.abort === 'function') ctrl.abort();
+        if (typeof ctrl.cancelAsync === 'function') await ctrl.cancelAsync();
+        delete controllers[id];
+      }
+
+      // 2. 删除物理文件
       const existing = get().items.find((item) => item.id === id);
       if (existing) {
         await CacheService.deleteFile(existing.fileUri);
-        await CacheService.remove(id);
-        const nextItems = get().items.filter((item) => item.id !== id);
-        set({ items: nextItems });
       }
 
-      // 2. 处理队列中的项（如失败或取消的）
+      // 3. 更新状态并持久化
+      const nextItems = get().items.filter((item) => item.id !== id);
       const nextQueue = get().queue.map(group => ({
         ...group,
         episodes: group.episodes.filter(ep => {
@@ -533,13 +545,19 @@ const useCacheStore = create<CacheState>((set, get) => ({
       const dp = { ...(get().downloadProgress || {}) };
       delete dp[id];
 
-      set((state) => ({
-        queue: nextQueue,
-        loading: false,
-        downloadProgress: dp
-      }));
+      // 【核心修复】同步保存所有状态
+      await CacheService.saveAll(nextItems);
       await CacheService.saveQueue(nextQueue);
 
+      set((state) => ({
+        items: nextItems,
+        queue: nextQueue,
+        loading: false,
+        downloadProgress: dp,
+        activeCount: Math.max(0, state.activeCount - (ctrl ? 1 : 0))
+      }));
+
+      (get() as any).processQueue?.();
       Toast.show({ type: "success", text1: "已删除缓存记录" });
     } catch (error) {
       logger.warn("removeCacheItem failed", error);
@@ -551,31 +569,44 @@ const useCacheStore = create<CacheState>((set, get) => ({
   removeSeries: async (title) => {
     set({ loading: true, error: null });
     try {
-      // 1. 获取该系列的所有已下载项并删除文件
-      const seriesItems = get().items.filter((it) => it.title === title);
-      for (const item of seriesItems) {
-        await CacheService.deleteFile(item.fileUri);
-        await CacheService.remove(item.id);
-      }
-
-      // 2. 取消该系列的所有正在下载/排队的任务
+      // 1. 取消该系列的所有正在下载/排队的任务
       const seriesQueue = get().queue.filter((g) => g.title === title);
       for (const group of seriesQueue) {
         await (get() as any).cancelGroup(group.groupId);
       }
 
-      // 3. 更新状态
+      // 2. 获取该系列的所有已下载项并删除物理文件
+      const seriesItems = get().items.filter((it) => it.title === title);
+      for (const item of seriesItems) {
+        await CacheService.deleteFile(item.fileUri);
+      }
+
+      // 3. 计算移除后的状态
       const nextItems = get().items.filter((it) => it.title !== title);
+      const nextQueue = get().queue.filter((g) => g.title !== title);
+
+      // 清理进度信息
       const dp = { ...(get().downloadProgress || {}) };
       seriesItems.forEach(it => delete dp[it.id]);
+      seriesQueue.forEach(g => {
+        g.episodes.forEach(ep => {
+          const epId = `${g.source}_${g.id}_${ep.index}`;
+          delete dp[epId];
+        });
+      });
+
+      // 4. 【核心修复】同步保存到持久化存储
+      await CacheService.saveAll(nextItems);
+      await CacheService.saveQueue(nextQueue);
 
       set((state) => ({
         items: nextItems,
+        queue: nextQueue,
         loading: false,
         downloadProgress: dp
       }));
-      await CacheService.saveQueue(get().queue);
 
+      (get() as any).processQueue?.();
       Toast.show({ type: "success", text1: "已删除整部剧集缓存" });
     } catch (error) {
       logger.warn("removeSeries failed", error);
@@ -586,9 +617,31 @@ const useCacheStore = create<CacheState>((set, get) => ({
   clearCache: async () => {
     set({ loading: true, error: null });
     try {
+      // 1. 强力停止所有活跃任务
+      const controllers = (get() as any)._controllers || {};
+      Object.keys(controllers).forEach(id => {
+        const ctrl = controllers[id];
+        if (ctrl && typeof ctrl.abort === 'function') ctrl.abort();
+        if (ctrl && typeof ctrl.cancelAsync === 'function') ctrl.cancelAsync();
+        CacheService.cancelM3U8Task(id);
+      });
+
+      // 2. 清理所有物理文件
       await CacheService.clearAll();
+
+      // 3. 重置所有状态
       await AsyncStorage.removeItem("mytv_cache_queue");
-      set({ items: [], queue: [], loading: false, downloadProgress: {} });
+
+      set({
+        items: [],
+        queue: [],
+        loading: false,
+        downloadProgress: {},
+        activeCount: 0
+      });
+      (get() as any)._controllers = {};
+      (get() as any)._activeTaskIds = new Set();
+
       Toast.show({ type: "success", text1: "缓存已清除" });
     } catch (error) {
       logger.warn("clearCache failed", error);

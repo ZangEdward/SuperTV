@@ -152,12 +152,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
       const state = get();
       const currentTitle = q.trim().toLowerCase();
 
-      // [核心过滤]：只保留与当前搜索词高度匹配的结果，防止“道士下山”混入“家业”
+      // [Selene 级语义过滤]：只保留与当前搜索词高度吻合的结果
       const strictlyMatchedResults = results.filter(r => {
           const targetTitle = r.title.trim().toLowerCase();
-          // 逻辑：要么完全相等，要么当前标题包含在目标标题中且目标标题长度不超过当前标题太长（防止长词误伤短词）
-          return targetTitle === currentTitle ||
-                 (targetTitle.includes(currentTitle) && targetTitle.length <= currentTitle.length + 5);
+          // 逻辑 A：标题包含当前主标题
+          if (!targetTitle.includes(currentTitle)) return false;
+          // 逻辑 B：长度校验。如果目标标题比原标题长太多（超过 6 个字），通常是串台了
+          // 比如“家业”匹配到“女朋友退婚我继承家业”，长度差异巨大，直接剔除。
+          if (targetTitle.length > currentTitle.length + 6) return false;
+          return true;
       });
 
       if (strictlyMatchedResults.length === 0) {

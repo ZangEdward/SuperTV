@@ -127,43 +127,27 @@ export default function DetailScreen() {
     return isReverse ? list.reverse() : list;
   }, [detail, isReverse]);
 
-  // [关键修复]：只有当彻底加载完成且确实没有 detail 时才显示错误
-  if (!detail && allSourcesLoaded && !loading) {
-    return (
-      <ResponsiveNavigation>
-        <ResponsiveHeader title="详情" showBackButton />
-        <ThemedView style={[commonStyles.safeContainer, commonStyles.center]}>
-          <ThemedText type="subtitle" style={{ color: '#888' }}>未找到相关影片详情</ThemedText>
-          <StyledButton
-            text="返回重试"
-            onPress={() => router.back()}
-            style={{ marginTop: 20, minWidth: 120 }}
-          />
-        </ThemedView>
-      </ResponsiveNavigation>
-    );
-  }
-
-  // 如果还在加载中或者超时保护未到，且没有 detail，则显示加载动画
-  if (!detail) {
+  // 如果还没彻底检索完，且没有 detail，则显示加载动画
+  // 核心改动：只要 allSourcesLoaded 还没变 true，就强制显示 loading，不让错误提示提前蹦出来
+  if (!detail && (!allSourcesLoaded || loading)) {
     const progress = searchProgress.total > 0 ? (searchProgress.completed / searchProgress.total) * 100 : 0;
     return (
       <ThemedView style={[commonStyles.container, commonStyles.center, { backgroundColor: '#151718' }]}>
         <VideoLoadingAnimation />
         <View style={{ marginTop: 20, alignItems: 'center' }}>
           <ThemedText style={{ color: '#888', fontSize: 14 }}>
-            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '正在检索全网资源...'}
+            {searchProgress.currentSource ? `正在搜索: ${searchProgress.currentSource}` : '正在智能校准资源...'}
           </ThemedText>
           <View style={{ width: 200, height: 2, backgroundColor: '#333', marginTop: 8, borderRadius: 1, overflow: 'hidden' }}>
             <View style={{ width: `${progress}%`, height: '100%', backgroundColor: Colors.dark.primary }} />
           </View>
-          <ThemedText style={{ color: '#555', fontSize: 12, marginTop: 4 }}>
-            已完成 {searchProgress.completed} / {searchProgress.total}
-          </ThemedText>
         </View>
       </ThemedView>
     );
   }
+
+  // 最终判死刑：彻底搜完了，还是没 detail
+  if (!detail && allSourcesLoaded && !loading) {
 
   if (!isTV) {
     return (

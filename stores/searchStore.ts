@@ -100,19 +100,24 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       set((state) => {
         results.forEach(r => {
-          // [Selene 指纹逻辑]：使用标题 + 年份作为唯一指纹，不合并不同标题的剧集
-          const normalizedTitle = r.title.trim().replace(/\s+/g, '').toLowerCase();
-          const key = `${normalizedTitle}_${r.year || 'unknown'}`;
+          // [智能指纹]：保留季/部/剧场版等核心信息，仅剔除资源站/清晰度等标签
+          const titleFingerprint = r.title
+            .trim()
+            .replace(/\[.*?\]|\(.*?\)|【.*?】/g, '') // 剔除 [1080P]、(蓝光) 等
+            .replace(/\s+/g, '')
+            .toLowerCase();
+
+          // 聚合 Key：指纹 + 年份 + 类型。确保第一季/第二季互不干扰
+          const key = `${titleFingerprint}_${r.year || '0'}_${r.type_name || 'vod'}`;
 
           const existing = resultMap.get(key);
           if (!existing) {
             resultMap.set(key, r);
-            SearchDetailPool.set(`${normalizedTitle}_${r.source}`, r);
+            // 同时更新内存详情池，供详情页秒开使用
+            SearchDetailPool.set(`${r.title.trim().toLowerCase()}_${r.source}`, r);
           } else {
-            // 同名同年的作品，仅在“集数更多”或“ID 更新”时覆盖
-            const existingEpisodes = existing.episodes?.length || 0;
-            const newEpisodes = r.episodes?.length || 0;
-            if (newEpisodes > existingEpisodes || (newEpisodes === existingEpisodes && r.id > existing.id)) {
+            // 同一指纹的作品，合并到一起，并保留集数最多的源
+            if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
               resultMap.set(key, { ...r });
             }
           }

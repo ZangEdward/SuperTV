@@ -367,9 +367,23 @@ export class CacheService {
 
   static async deleteFile(fileUri: string): Promise<void> {
     try {
-      const info = await FileSystem.getInfoAsync(fileUri);
-      if (info.exists) {
-        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      // 兼容 file:// 前缀和原始路径
+      let path = fileUri;
+      if (path.startsWith('file://')) {
+        path = path.slice(7);
+      }
+
+      // 使用 RNFetchBlob 的 fs 模块进行物理删除，它对 Android 原始路径支持更好
+      if (await RNFetchBlob.fs.exists(path)) {
+        await RNFetchBlob.fs.unlink(path);
+        logger.info(`Physically deleted file: ${path}`);
+      } else {
+        // 尝试用 FileSystem 兜底
+        const info = await FileSystem.getInfoAsync(fileUri);
+        if (info.exists) {
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
+          logger.info(`Physically deleted file (via FileSystem): ${fileUri}`);
+        }
       }
     } catch (error) {
       logger.warn("Failed to delete cached file:", error);
