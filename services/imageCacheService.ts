@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system";
 import Logger from "@/utils/Logger";
-import * as Crypto from 'expo-crypto';
+import CryptoJS from 'crypto-js';
 
 const logger = Logger.withTag("ImageCache");
 const CACHE_DIR = `${FileSystem.cacheDirectory}poster_cache/`;
@@ -10,10 +10,10 @@ const CACHE_DIR = `${FileSystem.cacheDirectory}poster_cache/`;
  */
 export class ImageCacheService {
   /**
-   * 生成文件名的哈希值 (同步)
+   * 生成文件名的哈希值 (使用 crypto-js 替代 expo-crypto 以避免依赖缺失)
    */
-  static async getCachePath(remoteUrl: string): Promise<string> {
-    const hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, remoteUrl);
+  static getCachePath(remoteUrl: string): string {
+    const hash = CryptoJS.SHA256(remoteUrl).toString();
     return `${CACHE_DIR}${hash}.img`;
   }
 
@@ -24,7 +24,7 @@ export class ImageCacheService {
     if (!remoteUrl || !remoteUrl.startsWith('http')) return remoteUrl;
 
     try {
-      const localUri = await this.getCachePath(remoteUrl);
+      const localUri = this.getCachePath(remoteUrl);
       const info = await FileSystem.getInfoAsync(localUri);
 
       if (info.exists) {

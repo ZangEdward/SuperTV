@@ -80,6 +80,47 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       checkCache();
     }, [poster]);
 
+    const handlePress = () => {
+      // 优化：只要有集数索引（来自播放记录），就直接跳转播放
+      if (episodeIndex !== undefined) {
+        router.push({
+          pathname: "/play",
+          params: { source, id, episodeIndex: episodeIndex - 1, title, position: (playTime || 0) * 1000 },
+        });
+      } else {
+        router.push({
+          pathname: "/detail",
+          params: { source, q: title, id },
+        });
+      }
+    };
+
+    const handleLongPress = () => {
+      if (progress === undefined) return;
+
+      Alert.alert("删除观看记录", `确定要删除"${title}"的观看记录吗？`, [
+        {
+          text: "取消",
+          style: "cancel"
+        },
+        {
+          text: "删除",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await PlayRecordManager.remove(source, id);
+              onRecordDeleted?.();
+            } catch (error) {
+              logger.info("Failed to delete play record:", error);
+              Alert.alert("错误", "删除观看记录失败，请重试");
+            }
+          },
+        },
+      ]);
+    };
+
+    const isContinueWatching = progress !== undefined && progress > 0 && progress < 1;
+
     // --- Selene 风格角标逻辑 ---
     const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';
     const showEpisodeBadge = (from === 'search' || from === 'agg') && totalEpisodes && totalEpisodes > 1;

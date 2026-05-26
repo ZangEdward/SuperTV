@@ -80,6 +80,45 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const scale = useRef(new Animated.Value(1)).current;
     const animatedStyle = { transform: [{ scale }] };
 
+    const handlePress = () => {
+      if (episodeIndex !== undefined) {
+        router.push({
+          pathname: "/play",
+          params: {
+            source,
+            id: id.toString(),
+            episodeIndex: (episodeIndex - 1).toString(),
+            title,
+            position: Math.floor((playTime || 0) * 1000).toString()
+          },
+        });
+      } else {
+        router.push({
+          pathname: "/detail",
+          params: { source, q: title, id: id.toString() },
+        });
+      }
+    };
+
+    const handleFocus = useCallback(() => {
+      setIsFocused(true);
+      Animated.spring(scale, {
+        toValue: 1.05,
+        damping: 15,
+        stiffness: 200,
+        useNativeDriver: true,
+      }).start();
+      onFocus?.();
+    }, [onFocus]);
+
+    const handleBlur = useCallback(() => {
+      setIsFocused(false);
+      Animated.spring(scale, {
+        toValue: 1.0,
+        useNativeDriver: true,
+      }).start();
+    }, []);
+
     // --- Selene 风格角标逻辑 (TV) ---
     const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';
     const showEpisodeBadge = (from === 'search' || from === 'agg') && totalEpisodes && totalEpisodes > 1;

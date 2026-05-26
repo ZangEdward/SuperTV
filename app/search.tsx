@@ -99,6 +99,17 @@ export default function SearchScreen() {
 
   const onSearchPress = () => handleSearchInternal();
 
+  const handleQrPress = () => {
+    if (!remoteInputEnabled) {
+      Alert.alert("远程输入未启用", "请先在设置页面中启用远程输入功能", [
+        { text: "取消", style: "cancel" },
+        { text: "去设置", onPress: () => router.push("/settings") },
+      ]);
+      return;
+    }
+    showRemoteModal('search');
+  };
+
   const filteredResults = useMemo(() => {
     let list = [...results];
 
