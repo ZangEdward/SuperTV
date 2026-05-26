@@ -13,13 +13,12 @@ import ResponsiveNavigation from "@/components/navigation/ResponsiveNavigation";
 import ResponsiveHeader from "@/components/navigation/ResponsiveHeader";
 import Colors from "../constants/Colors";
 import Toast from 'react-native-toast-message';
-import { parseEpisode } from "@/utils/episode";
 
 export default function CacheScreen() {
   const { q, source, id } = useLocalSearchParams<{ q: string; source?: string; id?: string }>();
   const router = useRouter();
   const { detail, searchResults, loading, error, init, setDetail } = useDetailStore();
-  const { downloadEpisode, currentDownloadId, enqueueSeries, items, queue, loadCache } = useCacheStore();
+  const { downloadEpisode, currentDownloadId, enqueueSeries, items, queue } = useCacheStore();
   const [showAllSources, setShowAllSources] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResultWithResolution | null>(null);
   const [selectedEpisodes, setSelectedEpisodes] = useState<number[]>([]);
@@ -29,7 +28,6 @@ export default function CacheScreen() {
   const { deviceType, spacing } = responsiveConfig;
 
   useEffect(() => {
-    // 移除 loadCache() 调用，防止覆盖正在下载的任务状态
     if (q && (!detail || detail.title !== q || searchResults.length === 0)) {
       init(q, source, id);
     }
@@ -84,11 +82,9 @@ export default function CacheScreen() {
       id: selectedSource.id.toString(),
       title: selectedSource.title,
       poster: selectedSource.poster,
-      episodes: episodeIndexes.map((index) => {
-        const ep = parseEpisode(selectedSource.episodes[index], index, selectedSource.episodes_titles?.[index]);
-        return { index, url: ep.url, title: ep.title };
-      }),
+      episodes: episodeIndexes.map((index) => ({ index, url: selectedSource.episodes[index] })),
     });
+    Alert.alert('已加入下载列表', `已加入 ${episodeIndexes.length} 集到缓存队列`);
     setSelectedEpisodes([]);
   };
 
@@ -199,8 +195,7 @@ export default function CacheScreen() {
           <View style={dynamicStyles.section}>
             <ThemedText style={dynamicStyles.sectionTitle}>集数列表</ThemedText>
             <View style={dynamicStyles.episodeList}>
-              {selectedSource?.episodes.map((rawEpisode, index) => {
-                const ep = parseEpisode(rawEpisode, index, selectedSource.episodes_titles?.[index]);
+              {selectedSource?.episodes.map((episode, index) => {
                 const buttonId = `${selectedSource.source}_${selectedSource.id}_${index}`;
                 const isSelected = selectedEpisodes.includes(index);
                 const isCached = items.some(it => it.episodeIndex === index && it.title === selectedSource?.title);
@@ -210,19 +205,18 @@ export default function CacheScreen() {
                 );
                 const isDisabled = isCached || isDownloading;
 
-                // 智能调整宽度：移除硬编码宽度，改用自适应
                 let btnStyle: any = [dynamicStyles.episodeButton];
                 let textStyle: any = [isSelected ? dynamicStyles.selectedEpisodeText : undefined];
-                let btnText = ep.title;
+                let btnText = `第 ${index + 1} 集`;
 
                 if (isCached) {
                   btnStyle.push({ backgroundColor: 'rgba(33, 150, 243, 0.2)', borderColor: '#2196F3' });
                   textStyle.push({ color: '#2196F3' });
-                  btnText += ' (已缓存)';
+                  btnText += ' ✓已缓存';
                 } else if (isDownloading) {
                   btnStyle.push({ backgroundColor: 'rgba(244, 67, 54, 0.2)', borderColor: '#F44336' });
                   textStyle.push({ color: '#F44336' });
-                  btnText += ' (中)';
+                  btnText += ' ⏳缓存中';
                 } else if (isSelected) {
                   btnStyle.push({ backgroundColor: Colors.dark.primary, borderColor: Colors.dark.primary });
                   textStyle.push({ color: '#fff' });
@@ -372,8 +366,7 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     episodeButton: {
       marginRight: spacing / 2,
       marginBottom: spacing / 2,
-      minWidth: 60,
-      paddingHorizontal: 12,
+      minWidth: 110,
     },
     selectedEpisodeText: {
       fontWeight: "700",

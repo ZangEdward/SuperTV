@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { DataCacheService } from "./dataCacheService";
 import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('API');
@@ -277,20 +276,9 @@ export class API {
   }
 
   async getVideoDetail(source: string, id: string): Promise<VideoDetail> {
-    const cacheKey = `detail_${source}_${id}`;
-    const cached = await DataCacheService.get<VideoDetail>(cacheKey);
-    if (cached) {
-      logger.debug(`[CACHE HIT] Detail for ${id}`);
-      return cached;
-    }
-
     const url = `/api/detail?source=${source}&id=${id}`;
     const response = await this._fetch(url);
-    const data = await response.json();
-
-    // 写入缓存
-    await DataCacheService.set(cacheKey, data);
-    return data;
+    return response.json();
   }
 
   async searchNetDisk(query: string): Promise<any> {

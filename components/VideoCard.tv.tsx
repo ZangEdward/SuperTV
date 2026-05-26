@@ -8,7 +8,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { ImageCacheService } from "@/services/imageCacheService";
 
 const logger = Logger.withTag('VideoCardTV');
 
@@ -56,10 +55,6 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const [isFocused, setIsFocused] = useState(false);
     const [fadeAnim] = useState(new Animated.Value(0));
 
-    // [优先显示逻辑] 初始值直接使用远程代理
-    const proxyUrl = api.getImageProxyUrl(poster);
-    const [imageUri, setImageUri] = useState<string>(proxyUrl);
-
     useEffect(() => {
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -67,15 +62,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         delay: Math.random() * 200,
         useNativeDriver: true,
       }).start();
-
-      const checkCache = async () => {
-        const finalUri = await ImageCacheService.getLocalOrRemote(proxyUrl);
-        if (finalUri.startsWith('file://')) {
-          setImageUri(finalUri);
-        }
-      };
-      checkCache();
-    }, [poster]);
+    }, [fadeAnim]);
 
     const scale = useRef(new Animated.Value(1)).current;
     const animatedStyle = { transform: [{ scale }] };
@@ -134,7 +121,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
           style={styles.pressable}
         >
           <View style={styles.card}>
-            <Image source={{ uri: imageUri }} style={styles.poster} />
+            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
 
             {/* 年份 (Top-Left) */}
             {showYearBadge && (

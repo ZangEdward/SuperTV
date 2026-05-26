@@ -7,7 +7,6 @@ import { API } from "@/services/api";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors } from "@/constants/Colors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { ImageCacheService } from "@/services/imageCacheService";
 import { DeviceUtils } from "@/utils/DeviceUtils";
 import Logger from '@/utils/Logger';
 
@@ -58,27 +57,13 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     const { cardWidth, cardHeight, spacing } = useResponsiveLayout();
     const [fadeAnim] = useState(new Animated.Value(0));
 
-    // [优先显示逻辑] 初始值直接使用远程代理，确保秒出图片
-    const proxyUrl = api.getImageProxyUrl(poster);
-    const [imageUri, setImageUri] = useState<string>(proxyUrl);
-
     useEffect(() => {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
-
-      // 后台执行缓存检查与下载，如果本地已有，下一次加载就会变成本地 file 路径
-      const checkCache = async () => {
-        const finalUri = await ImageCacheService.getLocalOrRemote(proxyUrl);
-        // 只有当本地确实有现成文件时才更新 state，避免重复触发远程加载
-        if (finalUri.startsWith('file://')) {
-          setImageUri(finalUri);
-        }
-      };
-      checkCache();
-    }, [poster]);
+    }, [fadeAnim]);
 
     const handlePress = () => {
       // 优化：只要有集数索引（来自播放记录），就直接跳转播放
@@ -135,7 +120,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           activeOpacity={0.8}
         >
           <View style={styles.card}>
-            {imageUri && <Image source={{ uri: imageUri }} style={styles.poster} />}
+            <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
             
             {/* 年份 (Top-Left) */}
             {showYearBadge && (

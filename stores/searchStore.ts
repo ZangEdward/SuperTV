@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { SearchResult, api } from "@/services/api";
-import { DataCacheService } from "@/services/dataCacheService";
 import { useSettingsStore } from "@/stores/settingsStore";
 import Logger from "@/utils/Logger";
 
@@ -69,9 +68,6 @@ const useSearchStore = create<SearchState>((set, get) => ({
     get().abort();
     const newController = new AbortController();
     const signal = newController.signal;
-
-    // [管理优化]：启动新搜索时释放旧的剧集详情缓存，保持内存健康
-    DataCacheService.clearDetailCache();
 
     set({
       loading: true,
