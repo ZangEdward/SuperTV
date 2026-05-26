@@ -154,20 +154,20 @@ const useDetailStore = create<DetailState>((set, get) => ({
       const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
       const currentCore = getCoreKey(q);
 
-      // [Selene 级语义过滤升级]
+      // [Selene 级语义过滤升级]：大幅放宽匹配度，确保不漏掉关联剧集
       const strictlyMatchedResults = results.filter(r => {
           const targetTitle = (r.title || "").toLowerCase();
           const targetCore = getCoreKey(r.title);
           const searchCore = q.toLowerCase();
 
-          // 允许条件：
-          // 1. 核心特征完全一致
-          // 2. 或者目标标题包含搜索词
-          // 3. 或者搜索词包含目标标题（处理缩写）
-          return targetCore === currentCore ||
-                 targetCore.includes(currentCore) ||
+          // 匹配条件（满足其一即可）：
+          // 1. 核心特征包含或被包含
+          // 2. 原始标题包含搜索词
+          // 3. 搜索词包含原始标题
+          return targetCore.includes(currentCore) ||
                  currentCore.includes(targetCore) ||
-                 targetTitle.includes(searchCore);
+                 targetTitle.includes(searchCore) ||
+                 searchCore.includes(targetTitle);
       });
 
       if (strictlyMatchedResults.length === 0) {
@@ -212,6 +212,11 @@ const useDetailStore = create<DetailState>((set, get) => ({
         detail: selectedDetail,
       });
 
+      // [核心优化] 只要有了搜索结果，立即异步启动测速优化，无需等待 init 结束
+      if (finalResults.length > 0 && !get().isOptimizing) {
+        get().optimizeSources();
+      }
+
       // 如果选中的详情还没有剧集数据，异步拉取一次
       if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
         await get().setDetail(selectedDetail);
@@ -219,11 +224,14 @@ const useDetailStore = create<DetailState>((set, get) => ({
     };
 
     try {
-      // 核心修复：如果是动漫（来自 Bangumi）或 ID 为 0/local，强制进入全网模糊探测模式
-      const isFuzzySource = !preferredSource || preferredSource === "bangumi" || id === "0" || id === "local";
+      // 核心修复：如果是豆瓣(douban)、动漫(bangumi)或 ID 无效，强制进入全网模糊探测模式
+      const isFuzzySource = !preferredSource ||
+                           preferredSource === "douban" ||
+                           preferredSource === "bangumi" ||
+                           id === "0" || id === "local";
 
       if (!isFuzzySource && preferredSource && id) {
-        // [路径 A] 有确定的 CMS 源和 ID：精准获取，同步开启换源检索
+        // [路径 A] 有确定的播放源：精准获取，同步开启换源检索
         updateProgress({ total: 1, currentSource: '首选源' });
 
         // 1. 同步获取首选源详情，确保秒开
@@ -312,51 +320,88 @@ const useDetailStore = create<DetailState>((set, get) => ({
   },
 
   optimizeSources: async () => {
-    const { searchResults, isOptimizing } = get();
-    if (searchResults.length === 0 || isOptimizing) return;
+    if (get().isOptimizing) return;
 
     set({ isOptimizing: true });
+    logger.info(`[SPEED] Background source optimization started...`);
 
-    // 创建测速专用的信号
     const testController = new AbortController();
     const signal = testController.signal;
 
-    // [极速优化] 针对骁龙 8 系列优化：15 路并发测速
-    const testBatchSize = 15;
+    try {
+      const testBatchSize = 15;
 
-    // 分批次测速
-    for (let i = 0; i < searchResults.length; i += testBatchSize) {
-      if (signal?.aborted) break;
-      const batch = searchResults.slice(i, i + testBatchSize);
+      // 使用 while 循环配合快照检查，确保 init 过程中新发现的源也能被测速
+      let hasUntested = true;
+      const testedSources = new Set<string>();
 
-      await Promise.all(batch.map(async (item) => {
-        try {
-          let episodes = item.episodes;
-          if (!episodes || episodes.length === 0) {
-            const detail = await api.getVideoDetail(item.source, item.id.toString());
-            episodes = detail.episodes || [];
+      while (hasUntested && !signal.aborted) {
+        const allResults = get().searchResults;
+        const pending = allResults.filter(r => !testedSources.has(r.source));
+
+        if (pending.length === 0) {
+          hasUntested = false;
+          break;
+        }
+
+        const batch = pending.slice(0, testBatchSize);
+        await Promise.all(batch.map(async (item) => {
+          testedSources.add(item.source);
+          try {
+            let episodes = item.episodes;
+            if (!episodes || episodes.length === 0) {
+              const detail = await api.getVideoDetail(item.source, item.id.toString());
+              episodes = detail.episodes || [];
+            }
+
+            if (episodes.length === 0) return;
+
+            const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
+            const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+
+            set(state => {
+              const updatedResults = state.searchResults.map(r =>
+                r.source === item.source ? { ...r, ...metrics } : r
+              );
+              return {
+                searchResults: [...updatedResults].sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a))
+              };
+            });
+          } catch {}
+        }));
+
+        // 如果 init 还在进行中，稍等一下看有没有新源进来
+        if (get().loading) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          // 如果 init 已经结束且当前批次就是最后一批，则退出
+          if (pending.length <= testBatchSize) hasUntested = false;
+        }
+      }
+
+      // [核心逻辑]：全网测速完成后，自动为用户切换到评分最高的源
+      if (!signal.aborted) {
+        const bestResults = get().searchResults;
+        if (bestResults.length > 0) {
+          const topSource = bestResults[0];
+          const currentDetail = get().detail;
+
+          // 只有当最优源与当前选中的源不同时，才执行自动优选切换
+          if (currentDetail && topSource.source !== currentDetail.source) {
+            logger.info(`[SPEED] Post-test optimization: Auto-switching to best verified source: ${topSource.source_name} (${topSource.speed} MB/s)`);
+            set({ detail: topSource });
+
+            // 异步补全详情数据
+            if (!topSource.episodes || topSource.episodes.length === 0) {
+              get().setDetail(topSource);
+            }
           }
-
-          if (episodes.length === 0) return;
-
-          const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
-          const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
-
-          set(state => {
-            const updatedResults = state.searchResults.map(r =>
-              r.source === item.source ? { ...r, ...metrics } : r
-            );
-
-            // [实时重排]：每完成一个源的测速，就进行一次全局重排，确保最高分的源立刻置顶
-            return {
-              searchResults: [...updatedResults].sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a))
-            };
-          });
-        } catch {}
-      }));
+        }
+      }
+    } finally {
+      set({ isOptimizing: false });
+      logger.info(`[SPEED] Background source optimization finished.`);
     }
-
-    set({ isOptimizing: false });
   },
 
   setDetail: async (detail) => {

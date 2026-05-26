@@ -770,74 +770,17 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   handleVideoError: async (errorType: 'ssl' | 'network' | 'other', failedUrl: string) => {
-    const perfStart = performance.now();
-    logger.error(`[VIDEO_ERROR] Handling ${errorType} error for URL: ${failedUrl}`);
+    logger.error(`[VIDEO_ERROR] ${errorType} error for URL: ${failedUrl}`);
 
-    const detailStoreState = useDetailStore.getState();
-    const { detail } = detailStoreState;
-    const { currentEpisodeIndex } = get();
+    // [逻辑变更]：播放页不再自动切换播放源
+    // 仅停止加载并显示错误提示，让用户回到详情页或使用选源弹窗手动切换
+    set({ isLoading: false });
 
-    if (!detail) {
-      logger.error(`[VIDEO_ERROR] Cannot fallback - no detail available`);
-      set({ isLoading: false });
-      return;
-    }
-
-    // 标记当前source为失败
-    const currentSource = detail.source;
-    const errorReason = `${errorType} error: ${failedUrl.substring(0, 100)}...`;
-    useDetailStore.getState().markSourceAsFailed(currentSource, errorReason);
-
-    // 获取下一个可用的source
-    const fallbackSource = useDetailStore.getState().getNextAvailableSource(currentSource, currentEpisodeIndex);
-
-    if (!fallbackSource) {
-      logger.error(`[VIDEO_ERROR] No fallback sources available for episode ${currentEpisodeIndex + 1}`);
-      Toast.show({
-        type: "error",
-        text1: "播放失败",
-        text2: "所有播放源都不可用，请稍后重试"
-      });
-      set({ isLoading: false });
-      return;
-    }
-
-    logger.info(`[VIDEO_ERROR] Switching to fallback source: ${fallbackSource.source} (${fallbackSource.source_name})`);
-
-    try {
-      // 更新DetailStore的当前detail为fallback source
-      await useDetailStore.getState().setDetail(fallbackSource);
-
-      // 重新加载当前集数的episodes
-      const newEpisodes = fallbackSource.episodes || [];
-      const newTitles = fallbackSource.episodes_titles || [];
-      if (newEpisodes.length > currentEpisodeIndex) {
-        const mappedEpisodes = newEpisodes.map((ep, index) =>
-          parseEpisode(ep, index, newTitles[index])
-        );
-
-        set({
-          episodes: mappedEpisodes,
-          isLoading: false, // 让Video组件重新渲染
-        });
-
-        const perfEnd = performance.now();
-        logger.info(`[VIDEO_ERROR] Successfully switched to fallback source in ${(perfEnd - perfStart).toFixed(2)}ms`);
-        logger.info(`[VIDEO_ERROR] New episode URL: ${newEpisodes[currentEpisodeIndex].substring(0, 100)}...`);
-
-        Toast.show({
-          type: "success",
-          text1: "已切换播放源",
-          text2: `正在使用 ${fallbackSource.source_name}`
-        });
-      } else {
-        logger.error(`[VIDEO_ERROR] Fallback source doesn't have episode ${currentEpisodeIndex + 1}`);
-        set({ isLoading: false });
-      }
-    } catch (error) {
-      logger.error(`[VIDEO_ERROR] Failed to switch to fallback source:`, error);
-      set({ isLoading: false });
-    }
+    Toast.show({
+      type: "error",
+      text1: "播放失败",
+      text2: "当前线路响应异常或解析错误，请尝试手动切换播放源"
+    });
   },
 }));
 

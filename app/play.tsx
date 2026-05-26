@@ -247,9 +247,13 @@ export default function PlayScreen() {
       });
     }
 
-    if (!isTV) {
-      setTimeout(() => optimizeSources(), 1000);
-    }
+    // [逻辑升级] 进入播放页后，自动启动测速优化，方便用户快速换源
+    setTimeout(() => {
+      const state = useDetailStore.getState();
+      if (state.searchResults.length > 0 && !state.isOptimizing) {
+        state.optimizeSources();
+      }
+    }, 1000);
   }, []);
 
   useEffect(() => {
@@ -320,11 +324,11 @@ export default function PlayScreen() {
   const renderMobileLayout = () => (
     <View style={[styles.mobileContainer, isFullscreen && styles.fullscreenContainer]}>
       {!isFullscreen && (
-        <View style={[styles.customHeader, { paddingTop: Math.max(insets.top, 10) }]}>
+        <View style={[styles.customHeader, { paddingTop: Math.max((insets?.top || 0), 10), backgroundColor: '#151718' }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || params.title || "播放"}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{detail?.title || params?.title || "播放"}</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.overlayIcon} onPress={handleDownloadPress}>
               <Download size={20} color="white" />
