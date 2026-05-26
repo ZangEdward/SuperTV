@@ -150,19 +150,30 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
+      const currentTitle = q.trim().toLowerCase();
 
-      // [源去重加固]：根据 source 唯一 ID 进行物理去重
-      const resultsWithLatency = results.map(r => ({ ...r, latency: defaultLatency }));
-      const existingSources = new Set(state.searchResults.map((r) => r.source));
-      const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
+      // [核心过滤]：只保留与当前搜索词高度匹配的结果，防止“道士下山”混入“家业”
+      const strictlyMatchedResults = results.filter(r => {
+          const targetTitle = r.title.trim().toLowerCase();
+          // 逻辑：要么完全相等，要么当前标题包含在目标标题中且目标标题长度不超过当前标题太长（防止长词误伤短词）
+          return targetTitle === currentTitle ||
+                 (targetTitle.includes(currentTitle) && targetTitle.length <= currentTitle.length + 5);
+      });
 
-      // [关键修复]：即使没有新源，若已有详情也应关闭加载状态
-      if (newResults.length === 0) {
-        if (get().detail) set({ loading: false });
+      if (strictlyMatchedResults.length === 0) {
+        if (state.detail) set({ loading: false });
         return;
       }
 
-      const combinedResults = [...state.searchResults, ...newResults];
+      // [源去重加固]
+      const resultsWithLatency = strictlyMatchedResults.map(r => ({ ...r, latency: defaultLatency }));
+      const existingSources = new Set(state.searchResults.map((r) => r.source));
+      const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
+
+      if (newResults.length === 0) {
+        if (state.detail) set({ loading: false });
+        return;
+      }
 
       // [逻辑升级] 初始加载即应用评分逻辑进行初步排序
       const finalResults = combinedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a));

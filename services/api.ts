@@ -229,14 +229,11 @@ export class API {
     const data = await response.json();
     const results = data.results || data.data || [];
 
-    // 只要标题包含关键词即视为有效，不做生硬的末尾淘汰，提升模糊搜索体感
-    const keyword = query.toLowerCase();
+    // 只要是该源返回的结果就全部带回，过滤逻辑下沉到 Store，确保模糊搜索不漏掉数据
     const mappedResults = results.map((item: any) => ({
       ...item,
       source: item.source || resourceId
-    })).filter((item: any) =>
-      item.title && item.title.toLowerCase().includes(keyword)
-    );
+    }));
 
     return { results: mappedResults };
   }

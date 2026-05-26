@@ -100,17 +100,19 @@ const useSearchStore = create<SearchState>((set, get) => ({
 
       set((state) => {
         results.forEach(r => {
-          // [精准聚合] Key: 标题 + 年份 + 总集数
-          const episodeCount = r.episodes?.length || 0;
-          const key = `${r.title.trim().toLowerCase()}_${r.year}_${episodeCount}`;
+          // [Selene 指纹逻辑]：使用标题 + 年份作为唯一指纹，不合并不同标题的剧集
+          const normalizedTitle = r.title.trim().replace(/\s+/g, '').toLowerCase();
+          const key = `${normalizedTitle}_${r.year || 'unknown'}`;
 
           const existing = resultMap.get(key);
           if (!existing) {
             resultMap.set(key, r);
-            // 同时更新内存详情池，供详情页秒开使用
-            SearchDetailPool.set(`${r.title.trim().toLowerCase()}_${r.source}`, r);
+            SearchDetailPool.set(`${normalizedTitle}_${r.source}`, r);
           } else {
-            if (r.id > existing.id) {
+            // 同名同年的作品，仅在“集数更多”或“ID 更新”时覆盖
+            const existingEpisodes = existing.episodes?.length || 0;
+            const newEpisodes = r.episodes?.length || 0;
+            if (newEpisodes > existingEpisodes || (newEpisodes === existingEpisodes && r.id > existing.id)) {
               resultMap.set(key, { ...r });
             }
           }
