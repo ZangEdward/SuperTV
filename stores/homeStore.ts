@@ -114,8 +114,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
 
     // 最近播放不缓存，始终实时获取
     if (selectedCategory.type === 'record') {
-      const hasData = get().contentData.length > 0;
-      set({ loading: !hasData, error: null });
+      set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
       await get().loadMoreData();
       return;
     }
@@ -130,13 +129,10 @@ const useHomeStore = create<HomeState>((set, get) => ({
         hasMore: cachedData.hasMore,
         error: null
       });
-      // 仍然在后台静默刷新
-      get().loadMoreData();
       return;
     }
 
-    const hasData = get().contentData.length > 0;
-    set({ loading: !hasData, pageStart: 0, hasMore: true, error: null });
+    set({ loading: true, contentData: [], pageStart: 0, hasMore: true, error: null });
     await get().loadMoreData();
   },
 
@@ -280,7 +276,7 @@ const useHomeStore = create<HomeState>((set, get) => ({
       let errorMessage = "加载失败，请重试";
 
       if (err.message === "API_URL_NOT_SET") {
-        errorMessage = "请点击设置按钮，选择您的服务器地址";
+        errorMessage = "请点击右上角设置按钮，配置您的服务器地址";
       } else if (err.message === "UNAUTHORIZED") {
         errorMessage = "认证失败，请重新登录";
         useAuthStore.setState({ isLoggedIn: false, isLoginModalVisible: true });

@@ -76,18 +76,11 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       
       console.log("Navigating to play/detail:", { source, id, episodeIndex, title, playTime, sourceName });
 
-      // 如果有 progress 且 source 不是 douban 且有 sourceName，则直接跳转播放页
-      if (progress !== undefined && episodeIndex !== undefined && source !== 'douban' && sourceName) {
+      // 如果有播放进度，直接转到播放页面
+      if (progress !== undefined && episodeIndex !== undefined) {
         router.push({
           pathname: "/play",
-          params: {
-            source,
-            id,
-            episodeIndex: episodeIndex - 1,
-            title,
-            position: playTime ? playTime * 1000 : 0,
-            stype: 'tv' // 强制补全 stype 参数，确保后端识别
-          },
+          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 },
         });
       } else {
         // 否则跳转到详情页以补全播放源信息
@@ -125,8 +118,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
 
     const isContinueWatching = progress !== undefined && progress > 0 && progress < 1;
 
-    // --- Selene 风格角标逻辑 ---
-    const showYearBadge = (from === 'search' || from === 'agg') && year && year !== 'unknown';
+    // --- 角标逻辑 ---
+    const showYearBadge = year && year !== 'unknown';
     const showEpisodeBadge = (from === 'search' || from === 'agg') && totalEpisodes && totalEpisodes > 1;
 
     const styles = createMobileStyles(cardWidth, cardHeight, spacing);
@@ -181,6 +174,13 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
 
           <View style={styles.infoContainer}>
             <ThemedText numberOfLines={2} style={styles.title}>{title}</ThemedText>
+            {isContinueWatching && (
+              <View style={styles.infoRow}>
+                <ThemedText style={styles.continueLabel}>
+                  第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
+                </ThemedText>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -306,11 +306,21 @@ const createMobileStyles = (cardWidth: number, cardHeight: number, spacing: numb
       marginTop: 4,
       alignItems: 'center',
     },
+    infoRow: {
+      flexDirection: "row",
+      justifyContent: "center",
+      width: "100%",
+      marginTop: 2,
+    },
     title: {
       fontSize: 13,
       fontWeight: '500',
       color: '#fff',
       textAlign: 'center',
+    },
+    continueLabel: {
+      color: Colors.dark.primary,
+      fontSize: 11,
     },
   });
 };
