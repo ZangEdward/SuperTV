@@ -85,7 +85,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
             id,
             episodeIndex,
             title,
-            position: playTime ? playTime * 1000 : 0
+            position: playTime ? playTime * 1000 : 0,
+            stype: 'tv' // 强制补全 stype 参数，确保后端识别
           },
         });
       } else {
