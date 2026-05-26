@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
-import { Platform, NativeModules, DeviceEventEmitter } from "react-native";
+import { Platform, NativeModules } from "react-native";
 import Logger from "@/utils/Logger";
 import RNFetchBlob from 'react-native-blob-util';
 import { filterM3U8Ads } from './m3u8';
@@ -83,7 +83,6 @@ export class CacheService {
 
   static async saveQueue(queue: any[]): Promise<void> {
     try {
-      // 过滤掉正在下载的状态，转为暂停或等待，避免重启后状态不一致
       const persistedQueue = queue.map(group => ({
         ...group,
         episodes: group.episodes.map((ep: any) => ({
@@ -189,14 +188,12 @@ export class CacheService {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
-  /** 暂停 M3U8 下载任务 */
   static pauseTask(itemId: string): void {
-    // 指挥由 React Native 承担，物理停止由 store 通过 AbortController 触发
+    // 逻辑由 store 的 AbortController 承担
   }
 
-  /** 继续 M3U8 下载任务 */
   static resumeTask(itemId: string): void {
-    // 逻辑在 store 中通过 downloadQueuedEpisode 实现
+    // 逻辑在 store 中实现
   }
 
   static isTaskPaused(itemId: string): boolean {
@@ -312,8 +309,7 @@ export class CacheService {
   }
 
   /**
-   * 下载 M3U8 并合并为 MP4
-   * 混合模式：React Native 指挥下载逻辑（利于控制和去广告），原生层负责高性能解密合并。
+   * 恢复至 v5.5.32.523 核心逻辑：顺序/可控并发下载，严格由 JS 驱动循环
    */
   static async downloadM3U8AsMp4(
     url: string,
@@ -324,11 +320,12 @@ export class CacheService {
     options: { adFilter?: boolean } = {}
   ): Promise<string> {
     const taskId = itemId || `m3u8_${Date.now()}`;
-    logger.info(`[CacheService] Starting RN-Led Download: ${taskId}`);
+    logger.info(`[CacheService] Starting JS-Led Download: ${taskId}`);
 
     const authHeaders = await this.getAuthHeaders();
     const headers = { ...DEFAULT_HEADERS, ...authHeaders };
 
+    // 1. 解析 M3U8
     const fetchText = async (uri: string): Promise<string> => {
       const res = await RNFetchBlob.fetch('GET', uri, headers);
       return await res.text();
@@ -351,7 +348,7 @@ export class CacheService {
 
     const segmentUrls = mediaParsed.segments.map(s => CacheService.resolveUrl(s, mediaPlaylistUrl));
     const total = segmentUrls.length;
-    if (total === 0) throw new Error("未找到分片");
+    if (total === 0) throw new Error("未找到片段");
 
     let keyBase64 = "";
     let ivHex = mediaParsed.encryption?.iv || "";
@@ -361,8 +358,8 @@ export class CacheService {
       keyBase64 = await keyRes.base64();
     }
 
-    // 3. RN 管理下载队列 (标准并发池逻辑)
-    const tempDir = `${FileSystem.cacheDirectory}m3u8_rn_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
+    // 2. 准备目录
+    const tempDir = `${FileSystem.cacheDirectory}m3u8_js_${taskId.replace(/[^a-z0-9]/gi, '_')}/`;
     await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
 
     const segmentFiles: string[] = [];
@@ -370,67 +367,67 @@ export class CacheService {
     let isCancelled = false;
     const CONCURRENCY = 4;
     const queue = Array.from({ length: total }, (_, i) => i);
-    const currentCalls = new Set<any>();
+    const activeCalls = new Set<any>();
 
     if (signal) {
       signal.addEventListener('abort', () => {
         isCancelled = true;
-        currentCalls.forEach(c => c.cancel?.());
-        currentCalls.clear();
+        activeCalls.forEach(c => c.cancel?.());
+        activeCalls.clear();
       });
     }
 
+    // 3. 执行分片下载循环 (JS 驱动)
     const processSegment = async (index: number) => {
       if (isCancelled) return;
       const segFile = `${tempDir}seg_${index}.ts`;
       const normalizedPath = Platform.OS === 'android' ? segFile.replace('file://', '') : segFile;
 
-      try {
-        const info = await FileSystem.getInfoAsync(segFile);
-        if (!info.exists || info.size === 0) {
-          const task = RNFetchBlob.config({ path: normalizedPath }).fetch('GET', segmentUrls[index], headers);
-          currentCalls.add(task);
+      const info = await FileSystem.getInfoAsync(segFile);
+      if (!info.exists || info.size === 0) {
+        const task = RNFetchBlob.config({ path: normalizedPath }).fetch('GET', segmentUrls[index], headers);
+        activeCalls.add(task);
 
-          try {
-            const res = await task;
-            currentCalls.delete(task);
-            if (res.info().status !== 200) throw new Error(`HTTP ${res.info().status}`);
+        try {
+          const res = await task;
+          activeCalls.delete(task);
+          if (isCancelled) return;
+          if (res.info().status !== 200) throw new Error(`HTTP ${res.info().status}`);
 
-            if (keyBase64) {
-              let segmentIv = ivHex;
-              if (!ivHex) {
-                segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
-              }
+          // 解密
+          if (keyBase64) {
+            let segmentIv = ivHex;
+            if (!ivHex) {
+              segmentIv = (mediaParsed.mediaSequence + index).toString(16).padStart(32, '0');
+            }
+            if (NativeCryptoModule) {
               await NativeCryptoModule.decryptFileAES128CBC(normalizedPath, keyBase64, segmentIv);
             }
-          } catch (e) {
-            currentCalls.delete(task);
-            throw e;
           }
+        } catch (e) {
+          activeCalls.delete(task);
+          throw e;
         }
-
-        segmentFiles[index] = normalizedPath;
-        completedCount++;
-        if (completedCount % 5 === 0 || completedCount === total) {
-          progressCb?.(completedCount / total, completedCount);
-        }
-      } catch (e) {
-        logger.warn(`Segment ${index} failed:`, e);
-        throw e;
       }
+
+      segmentFiles[index] = normalizedPath;
+      completedCount++;
+      // 精准进度上报
+      progressCb?.(completedCount / total, completedCount);
     };
 
-    // 并发池核心逻辑
+    // 并发执行器
     const workers = Array(CONCURRENCY).fill(null).map(async () => {
       while (queue.length > 0 && !isCancelled) {
         const index = queue.shift();
         if (index === undefined) break;
-
         try {
           await processSegment(index);
         } catch (e) {
-          logger.error(`[CacheService] Segment ${index} failed, skipping...`, e);
-          // 允许单个片段失败，不中止整个下载循环
+          if (!isCancelled) {
+             logger.error(`Segment ${index} download failed`, e);
+             throw e; // 报错会触发 Promise.all 的失败，从而由 store 处理
+          }
         }
       }
     });
@@ -439,22 +436,20 @@ export class CacheService {
 
     if (isCancelled) throw new Error("CANCELLED");
 
-    // 4. JS 承担分片合成任务
-    logger.info(`[CacheService] JS merging ${total} segments...`);
+    // 4. 合并分片 (流式追加)
+    logger.info(`[CacheService] Merging ${total} segments into final file...`);
     let normalizedDestPath = destinationPath;
     if (normalizedDestPath.startsWith('file://')) normalizedDestPath = normalizedDestPath.slice(7);
 
-    // 确保目录存在
     const destDir = normalizedDestPath.substring(0, normalizedDestPath.lastIndexOf('/'));
     await RNFetchBlob.fs.mkdir(destDir).catch(() => {});
 
-    // 如果目标文件已存在，先删除
     if (await RNFetchBlob.fs.exists(normalizedDestPath)) {
       await RNFetchBlob.fs.unlink(normalizedDestPath);
     }
 
-    // 顺序合并：压榨手机存储流式写入性能
     for (let i = 0; i < segmentFiles.length; i++) {
+      if (isCancelled) break;
       const path = segmentFiles[i];
       if (path && await RNFetchBlob.fs.exists(path)) {
         await RNFetchBlob.fs.appendFile(normalizedDestPath, path, 'uri');
@@ -462,28 +457,10 @@ export class CacheService {
       }
     }
 
+    if (isCancelled) throw new Error("CANCELLED");
+
     await FileSystem.deleteAsync(tempDir, { idempotent: true });
     return destinationPath;
-  }
-
-  static async saveToPublicStorage(fileUri: string, albumName: string = "SuperTV"): Promise<string | null> {
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('未获得存储权限');
-      }
-      const asset = await MediaLibrary.createAssetAsync(fileUri);
-      const album = await MediaLibrary.getAlbumAsync(albumName);
-      if (album == null) {
-        await MediaLibrary.createAlbumAsync(albumName, asset, false);
-      } else {
-        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-      }
-      return asset.uri;
-    } catch (error) {
-      logger.warn("saveToPublicStorage failed", error);
-      return null;
-    }
   }
 
   static async downloadFileWithProgress(

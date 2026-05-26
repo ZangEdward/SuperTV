@@ -193,8 +193,10 @@ const useCacheStore = create<CacheState>((set, get) => ({
 
     // mark as queued if concurrency full
     if (state.activeCount >= state.concurrency) {
-      const nextQueue = [...state.queue];
-      nextQueue[groupIndex].episodes[epIndex].status = 'queued';
+      const nextQueue = state.queue.map(g => g.groupId === groupId ? {
+        ...g,
+        episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'queued' as const } : e)
+      } : g);
       set({ queue: nextQueue });
       return;
     }
@@ -202,18 +204,17 @@ const useCacheStore = create<CacheState>((set, get) => ({
     const itemId = `${state.queue[groupIndex].source}_${state.queue[groupIndex].id}_${ep.index}`;
 
     // start downloading
-    const nextQueue = [...state.queue];
-    nextQueue[groupIndex].episodes[epIndex].status = 'downloading';
-    // 保留原有进度，如果是新开始则为0
-    nextQueue[groupIndex].episodes[epIndex].progress = ep.progress || 0;
+    const nextQueue = state.queue.map(g => g.groupId === groupId ? {
+      ...g,
+      episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'downloading' as const } : e)
+    } : g);
 
     set((s) => ({
       activeCount: s.activeCount + 1,
       queue: nextQueue,
-      currentDownloadId: itemId
+      currentDownloadId: itemId,
+      downloadProgress: { ...(s.downloadProgress || {}), [itemId]: ep.progress || 0 }
     }));
-
-    set({ downloadProgress: { ...(get().downloadProgress || {}), [itemId]: ep.progress || 0 } });
 
     try {
       await CacheService.ensureDownloadDirectory();
@@ -221,264 +222,163 @@ const useCacheStore = create<CacheState>((set, get) => ({
       const fileUri = `${CacheService.getDownloadDirectory()}${fileName}`;
 
       let downloadUri = fileUri;
-      if (ep.url.toLowerCase().includes('.m3u8')) {
-        // 获取全局下载广告过滤设置
-        const { downloadAdFilterEnabled } = useSettingsStore.getState();
 
-        // [关键修复]：创建 AbortController 并存入 _controllers 映射，实现物理级暂停
-        const abortController = new AbortController();
-        (get() as any)._controllers = {
-            ...(get() as any)._controllers || {},
-            [itemId]: abortController
-        };
+      // 创建物理控制器
+      const abortController = new AbortController();
+      const controllers = (get() as any)._controllers || {};
+      (get() as any)._controllers = { ...controllers, [itemId]: abortController };
 
-        try {
+      try {
+        if (ep.url.toLowerCase().includes('.m3u8')) {
+          const { downloadAdFilterEnabled } = useSettingsStore.getState();
+
           downloadUri = await CacheService.downloadM3U8AsMp4(
             ep.url,
             fileUri,
             itemId,
             abortController.signal,
             (p, cc) => {
-              // 实时检查当前任务是否已被暂停或取消，若是则忽略本次进度更新
-              const currentState = get();
-              const group = currentState.queue.find(g => g.groupId === groupId);
-              const ep = group?.episodes.find(e => e.index === episodeIndex);
-              if (!ep || ep.status === 'paused' || ep.status === 'cancelled') return;
-              set((state) => {
-                const newQueue = state.queue.map(group => {
-                  if (group.groupId !== groupId) return group;
-                  return {
-                    ...group,
-                    episodes: group.episodes.map(e => {
-                      if (e.index !== episodeIndex) return e;
-
-                      const newProgress = Math.max(e.progress || 0, p);
-                      return { ...e, progress: newProgress, completedCount: cc };
-                    })
-                  };
-                });
-
-                return {
-                  queue: newQueue,
-                  downloadProgress: {
-                    ...(state.downloadProgress || {}),
-                    [itemId]: Math.max(state.downloadProgress?.[itemId] || 0, p)
-                  }
-                };
-              });
-
-              if (cc % 20 === 0) CacheService.saveQueue(get().queue);
+              // 实时同步进度到 UI 和磁盘
+              set((state) => ({
+                downloadProgress: { ...(state.downloadProgress || {}), [itemId]: p },
+                queue: state.queue.map(g => g.groupId === groupId ? {
+                  ...g,
+                  episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, progress: p, completedCount: cc } : e)
+                } : g)
+              }));
+              // 每 10% 保存一次队列，防止频繁磁盘 IO
+              if (cc % 10 === 0) CacheService.saveQueue(get().queue);
             },
-{
-              adFilter: downloadAdFilterEnabled
-            }
+            { adFilter: downloadAdFilterEnabled }
           );
-        } catch (err: any) {
-           // 处理暂停/取消的正常退出
-           if (err.message === "PAUSED" || err.message === "CANCELLED") {
-             logger.info(`Task ${itemId} stopped gracefully.`);
-             return;
-           }
-           if (err?.message?.includes("ALREADY_RUNNING")) {
-              logger.info("Task already running natively, skipping duplicate start.");
-              return;
-           }
-           throw err;
-        } finally {
-          delete (get() as any)._controllers[itemId];
+        } else {
+          // MP4 下载 (RN 层)
+          const resumable = FileSystem.createDownloadResumable(
+            ep.url, fileUri, {},
+            (p) => {
+              const pr = p.totalBytesWritten / p.totalBytesExpectedToWrite;
+              set((state) => ({
+                downloadProgress: { ...(state.downloadProgress || {}), [itemId]: pr },
+                queue: state.queue.map(g => g.groupId === groupId ? {
+                  ...g,
+                  episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, progress: pr } : e)
+                } : g)
+              }));
+            },
+            ep.resumeData
+          );
+          // 覆盖控制器
+          (get() as any)._controllers[itemId] = resumable;
+          const res = await resumable.downloadAsync();
+          if (!res || !res.uri) throw new Error('下载失败');
+          downloadUri = res.uri;
         }
-      } else {
-        // create DownloadResumable here so we can cancel later
-        const resumable = FileSystem.createDownloadResumable(
-          ep.url,
-          fileUri,
-          {},
-          (progress) => {
-            if (progress.totalBytesExpectedToWrite > 0) {
-              const p = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-              const q = get().queue;
-              const gi = q.findIndex(g => g.groupId === groupId);
-              if (gi !== -1) {
-                const ei = q[gi].episodes.findIndex(e => e.index === episodeIndex);
-                if (ei !== -1) {
-                  q[gi].episodes[ei].progress = p;
-                  set({
-                    downloadProgress: { ...(get().downloadProgress || {}), [itemId]: p },
-                    queue: [...q]
-                  });
-                  // 这里的进度也会触发保存
-                  if (Math.floor(p * 100) % 5 === 0) CacheService.saveQueue(q);
-                }
-              }
-            }
-          },
-          ep.resumeData
-        );
-        (get() as any)._controllers = { ...(get() as any)._controllers || {}, [itemId]: resumable };
-        const res = await resumable.downloadAsync();
-        if (!res || !res.uri) throw new Error('下载失败');
-        downloadUri = res.uri;
-        delete (get() as any)._controllers[itemId];
+      } catch (err: any) {
+        if (err.message === 'CANCELLED' || abortController.signal.aborted) {
+           logger.info(`Task ${itemId} stopped by user.`);
+           return; // 暂停逻辑由 pauseQueuedEpisode 处理状态更新
+        }
+        throw err;
+      } finally {
+        const currentControllers = (get() as any)._controllers || {};
+        delete currentControllers[itemId];
       }
 
+      // 下载成功逻辑
       const cachedItem: CachedVideoItem = {
         id: itemId,
         source: state.queue[groupIndex].source,
-        source_name: state.queue[groupIndex].title,
+        source_name: state.queue[groupIndex].source_name || state.queue[groupIndex].title,
         title: state.queue[groupIndex].title,
         poster: state.queue[groupIndex].poster,
         episodeIndex: ep.index,
-        episodeTitle: `第 ${ep.index + 1} 集`,
+        episodeTitle: ep.title || `第 ${ep.index + 1} 集`,
         fileUri: downloadUri,
         totalEpisodes: state.queue[groupIndex].episodes.length,
         downloadedAt: Date.now(),
       };
       await CacheService.add(cachedItem);
 
-      // mark completed
-      const finalQueue = get().queue;
-      const fgi = finalQueue.findIndex(g => g.groupId === groupId);
-      if (fgi !== -1) {
-        const fei = finalQueue[fgi].episodes.findIndex(e => e.index === episodeIndex);
-        if (fei !== -1) {
-          finalQueue[fgi].episodes[fei].status = 'completed';
-          finalQueue[fgi].episodes[fei].progress = 1;
-        }
-      }
-
       set((s) => ({
         items: [cachedItem, ...s.items],
         currentDownloadId: null,
         activeCount: Math.max(0, s.activeCount - 1),
-        downloadProgress: { ...(s.downloadProgress || {}), [itemId]: 1 },
-        queue: [...finalQueue]
+        queue: s.queue.map(g => g.groupId === groupId ? {
+          ...g,
+          episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'completed' as const, progress: 1 } : e)
+        } : g)
       }));
       await CacheService.saveQueue(get().queue);
     } catch (err) {
       logger.warn('downloadQueuedEpisode failed', err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const errorQueue = get().queue;
-      const egi = errorQueue.findIndex(g => g.groupId === groupId);
-      if (egi !== -1) {
-        const eei = errorQueue[egi].episodes.findIndex(e => e.index === episodeIndex);
-        if (eei !== -1) {
-          errorQueue[egi].episodes[eei].status = 'failed';
-        }
-      }
       set((s) => ({
         currentDownloadId: null,
         activeCount: Math.max(0, s.activeCount - 1),
-        queue: [...errorQueue]
+        queue: s.queue.map(g => g.groupId === groupId ? {
+          ...g,
+          episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'failed' as const } : e)
+        } : g)
       }));
       await CacheService.saveQueue(get().queue);
-      Toast.show({ type: "error", text1: "下载失败", text2: errorMessage });
+      Toast.show({ type: "error", text1: "下载失败", text2: String(err) });
     }
 
-    // process next queued episode(s) if there is now available capacity
     get().processQueue?.();
   },
 
-    /** 暂停下载任务（对 M3U8 使用 CacheService.pauseTask；对 MP4 使用 DownloadResumable.pauseAsync） */
+  /** 暂停下载任务 */
   pauseQueuedEpisode: async (groupId, episodeIndex) => {
-    const group = get().queue.find((g) => g.groupId === groupId);
+    const state = get();
+    const group = state.queue.find((g) => g.groupId === groupId);
     if (!group) return;
     const ep = group.episodes.find((e) => e.index === episodeIndex);
     if (!ep || ep.status !== 'downloading') return;
     const itemId = `${group.source}_${group.id}_${ep.index}`;
 
-    // [修复] 先标记暂停状态（同步），确保进度回调能读到暂停状态
-    ep.wasDownloading = true;
-    ep.status = 'paused';
-    set((s) => ({ activeCount: Math.max(0, s.activeCount - 1), queue: [...get().queue] }));
-    CacheService.saveQueue(get().queue);
+    // 1. 同步更新状态，防止回调干扰
+    const nextQueue = state.queue.map(g => g.groupId === groupId ? {
+      ...g,
+      episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'paused' as const, wasDownloading: true } : e)
+    } : g);
 
-    // 再触发物理中止
-    if (ep.url.toLowerCase().includes('.m3u8')) {
-      // 触发 JS 层的信号中断，强行终止 Promise 阻塞
-      const controllers = (get() as any)._controllers || {};
-      const ctrl = controllers[itemId];
-      if (ctrl && typeof ctrl.abort === 'function') {
-        ctrl.abort();
-      }
-    } else {
-      // MP4 下载 -> 使用 expo-file-system DownloadResumable.pauseAsync
-      const controllers = (get() as any)._controllers || {};
-      const ctrl = controllers[itemId];
-      if (ctrl && typeof ctrl.pauseAsync === 'function') {
-        try {
-          const pauseResult = await ctrl.pauseAsync();
-          ep.resumeData = pauseResult.resumeData;
-        } catch (e) {
-          logger.warn('pauseAsync failed', e);
-        }
+    set({ queue: nextQueue, activeCount: Math.max(0, state.activeCount - 1) });
+    CacheService.saveQueue(nextQueue);
+
+    // 2. 物理中断
+    const controllers = (get() as any)._controllers || {};
+    const ctrl = controllers[itemId];
+    if (ctrl) {
+      if (typeof ctrl.abort === 'function') ctrl.abort();
+      if (typeof ctrl.pauseAsync === 'function') {
+        const res = await ctrl.pauseAsync();
+        // 更新 resumeData
+        set({
+          queue: get().queue.map(g => g.groupId === groupId ? {
+            ...g,
+            episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, resumeData: res.resumeData } : e)
+          } : g)
+        });
       }
     }
-      },
+  },
 
   /** 继续下载任务 */
   resumeQueuedEpisode: async (groupId, episodeIndex) => {
-    const group = get().queue.find((g) => g.groupId === groupId);
+    const state = get();
+    const group = state.queue.find((g) => g.groupId === groupId);
     if (!group) return;
     const ep = group.episodes.find((e) => e.index === episodeIndex);
     if (!ep) return;
-    const itemId = `${group.source}_${group.id}_${ep.index}`;
 
-        if (ep.url.toLowerCase().includes('.m3u8')) {
-      // 如果任务已经在运行中，仅调用 resume
-      if (CacheService.isTaskPaused(itemId)) {
-        CacheService.resumeTask(itemId);
-        ep.status = 'downloading';
-        set((s) => ({ activeCount: s.activeCount + 1, queue: [...get().queue] }));
-      } else {
-        // 如果任务不在运行中（如重启后），重新启动下载（它会自动根据 completedCount 续传）
-        ep.status = 'pending';
-        set({ queue: [...get().queue] });
-        get().downloadQueuedEpisode(groupId, episodeIndex);
-      }
-    } else {
-      // MP4 下载 -> 使用 DownloadResumable.resumeAsync（需要重新创建？实际上可以从上次暂停处恢复）
-      const controllers = (get() as any)._controllers || {};
-      const ctrl = controllers[itemId];
-      if (ctrl && typeof ctrl.resumeAsync === 'function') {
-        try {
-          ep.status = 'downloading';
-          set({ queue: [...get().queue] });
-          const result = await ctrl.resumeAsync();
-          if (result?.uri) {
-            ep.status = 'completed';
-            ep.progress = 1;
-            set((s) => ({ currentDownloadId: null, activeCount: Math.max(0, s.activeCount - 1), queue: [...s.queue] }));
-            // 添加到缓存记录
-            const cachedItem: CachedVideoItem = {
-              id: itemId,
-              source: group.source,
-              source_name: group.title,
-              title: group.title,
-              poster: group.poster,
-              episodeIndex: ep.index,
-              episodeTitle: `第 ${ep.index + 1} 集`,
-              fileUri: result.uri,
-              totalEpisodes: group.episodes.length,
-              downloadedAt: Date.now(),
-            };
-            await CacheService.add(cachedItem);
-            set((s) => ({ items: [cachedItem, ...s.items] }));
-          }
-        } catch (e) {
-          logger.warn('resumeQueuedEpisode MP4 failed', e);
-          ep.status = 'failed';
-          set((s) => ({ currentDownloadId: null, activeCount: Math.max(0, s.activeCount - 1), queue: [...s.queue] }));
-        }
-        return;
-      }
-      // 如果没有 resumable（如已清除，比如重启后），重新启动下载（它会通过 ep.resumeData 续传）
-      ep.status = 'pending';
-      set({ queue: [...get().queue] });
-      (get() as any).processQueue?.();
-      return;
-    }
+    // 恢复为 queued 状态，由调度器统一启动
+    const nextQueue = state.queue.map(g => g.groupId === groupId ? {
+      ...g,
+      episodes: g.episodes.map(e => e.index === episodeIndex ? { ...e, status: 'queued' as const, wasDownloading: false } : e)
+    } : g);
 
-    set({ queue: [...get().queue] });
+    set({ queue: nextQueue });
+    CacheService.saveQueue(nextQueue);
+    get().processQueue?.();
   },
 
   /** 取消下载任务（真正终止下载） */
