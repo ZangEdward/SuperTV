@@ -150,22 +150,34 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
-      const currentTitle = q.trim().toLowerCase();
+      // 获取当前主剧集的“核心特征”，用于跨源精确匹配
+      const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
+      const currentCore = getCoreKey(q);
 
-      // [Selene 级语义过滤]：只保留与当前搜索词高度吻合的结果
+      // [Selene 级语义过滤升级]
       const strictlyMatchedResults = results.filter(r => {
-          const targetTitle = r.title.trim().toLowerCase();
-          // 逻辑 A：标题包含当前主标题
-          if (!targetTitle.includes(currentTitle)) return false;
-          // 逻辑 B：长度校验。如果目标标题比原标题长太多（超过 6 个字），通常是串台了
-          // 比如“家业”匹配到“女朋友退婚我继承家业”，长度差异巨大，直接剔除。
-          if (targetTitle.length > currentTitle.length + 6) return false;
-          return true;
+          const targetTitle = (r.title || "").toLowerCase();
+          const targetCore = getCoreKey(r.title);
+          const searchCore = q.toLowerCase();
+
+          // 允许条件：
+          // 1. 核心特征完全一致
+          // 2. 或者目标标题包含搜索词
+          // 3. 或者搜索词包含目标标题（处理缩写）
+          return targetCore === currentCore ||
+                 targetCore.includes(currentCore) ||
+                 currentCore.includes(targetCore) ||
+                 targetTitle.includes(searchCore);
       });
 
       if (strictlyMatchedResults.length === 0) {
-        if (state.detail) set({ loading: false });
-        return;
+        // [关键修复]：如果是在首选源路径下且只有一个结果，无条件信任它（解决首页点击失效）
+        if (state.searchResults.length === 0 && results.length === 1) {
+           strictlyMatchedResults.push(results[0]);
+        } else {
+           if (state.detail) set({ loading: false });
+           return;
+        }
       }
 
       // [源去重加固]
@@ -207,33 +219,34 @@ const useDetailStore = create<DetailState>((set, get) => ({
     };
 
     try {
-      if (preferredSource && id) {
-        // [路径 A] 有首选源：先精准打击
+      // 核心修复：如果是动漫（来自 Bangumi）或 ID 为 0/local，强制进入全网模糊探测模式
+      const isFuzzySource = !preferredSource || preferredSource === "bangumi" || id === "0" || id === "local";
+
+      if (!isFuzzySource && preferredSource && id) {
+        // [路径 A] 有确定的 CMS 源和 ID：精准获取，同步开启换源检索
         updateProgress({ total: 1, currentSource: '首选源' });
 
-        let preferredResult: SearchResult[] = [];
+        // 1. 同步获取首选源详情，确保秒开
         try {
           const response = await api.searchVideo(q, preferredSource, signal);
-          preferredResult = response.results;
+          if (response.results.length > 0) {
+            await processAndSetResults(response.results, 0);
+          }
         } catch (error) {
-          logger.warn(`Preferred source "${preferredSource}" failed`, error);
+          logger.warn(`Preferred source "${preferredSource}" failed, will fallback`);
         }
 
         if (signal.aborted) return;
         
-        if (preferredResult.length > 0) {
-          await processAndSetResults(preferredResult, 0);
-          updateProgress({ completed: 1, isComplete: true });
-        } else {
-          logger.info(`Preferred source failed, falling back to all-source search`);
-          // [关键修复]：首选源失败，阻塞等待全网搜索结果，防止 UI 闪烁"未找到"
-          const response = await api.searchVideos(q);
+        // 2. 异步启动全网检索（用于换源），不阻塞当前显示
+        api.searchVideos(q).then(response => {
           if (!signal.aborted && response.results.length > 0) {
-            await processAndSetResults(response.results, 100);
+            processAndSetResults(response.results, 100);
           }
-        }
+        }).catch(() => {});
+
       } else {
-        // [路径 B] 无首选源：激进并发加载
+        // [路径 B] 只有关键词（来自全网搜索或每日动漫）：激进全网并发加载
         const allResources = await api.getResources(signal);
         const enabledResources = videoSource.enabledAll ? allResources : allResources.filter((r) => videoSource.sources[r.key]);
 
@@ -245,41 +258,35 @@ const useDetailStore = create<DetailState>((set, get) => ({
         updateProgress({ total: enabledResources.length });
 
         let completed = 0;
-        // [提升并发] 针对详情页换源需求，提升探测并发
-        const batchSize = 6;
+        // [极致并发] 针对骁龙 8 系列优化：同时启动所有源的检索
+        const tasks = enabledResources.map(async (resource) => {
+          try {
+            updateProgress({ currentSource: resource.name });
+            const searchStart = performance.now();
 
-        for (let i = 0; i < enabledResources.length; i += batchSize) {
-          if (signal.aborted) break;
-          const batch = enabledResources.slice(i, i + batchSize);
+            const timeoutPromise = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), 10000)
+            );
 
-          await Promise.all(batch.map(async (resource) => {
-            try {
-              updateProgress({ currentSource: resource.name });
-              const searchStart = performance.now();
+            const results = await Promise.race([
+              api.searchVideo(q, resource.key, signal).then(r => r.results),
+              timeoutPromise
+            ]) as SearchResult[] | null;
 
-              const timeoutPromise = new Promise<null>((resolve) =>
-                setTimeout(() => resolve(null), 8000)
-              );
+            if (signal.aborted) return;
+            const latency = performance.now() - searchStart;
 
-              const results = await Promise.race([
-                api.searchVideo(q, resource.key, signal).then(r => r.results),
-                timeoutPromise
-              ]) as SearchResult[] | null;
-
-              if (signal.aborted) return;
-              const latency = performance.now() - searchStart;
-
-              if (results && results.length > 0) {
-                await processAndSetResults(results, latency);
-              }
-            } catch (e) {
-            } finally {
-              completed++;
-              updateProgress({ completed });
+            if (results && results.length > 0) {
+              await processAndSetResults(results, latency);
             }
-          }));
-        }
+          } catch (e) {
+          } finally {
+            completed++;
+            updateProgress({ completed });
+          }
+        });
 
+        await Promise.all(tasks);
         updateProgress({ isComplete: true });
       }
 

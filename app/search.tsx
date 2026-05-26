@@ -124,18 +124,23 @@ export default function SearchScreen() {
 
   const aggregatedResults = useMemo(() => {
     if (!useAggregatedView) return filteredResults;
+
     const groups = new Map<string, SearchResult & { sourceCount: number }>();
     filteredResults.forEach(r => {
-      const key = `${r.title.trim().toLowerCase()}_${r.year}_${r.episodes?.length || 0}`;
+      // [智能聚合 Key]：去除清晰度标签，但保留“第一季/剧场版”等语义词
+      const titleClean = r.title.replace(/\[.*?\]|【.*?】|高清版|蓝光版/g, '').trim().toLowerCase();
+      const key = `${titleClean}_${r.year || '0'}`;
+
       if (!groups.has(key)) {
         groups.set(key, { ...r, sourceCount: 1 });
       } else {
         const existing = groups.get(key)!;
         existing.sourceCount += 1;
-        if (r.id > existing.id) {
-          const count = existing.sourceCount;
-          Object.assign(existing, r);
-          existing.sourceCount = count;
+        // 保留信息更全（集数更多）的版本作为展示封面
+        if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
+           const count = existing.sourceCount;
+           Object.assign(existing, r);
+           existing.sourceCount = count;
         }
       }
     });

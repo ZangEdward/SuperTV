@@ -68,32 +68,11 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const animatedStyle = { transform: [{ scale }] };
 
     const handlePress = () => {
-      // 每日动漫点击跳转到搜索
-      if (source === "bangumi") {
-        router.push({
-          pathname: "/search",
-          params: { q: title },
-        });
-        return;
-      }
-
-      if (episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: {
-            source,
-            id: id.toString(),
-            episodeIndex: (episodeIndex - 1).toString(),
-            title,
-            position: Math.floor((playTime || 0) * 1000).toString()
-          },
-        });
-      } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title, id: id.toString() },
-        });
-      }
+      // 统一进入详情页，利用聚合检索实现秒开和换源
+      router.push({
+        pathname: "/detail",
+        params: { source, q: title, id: id.toString() },
+      });
     };
 
     const handleFocus = useCallback(() => {

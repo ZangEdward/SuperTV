@@ -99,33 +99,21 @@ const useSearchStore = create<SearchState>((set, get) => ({
       if (signal.aborted || !results || results.length === 0) return;
 
       set((state) => {
+        // [Selene 级存储策略]：不再在存储层进行去重合并，保留所有源的原始数据
+        // 确保“火影忍者”和“火影忍者 疾风传”作为独立条目共存
+        const newResults = [...state.results, ...results];
+
+        // 仅进行物理去重（同源同ID去重）
+        const uniqueResults = Array.from(new Map(newResults.map(r => [`${r.source}_${r.id}`, r])).values());
+
+        // 填充详情池，供详情页秒开使用
         results.forEach(r => {
-          // [智能指纹]：保留季/部/剧场版等核心信息，仅剔除资源站/清晰度等标签
-          const titleFingerprint = r.title
-            .trim()
-            .replace(/\[.*?\]|\(.*?\)|【.*?】/g, '') // 剔除 [1080P]、(蓝光) 等
-            .replace(/\s+/g, '')
-            .toLowerCase();
-
-          // 聚合 Key：指纹 + 年份 + 类型。确保第一季/第二季互不干扰
-          const key = `${titleFingerprint}_${r.year || '0'}_${r.type_name || 'vod'}`;
-
-          const existing = resultMap.get(key);
-          if (!existing) {
-            resultMap.set(key, r);
-            // 同时更新内存详情池，供详情页秒开使用
-            SearchDetailPool.set(`${r.title.trim().toLowerCase()}_${r.source}`, r);
-          } else {
-            // 同一指纹的作品，合并到一起，并保留集数最多的源
-            if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
-              resultMap.set(key, { ...r });
-            }
-          }
+          const coreTitle = r.title.trim().toLowerCase();
+          SearchDetailPool.set(`${coreTitle}_${r.source}`, r);
         });
 
-        // [核心优化]：只要有了第一个有效结果，立即打破全屏加载状态，展现界面
         return {
-          results: Array.from(resultMap.values()),
+          results: uniqueResults,
           loading: false
         };
       });
@@ -191,42 +179,24 @@ const useSearchStore = create<SearchState>((set, get) => ({
         .fill(null)
         .map(() => runWorker());
 
-      await Promise.all(workers);
+      // [策略升级]：除了 32 路节点检索，额外同步开启 1 路全网模糊检索，确保“火影忍者”能搜出全系列
+      const globalSearchTask = api.searchVideos(term).then(res => {
+        if (res && res.results) {
+           processAndAddResults(res.results);
+        }
+      }).catch(() => {});
 
-      // 所有 worker 完成后，最终同步状态
+      await Promise.all([...workers, globalSearchTask]);
+
+      // 所有任务完成后，最终同步状态
       if (!signal.aborted) {
         set({ loading: false });
         updateProgress({ isComplete: true, completed: enabledResources.length });
 
+        // 如果结果集仍为空，可能是因为聚合太严格或真的没搜到
         if (resultMap.size === 0) {
-           // 仅在确认完全无结果时显示错误
            set({ error: `未找到 "${term}" 相关内容` });
         }
-      }
-
-      if (signal.aborted) return;
-
-      // 如果最终完全没有结果，尝试 fallback
-      if (get().results.length === 0) {
-        try {
-          const { results: fallbackResults } = await api.searchVideos(term);
-          if (!signal.aborted && fallbackResults && fallbackResults.length > 0) {
-             const filtered = fallbackResults.filter(item =>
-               item.title && item.title.toLowerCase().includes(term.toLowerCase())
-             );
-             if (filtered.length > 0) {
-               set({ results: filtered, loading: false });
-             } else {
-               set({ error: `未找到 "${term}" 相关内容`, loading: false });
-             }
-          } else {
-            set({ error: `未找到 "${term}" 相关内容`, loading: false });
-          }
-        } catch (fallbackError) {
-          set({ error: `未找到 "${term}" 相关内容`, loading: false });
-        }
-      } else {
-        set({ loading: false });
       }
 
     } catch (err) {

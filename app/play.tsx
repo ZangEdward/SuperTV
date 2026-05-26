@@ -103,7 +103,9 @@ export default function PlayScreen() {
   const isDetailMatching = useMemo(() => {
     if (!detail) return false;
     if (!!params.fileUri) return true;
-    return String(detail.id || "") === params.id && detail.source === params.source;
+    const detailId = String(detail.id || "");
+    const paramId = String(params.id || "");
+    return (detailId === paramId || detailId === "0" || paramId === "0") && detail.source === params.source;
   }, [detail, params.id, params.source, params.fileUri]);
 
   const episodes = useMemo(() => {
@@ -177,23 +179,32 @@ export default function PlayScreen() {
   }, [currentEpisodeIndex, params, detail, loadVideo, safeUnload]);
 
   const handleSourcePress = useCallback(async (item: any) => {
-    const source = params.source || detail?.source;
-    if (!item || item.source === source) return;
+    const sourceKey = params.source || detail?.source;
+    if (!item || !item.source || item.source === sourceKey) return;
 
+    // 切换源时保留当前播放进度
     const currentPos = status?.isLoaded ? status.positionMillis : undefined;
 
     try {
       await safeUnload();
-      await setDetail?.(item);
-      loadVideo?.({
-        source: item.source,
-        id: (item.id || "").toString(),
-        episodeIndex: currentEpisodeIndex,
-        title: item.title,
-        position: currentPos,
-      });
-    } catch (e) {}
-  }, [detail, params.source, safeUnload, setDetail, loadVideo, currentEpisodeIndex, status]);
+      // 使用 await 确保状态同步
+      if (typeof setDetail === 'function') {
+        await setDetail(item);
+      }
+
+      if (typeof loadVideo === 'function') {
+        loadVideo({
+          source: item.source,
+          id: (item.id || "").toString(),
+          episodeIndex: currentEpisodeIndex,
+          title: item.title || detail?.title || params.title || "播放",
+          position: currentPos,
+        });
+      }
+    } catch (e) {
+      console.error("Switch source failed:", e);
+    }
+  }, [detail, params.source, params.title, safeUnload, setDetail, loadVideo, currentEpisodeIndex, status]);
 
   useEffect(() => {
     const doKeepAwake = async () => {
@@ -379,10 +390,11 @@ export default function PlayScreen() {
             <ScrollView style={styles.episodeScroll} showsVerticalScrollIndicator={false}>
               <View style={styles.episodeScrollContent}>
                 {(searchResults || []).map((item, idx) => {
+                  if (!item) return null;
                   const isSelected = source === item.source;
                   return (
                     <TouchableOpacity
-                      key={idx}
+                      key={`${item.source}-${idx}`}
                       style={[
                         styles.mobileEpItem,
                         { minWidth: '45%' },
