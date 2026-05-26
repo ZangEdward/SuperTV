@@ -66,6 +66,15 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     }, [fadeAnim]);
 
     const handlePress = () => {
+      // 每日动漫点击跳转到搜索
+      if (source === "bangumi") {
+        router.push({
+          pathname: "/search",
+          params: { q: title },
+        });
+        return;
+      }
+
       // 优化：只要有集数索引（来自播放记录），就直接跳转播放
       if (episodeIndex !== undefined) {
         router.push({

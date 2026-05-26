@@ -68,6 +68,15 @@ const VideoCard = forwardRef<View, VideoCardProps>(
     const animatedStyle = { transform: [{ scale }] };
 
     const handlePress = () => {
+      // 每日动漫点击跳转到搜索
+      if (source === "bangumi") {
+        router.push({
+          pathname: "/search",
+          params: { q: title },
+        });
+        return;
+      }
+
       if (episodeIndex !== undefined) {
         router.push({
           pathname: "/play",

@@ -255,6 +255,17 @@ export class API {
     const response = await this._fetch(url);
     return response.json();
   }
+
+  async getBangumiCalendar(): Promise<any[]> {
+    const response = await fetch('https://api.bgm.tv/calendar', {
+      headers: {
+        'User-Agent': 'senshinya/supertv/1.0.0 (Android) (http://github.com/senshinya/supertv)',
+        'Accept': 'application/json',
+      }
+    });
+    if (!response.ok) throw new Error('Bangumi API failed');
+    return response.json();
+  }
 }
 
 // 默认实例

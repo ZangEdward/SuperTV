@@ -21,7 +21,7 @@ export type RowItem = (SearchResult | PlayRecord) & {
 
 export interface Category {
   title: string;
-  type?: "movie" | "tv" | "record";
+  type?: "movie" | "tv" | "record" | "bangumi";
   tag?: string;
   tags?: string[];
 }
@@ -52,6 +52,7 @@ const initialCategories: Category[] = [
     ],
   },
   { title: "综艺", type: "tv", tag: "综艺" },
+  { title: "每日动漫", type: "bangumi", tags: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"] },
   { title: "豆瓣 Top250", type: "movie", tag: "top250" },
 ];
 
@@ -175,6 +176,30 @@ const useHomeStore = create<HomeState>((set, get) => ({
           .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
 
         set({ contentData: rowItems, hasMore: false });
+      } else if (selectedCategory.type === "bangumi") {
+        const weekdayMap: Record<string, number> = {
+          "周一": 1, "周二": 2, "周三": 3, "周四": 4, "周五": 5, "周六": 6, "周日": 7
+        };
+        const targetWeekday = weekdayMap[selectedCategory.tag || ""] || new Date().getDay() || 7;
+
+        const calendar = await api.getBangumiCalendar();
+        const dayData = calendar.find((d: any) => d.weekday.id === targetWeekday);
+
+        const newItems = (dayData?.items || []).map((item: any) => ({
+          id: item.id.toString(),
+          source: "bangumi",
+          title: item.name_cn || item.name,
+          poster: item.images?.large || item.images?.common || "",
+          rate: item.rating?.score?.toString() || "0",
+          year: item.air_date?.split('-')[0] || "",
+          totalEpisodes: item.eps_count || item.eps || 0,
+          sourceName: "Bangumi",
+        })) as RowItem[];
+
+        set({
+          contentData: newItems,
+          hasMore: false, // Bangumi calendar is a single page
+        });
       } else if (selectedCategory.type && selectedCategory.tag) {
         const result = await api.getDoubanData(
           selectedCategory.type,

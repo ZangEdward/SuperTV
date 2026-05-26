@@ -111,7 +111,17 @@ export default function HomeScreen() {
 
     // 如果是容器分类且没有选择标签，设置默认标签
     if (selectedCategory.tags && !selectedCategory.tag) {
-      const defaultTag = selectedCategory.tags[0];
+      let defaultTag = selectedCategory.tags[0];
+
+      // 特殊处理每日动漫：默认选中今天
+      if (selectedCategory.title === "每日动漫") {
+        const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+        const today = days[new Date().getDay()];
+        if (selectedCategory.tags.includes(today)) {
+          defaultTag = today;
+        }
+      }
+
       setSelectedTag(defaultTag);
       selectCategory({ ...selectedCategory, tag: defaultTag });
       return;
