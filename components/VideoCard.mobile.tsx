@@ -74,16 +74,29 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         return;
       }
       
-      if (progress !== undefined && episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: { source, id, episodeIndex, title, position: playTime * 1000 },
-        });
+      console.log("Navigating to play/detail:", { source, id, episodeIndex, title, playTime });
+
+      if (source && id) {
+        if (progress !== undefined && episodeIndex !== undefined) {
+          router.push({
+            pathname: "/play",
+            params: {
+              source,
+              id,
+              episodeIndex,
+              title,
+              position: playTime ? playTime * 1000 : 0
+            },
+          });
+        } else {
+          router.push({
+            pathname: "/detail",
+            params: { source, q: title },
+          });
+        }
       } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title },
-        });
+        console.error("Missing source or id for navigation");
+        Alert.alert("错误", "无法获取视频源信息");
       }
     };
 
