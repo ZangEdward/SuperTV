@@ -127,8 +127,12 @@ export default function SearchScreen() {
 
     const groups = new Map<string, SearchResult & { sourceCount: number }>();
     filteredResults.forEach(r => {
-      // [智能聚合 Key]：去除清晰度标签，但保留“第一季/剧场版”等语义词
-      const titleClean = r.title.replace(/\[.*?\]|【.*?】|高清版|蓝光版/g, '').trim().toLowerCase();
+      // [智能聚合 Key]：去除清晰度标签、剔除所有空格，确保“火影 忍者”与“火影忍者”聚合
+      const titleClean = r.title
+        .replace(/\[.*?\]|【.*?】|高清版|蓝光版/g, '')
+        .replace(/\s+/g, '') // 物理移除标题中所有空格
+        .trim()
+        .toLowerCase();
       const key = `${titleClean}_${r.year || '0'}`;
 
       if (!groups.has(key)) {

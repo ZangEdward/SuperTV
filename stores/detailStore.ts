@@ -139,15 +139,15 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
-      // 获取当前主剧集的“核心特征”，用于跨源精确匹配
+      // 获取当前主剧集的“核心特征”，用于跨源精确匹配，强制物理去空格
       const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
       const currentCore = getCoreKey(q);
 
-      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开
+      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开，强制无视空格
       const strictlyMatchedResults = results.filter(r => {
-          const targetTitle = (r.title || "").toLowerCase();
+          const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
           const targetCore = getCoreKey(r.title);
-          const searchCore = q.toLowerCase();
+          const searchCore = q.replace(/\s+/g, '').toLowerCase();
 
           // 匹配条件：只要标题包含核心词，或者核心词包含标题
           return targetCore.includes(currentCore) ||
@@ -321,6 +321,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         const batch = pending.slice(0, testBatchSize);
         await Promise.all(batch.map(async (item) => {
+          if (signal.aborted) return;
           testedSources.add(item.source);
           try {
             let episodes = item.episodes;
@@ -329,10 +330,12 @@ const useDetailStore = create<DetailState>((set, get) => ({
               episodes = detail.episodes || [];
             }
 
-            if (episodes.length === 0) return;
+            if (episodes.length === 0 || signal.aborted) return;
 
             const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
             const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+
+            if (signal.aborted) return;
 
             set(state => {
               const updatedResults = state.searchResults.map(r =>
@@ -346,7 +349,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
         }));
 
         // 如果 init 还在进行中，稍等一下看有没有新源进来
-        if (get().loading) {
+        if (get().loading && !signal.aborted) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         } else {
           // 如果 init 已经结束且当前批次就是最后一批，则退出
@@ -373,6 +376,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
           }
         }
       }
+    } catch (e) {
+      logger.warn('[SPEED] Optimization interrupted', e);
     } finally {
       set({ isOptimizing: false });
       logger.info(`[SPEED] Background source optimization finished.`);

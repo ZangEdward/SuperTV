@@ -210,17 +210,31 @@ export default function PlayScreen() {
     const doKeepAwake = async () => {
       try {
         if (status?.isLoaded && status?.isPlaying) {
-          await activateKeepAwakeAsync();
+          if (typeof activateKeepAwakeAsync === 'function') {
+            await activateKeepAwakeAsync();
+          }
         } else {
-          await deactivateKeepAwakeAsync();
+          if (typeof deactivateKeepAwakeAsync === 'function') {
+            await deactivateKeepAwakeAsync();
+          }
         }
       } catch (e) {}
     };
     doKeepAwake();
-    return () => {
-      deactivateKeepAwakeAsync().catch(() => {});
-    };
   }, [status?.isLoaded, status?.isPlaying]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof deactivateKeepAwakeAsync === 'function') {
+        try {
+          const p = deactivateKeepAwakeAsync();
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => {});
+          }
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setVideoRef?.(videoRef);
@@ -248,20 +262,26 @@ export default function PlayScreen() {
     }
 
     // [逻辑升级] 进入播放页后，自动启动测速优化，方便用户快速换源
-    setTimeout(() => {
+    const optimizeTimer = setTimeout(() => {
       const state = useDetailStore.getState();
       if (state.searchResults.length > 0 && !state.isOptimizing) {
-        state.optimizeSources();
+        state.optimizeSources().catch(() => {});
       }
     }, 1000);
+
+    return () => {
+      clearTimeout(optimizeTimer);
+    };
   }, []);
 
   useEffect(() => {
     return () => {
-      reset?.();
-      if (isMobile) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
-      }
+      try {
+        if (typeof reset === 'function') reset();
+        if (isMobile && ScreenOrientation?.lockAsync && ScreenOrientation?.OrientationLock?.PORTRAIT) {
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        }
+      } catch (e) {}
     };
   }, [isMobile, reset]);
 
@@ -284,7 +304,9 @@ export default function PlayScreen() {
         return true;
       }
       if (isFullscreen) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        if (typeof ScreenOrientation?.lockAsync === 'function') {
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        }
         setIsFullscreen?.(false);
         return true;
       }
@@ -295,8 +317,18 @@ export default function PlayScreen() {
       router.back();
       return true;
     };
-    BackHandler.addEventListener("hardwareBackPress", backAction);
-    return () => BackHandler.removeEventListener("hardwareBackPress", backAction);
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", backAction);
+
+    return () => {
+      try {
+        if (subscription && typeof subscription.remove === 'function') {
+          subscription.remove();
+        } else {
+          BackHandler.removeEventListener("hardwareBackPress", backAction);
+        }
+      } catch (e) {}
+    };
   }, [showControls, showCastModal, isFullscreen, deviceType, router, setShowCastModal, setIsFullscreen, setShowControls]);
 
   const isLocalFile = !!params.fileUri;
