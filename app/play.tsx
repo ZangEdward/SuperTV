@@ -429,28 +429,36 @@ export default function PlayScreen() {
           )}
 
           {activeTab === 'sources' && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sourceScroll}>
-              {(searchResults || []).map((item, idx) => {
-                const isSelected = source === item.source;
-                return (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[styles.mobileSourceItem, isSelected && styles.mobileSourceItemActive]}
-                    onPress={() => handleSourcePress(item)}
-                  >
-                    <View style={{ alignItems: 'center' }}>
-                      <Text style={[styles.mobileSourceText, isSelected && styles.mobileSourceTextActive]} numberOfLines={1}>
-                        {item.source_name}
-                      </Text>
-                      {item.speed !== undefined && item.speed > 0 && (
-                        <Text style={{ fontSize: 9, color: item.speed > 1 ? '#00bb5e' : '#888', marginTop: 2 }}>
-                          {SpeedTestService.formatSpeed(item.speed)}
+            <ScrollView style={styles.episodeScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.episodeScrollContent}>
+                {(searchResults || []).map((item, idx) => {
+                  const isSelected = source === item.source;
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[
+                        styles.mobileEpItem,
+                        { minWidth: '45%' }, // 双列布局
+                        isSelected && styles.mobileEpItemActive,
+                      ]}
+                      onPress={() => handleSourcePress(item)}
+                    >
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={[styles.mobileEpText, isSelected && { color: '#fff' }]} numberOfLines={1}>
+                          {item.source_name}
                         </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                        {(item.speed !== undefined && item.speed > 0) ? (
+                          <Text style={{ fontSize: 9, color: isSelected ? 'rgba(255,255,255,0.8)' : '#888', marginTop: 2 }}>
+                            {SpeedTestService.formatSpeed(item.speed)} · {Math.round(item.latency || 0)}ms
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 9, color: '#555', marginTop: 2 }}>待测速</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </ScrollView>
           )}
 
@@ -589,13 +597,15 @@ const styles = StyleSheet.create({
   },
   mobileEpItem: {
     backgroundColor: "#1a1a1a",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
     marginRight: 8,
     marginBottom: 8,
     justifyContent: 'center',
     minWidth: 50,
+    borderWidth: 1,
+    borderColor: '#222',
   },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
   mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600", textAlign: 'center' },
