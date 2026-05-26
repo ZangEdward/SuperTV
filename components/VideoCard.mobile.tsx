@@ -83,7 +83,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           params: {
             source,
             id,
-            episodeIndex,
+            episodeIndex: episodeIndex - 1,
             title,
             position: playTime ? playTime * 1000 : 0,
             stype: 'tv' // 强制补全 stype 参数，确保后端识别

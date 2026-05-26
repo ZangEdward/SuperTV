@@ -78,7 +78,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
       if (progress !== undefined && episodeIndex !== undefined) {
         router.push({
           pathname: "/play",
-          params: { source, id, episodeIndex, title, position: playTime * 1000 },
+          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000, stype: 'tv' },
         });
       } else {
         router.push({
