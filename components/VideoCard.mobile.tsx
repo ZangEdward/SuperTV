@@ -66,6 +66,8 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       }).start();
     }, [fadeAnim]);
 
+    const longPressTriggered = useRef(false);
+
     const handlePress = () => {
       if (longPressTriggered.current) {
         longPressTriggered.current = false;
@@ -88,6 +90,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
     const handleLongPress = () => {
       if (progress === undefined) return;
 
+      longPressTriggered.current = true;
       Alert.alert("删除观看记录", `确定要删除"${title}"的观看记录吗？`, [
         {
           text: "取消",
@@ -121,6 +124,7 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
       <Animated.View style={[styles.wrapper, { opacity: fadeAnim }]} ref={ref}>
         <TouchableOpacity
           onPress={handlePress}
+          onLongPress={handleLongPress}
           style={styles.pressable}
           activeOpacity={0.8}
         >
