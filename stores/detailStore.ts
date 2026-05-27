@@ -63,6 +63,57 @@ function progressiveSearchTerms(query: string): string[] {
   return [...new Set(terms)];
 }
 
+/**
+ * 生成搜索变体列表——借鉴 LunaTV 的多策略搜索
+ * 依次尝试不同格式，提高搜索结果命中率
+ */
+function generateSearchVariants(originalQuery: string): string[] {
+  const variants: string[] = [];
+  const trimmed = originalQuery.trim();
+  if (!trimmed) return variants;
+
+  // 1. 原始查询（含空格——后端可能做分词）
+  variants.push(trimmed);
+
+  // 2. 去除所有空格
+  const noSpaces = trimmed.replace(/\s+/g, '');
+  if (noSpaces !== trimmed) variants.push(noSpaces);
+
+  // 3. 中文数字归一化变体（"第四季" → "第4季"）
+  const numNormalized = normalizeChineseNumbers(noSpaces);
+  if (numNormalized !== noSpaces) variants.push(numNormalized);
+
+  // 4. 如果包含空格，生成关键词组合
+  if (trimmed.includes(' ')) {
+    const keywords = trimmed.split(/\s+/).filter(Boolean);
+    // 主关键词 + 最后一个词组合（如 "现在就出发 第二季" → "现在就出发第二季"）
+    if (keywords.length >= 2) {
+      const mainKeyword = keywords[0];
+      const lastKeyword = keywords[keywords.length - 1];
+      // 如果最后一个词含"第/季/集/部/篇/章"，拼接到主关键词
+      if (/第|季|集|部|篇|章/.test(lastKeyword)) {
+        const combined = mainKeyword + lastKeyword;
+        if (!variants.includes(combined)) variants.push(combined);
+      }
+      // 空格变冒号（"死神来了 血脉诅咒" → "死神来了：血脉诅咒"）
+      const withColon = trimmed.replace(/\s+/g, '：');
+      if (!variants.includes(withColon)) variants.push(withColon);
+      // 仅主关键词
+      if (mainKeyword.length > 1 && !variants.includes(mainKeyword)) {
+        variants.push(mainKeyword);
+      }
+    }
+  }
+
+  // 5. 渐进式去掉最后一段（从完整词逐步缩短）
+  const progressive = progressiveSearchTerms(trimmed);
+  for (const t of progressive) {
+    if (!variants.includes(t)) variants.push(t);
+  }
+
+  return variants;
+}
+
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
   latency?: number;
@@ -339,21 +390,21 @@ const useDetailStore = create<DetailState>((set, get) => ({
             });
             logger.info(`[FALLBACK] Title matches: ${filteredResults.length}`);
 
-            // 渐进式搜索：无结果时逐步去掉最后一段空格分词再试
+            // 渐进式搜索：逐步去掉最后一段空格分词再试
             if (filteredResults.length === 0) {
-              const progressiveTerms = progressiveSearchTerms(rawQuery);
+              const searchVariants = generateSearchVariants(rawQuery);
               // 跳过第一个（已用完整词搜过）
-              for (const progressiveTerm of progressiveTerms.slice(1)) {
+              for (const variant of searchVariants.slice(1)) {
                 if (signal.aborted) break;
-                logger.info(`[FALLBACK] Progressive search term: "${progressiveTerm}"`);
+                logger.info(`[FALLBACK] Search variant: "${variant}"`);
                 try {
-                  const { results: progResults } = await api.searchVideos(progressiveTerm);
+                  const { results: progResults } = await api.searchVideos(variant);
                   filteredResults = progResults.filter(r => {
                     const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                    return titleMatches(progressiveTerm, targetTitle);
+                    return titleMatches(variant, targetTitle);
                   });
                   if (filteredResults.length > 0) {
-                    logger.info(`[FALLBACK] Progressive search found ${filteredResults.length} matches with "${progressiveTerm}"`);
+                    logger.info(`[FALLBACK] Variant "${variant}" found ${filteredResults.length} matches`);
                     break;
                   }
                 } catch { continue; }
@@ -373,19 +424,19 @@ const useDetailStore = create<DetailState>((set, get) => ({
               });
               // 渐进式宽松匹配
               if (looseResults.length === 0) {
-                const progressiveTerms = progressiveSearchTerms(rawQuery);
-                for (const progressiveTerm of progressiveTerms.slice(1)) {
+                const searchVariants = generateSearchVariants(rawQuery);
+                for (const variant of searchVariants.slice(1)) {
                   if (signal.aborted) break;
                   try {
-                    const { results: progResults } = await api.searchVideos(progressiveTerm);
-                    const progNorm = normalizeChineseNumbers(progressiveTerm.replace(/\s+/g, '').toLowerCase());
+                    const { results: progResults } = await api.searchVideos(variant);
+                    const progNorm = normalizeChineseNumbers(variant.replace(/\s+/g, '').toLowerCase());
                     looseResults = progResults.filter(r => {
                       const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
                       const tNorm = normalizeChineseNumbers(targetTitle);
                       return tNorm.includes(progNorm) || progNorm.includes(tNorm);
                     });
                     if (looseResults.length > 0) {
-                      logger.info(`[FALLBACK] Progressive loose match found ${looseResults.length} with "${progressiveTerm}"`);
+                      logger.info(`[FALLBACK] Variant loose match found ${looseResults.length} with "${variant}"`);
                       break;
                     }
                   } catch { continue; }
@@ -458,21 +509,21 @@ const useDetailStore = create<DetailState>((set, get) => ({
         if (get().searchResults.length === 0 && !signal.aborted) {
           logger.info(`[FALLBACK] Individual source searches returned 0 results, trying aggregated search...`);
           let found = false;
-          // 渐进式搜索：逐步去掉最后一段空格分词
-          const progressiveTerms = progressiveSearchTerms(rawQuery);
-          for (const progressiveTerm of progressiveTerms) {
+          // 多策略搜索变体
+          const searchVariants = generateSearchVariants(rawQuery);
+          for (const variant of searchVariants) {
             if (signal.aborted || found) break;
-            logger.info(`[FALLBACK] Trying progressive term: "${progressiveTerm}"`);
+            logger.info(`[FALLBACK] Trying search variant: "${variant}"`);
             try {
-              const { results: allResults } = await api.searchVideos(progressiveTerm);
+              const { results: allResults } = await api.searchVideos(variant);
               if (allResults.length > 0) {
-                const searchTitle = progressiveTerm.replace(/\s+/g, '').toLowerCase();
+                const searchTitle = variant.replace(/\s+/g, '').toLowerCase();
                 const matched = allResults.filter(r => {
                   const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
                   return titleMatches(searchTitle, targetTitle);
                 });
                 if (matched.length > 0) {
-                  logger.info(`[FALLBACK] Aggregated search found ${matched.length} matches with "${progressiveTerm}"`);
+                  logger.info(`[FALLBACK] Variant "${variant}" found ${matched.length} matches`);
                   await processAndSetResults(matched, 100);
                   found = true;
                 }

@@ -274,10 +274,14 @@ const useHomeStore = create<HomeState>((set, get) => ({
       }
     } catch (err: any) {
       let errorMessage = "加载失败，请重试";
+      const errMsg = (err.message || "").toLowerCase();
 
-      if (err.message === "API_URL_NOT_SET") {
+      // Bangumi 专属错误提示
+      if (err.message === "Bangumi API failed") {
+        errorMessage = "番剧数据暂时不可用（Bangumi API 异常）";
+      } else if (errMsg.includes("api_url_not_set")) {
         errorMessage = "请点击右上角设置按钮，配置您的服务器地址";
-      } else if (err.message === "UNAUTHORIZED") {
+      } else if (errMsg.includes("unauthorized")) {
         errorMessage = "认证失败，请重新登录";
         useAuthStore.setState({ isLoggedIn: false, isLoginModalVisible: true });
       } else if (err.message.includes("Network")) {

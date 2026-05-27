@@ -48,7 +48,6 @@ export function populateDetailPool(results: SearchResult[]) {
 /**
  * 生成渐进式搜索词列表：从完整词开始，逐步去掉最后一个空格分隔的段落
  * "1 2 3 4" → ["1234", "123", "12", "1"]
- * 用于搜索无结果时逐步放宽条件
  */
 export function progressiveSearchTerms(query: string): string[] {
   const parts = query.trim().split(/\s+/);
@@ -58,6 +57,64 @@ export function progressiveSearchTerms(query: string): string[] {
     terms.push(parts.slice(0, i).join('').replace(/\s+/g, ''));
   }
   return [...new Set(terms)];
+}
+
+/**
+ * 将中文数字归一化为阿拉伯数字
+ */
+function normalizeChineseNumbers(str: string): string {
+  const map: Record<string, string> = {
+    '零': '0', '一': '1', '二': '2', '三': '3', '四': '4',
+    '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
+    '〇': '0', '两': '2',
+  };
+  let r = '';
+  for (const c of str) r += map[c] || c;
+  return r;
+}
+
+/**
+ * 生成搜索变体列表——借鉴 LunaTV 的多策略搜索
+ * 依次尝试不同格式，提高搜索结果命中率
+ */
+export function generateSearchVariants(originalQuery: string): string[] {
+  const variants: string[] = [];
+  const trimmed = originalQuery.trim();
+  if (!trimmed) return variants;
+
+  // 1. 原始查询
+  variants.push(trimmed);
+
+  // 2. 去除所有空格
+  const noSpaces = trimmed.replace(/\s+/g, '');
+  if (noSpaces !== trimmed) variants.push(noSpaces);
+
+  // 3. 中文数字归一化
+  const numNorm = normalizeChineseNumbers(noSpaces);
+  if (numNorm !== noSpaces) variants.push(numNorm);
+
+  // 4. 空格相关变体
+  if (trimmed.includes(' ')) {
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) {
+      const main = words[0], last = words[words.length - 1];
+      if (/第|季|集|部|篇|章/.test(last)) {
+        const combined = main + last;
+        if (!variants.includes(combined)) variants.push(combined);
+      }
+      const colon = trimmed.replace(/\s+/g, '：');
+      if (!variants.includes(colon)) variants.push(colon);
+      if (main.length > 1 && !variants.includes(main)) variants.push(main);
+    }
+  }
+
+  // 5. 渐进式
+  const prog = progressiveSearchTerms(trimmed);
+  for (const t of prog) {
+    if (!variants.includes(t)) variants.push(t);
+  }
+
+  return variants;
 }
 
 export interface SearchProgress {
@@ -293,19 +350,19 @@ const useSearchStore = create<SearchState>((set, get) => ({
         if (signal.aborted) return;
       }
 
-      // ============ Phase 3: 渐进式搜索 ============
-      // 如果以上搜索无结果，逐步去掉最后一段空格分词再试
+      // ============ Phase 3: 多策略搜索变体 ============
+      // 借鉴 LunaTV 做法：生成多种搜索变体依次尝试（数字归一化、标点变体、关键词组合等）
       if (get().results.length === 0 && !signal.aborted) {
-        const progressiveTerms = progressiveSearchTerms(rawTerm);
+        const searchVariants = generateSearchVariants(rawTerm);
         // 跳过第一个（已用完整词搜过）
-        for (const progressiveTerm of progressiveTerms.slice(1)) {
+        for (const variant of searchVariants.slice(1)) {
           if (signal.aborted) break;
-          logger.info(`[SEARCH] Progressive search term: "${progressiveTerm}"`);
+          logger.info(`[SEARCH] Variant: "${variant}"`);
           await new Promise(r => setTimeout(r, 300));
           if (signal.aborted) break;
-          await executeSearchPhase(progressiveTerm, 'fuzzy');
+          await executeSearchPhase(variant, 'fuzzy');
           if (get().results.length > 0) {
-            logger.info(`[SEARCH] Progressive search found results with "${progressiveTerm}"`);
+            logger.info(`[SEARCH] Variant "${variant}" found results`);
             break;
           }
         }
@@ -315,17 +372,16 @@ const useSearchStore = create<SearchState>((set, get) => ({
       if (!signal.aborted) {
         const finalResults = get().results;
 
-        // [渐进排序] 按匹配精度排序：完整原始词匹配 > 渐进词匹配
-        // 匹配词越长越精确，排前面
+        // [渐进排序] 按匹配精度排序：完整原始词匹配 > 变体匹配 > 渐进匹配
         if (finalResults.length > 1) {
           const rawClean = rawTerm.replace(/\s+/g, '').toLowerCase();
-          const progressiveTerms = progressiveSearchTerms(rawTerm);
+          const searchVariants = generateSearchVariants(rawTerm);
           const sortedResults = [...finalResults].sort((a, b) => {
             const aTitle = (a.title || "").replace(/\s+/g, '').toLowerCase();
             const bTitle = (b.title || "").replace(/\s+/g, '').toLowerCase();
-            // 计算每个结果的"匹配深度"（匹配到第几层渐进词）
-            const aDepth = progressiveTerms.findIndex(t => aTitle.includes(t) || t.includes(aTitle));
-            const bDepth = progressiveTerms.findIndex(t => bTitle.includes(t) || t.includes(bTitle));
+            // 计算每个结果的"匹配深度"（匹配到第几层变体）
+            const aDepth = searchVariants.findIndex(t => aTitle.includes(t) || t.includes(aTitle));
+            const bDepth = searchVariants.findIndex(t => bTitle.includes(t) || t.includes(bTitle));
             // 深度越小（越精确）排越前；找不到的排最后
             return (aDepth === -1 ? 999 : aDepth) - (bDepth === -1 ? 999 : bDepth);
           });

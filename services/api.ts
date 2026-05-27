@@ -257,14 +257,21 @@ export class API {
   }
 
   async getBangumiCalendar(): Promise<any[]> {
-    const response = await fetch('https://api.bgm.tv/calendar', {
-      headers: {
-        'User-Agent': 'senshinya/supertv/1.0.0 (Android) (http://github.com/senshinya/supertv)',
-        'Accept': 'application/json',
-      }
-    });
-    if (!response.ok) throw new Error('Bangumi API failed');
-    return response.json();
+    // 优先走服务器代理，避免客户端直接请求 bgm.tv 被网络阻断
+    try {
+      const response = await this._fetch('/api/bangumi/calendar');
+      return response.json();
+    } catch {
+      // 服务器无代理时，降级到客户端直连
+      const response = await fetch('https://api.bgm.tv/calendar', {
+        headers: {
+          'User-Agent': 'senshinya/supertv/1.0.0 (Android) (http://github.com/senshinya/supertv)',
+          'Accept': 'application/json',
+        }
+      });
+      if (!response.ok) throw new Error('Bangumi API failed');
+      return response.json();
+    }
   }
 }
 
