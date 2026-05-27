@@ -74,21 +74,21 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
         return;
       }
       
-      console.log("Navigating to play/detail:", { source, id, episodeIndex, title, playTime, sourceName });
+      console.log("Navigating to play:", { source, id, episodeIndex, title, playTime, sourceName });
 
-      // 如果有播放进度，直接转到播放页面
-      if (progress !== undefined && episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 },
-        });
-      } else {
-        // 否则跳转到详情页以补全播放源信息
-        router.push({
-          pathname: "/detail",
-          params: { source: source === 'douban' ? 'all' : source, q: title },
-        });
-      }
+      // 跳转到播放页，播放页会自动回退到其他有效源的同进度集
+      const epIdx = episodeIndex !== undefined ? episodeIndex - 1 : 0;
+      router.push({
+        pathname: "/play",
+        params: {
+          source: source === 'douban' ? 'all' : source,
+          id,
+          episodeIndex: Math.max(0, epIdx).toString(),
+          title,
+          position: (playTime * 1000).toString(),
+          q: title,
+        },
+      });
     };
 
     const handleLongPress = () => {
@@ -142,14 +142,6 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
               </View>
             )}
 
-            {/* 继续观看标识 */}
-            {isContinueWatching && (
-              <View style={styles.continueWatchingBadge}>
-                <Play size={12} color="#ffffff" fill="#ffffff" />
-                <Text style={styles.continueWatchingText}>继续</Text>
-              </View>
-            )}
-
             {/* 年份 (Top-Left) */}
             {showYearBadge && (
               <View style={styles.seleneYearBadge}>
@@ -188,14 +180,12 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           </View>
 
           <View style={styles.infoContainer}>
-            <ThemedText numberOfLines={2} style={styles.title}>{title}</ThemedText>
             {isContinueWatching && (
-              <View style={styles.infoRow}>
-                <ThemedText style={styles.continueLabel}>
-                  第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
-                </ThemedText>
-              </View>
+              <Text style={styles.continueLabel}>
+                第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
+              </Text>
             )}
+            <ThemedText numberOfLines={2} style={styles.title}>{title}</ThemedText>
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -336,6 +326,9 @@ const createMobileStyles = (cardWidth: number, cardHeight: number, spacing: numb
     continueLabel: {
       color: Colors.dark.primary,
       fontSize: 11,
+      fontWeight: '700',
+      marginBottom: 2,
+      textAlign: 'center',
     },
   });
 };

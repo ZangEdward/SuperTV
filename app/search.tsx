@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Animated, BackHandler } from "react-native";
+import { View, TextInput, Text, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Animated, BackHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";

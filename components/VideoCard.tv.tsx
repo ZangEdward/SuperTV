@@ -79,18 +79,19 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         longPressTriggered.current = false;
         return;
       }
-      // 如果有播放进度，直接转到播放页面
-      if (progress !== undefined && episodeIndex !== undefined) {
-        router.push({
-          pathname: "/play",
-          params: { source, id, episodeIndex: episodeIndex - 1, title, position: playTime * 1000 },
-        });
-      } else {
-        router.push({
-          pathname: "/detail",
-          params: { source, q: title },
-        });
-      }
+      // 跳转到播放页，播放页会自动回退到其他有效源的同进度集
+      const epIdx = episodeIndex !== undefined ? episodeIndex - 1 : 0;
+      router.push({
+        pathname: "/play",
+        params: {
+          source,
+          id,
+          episodeIndex: Math.max(0, epIdx).toString(),
+          title,
+          position: (playTime * 1000).toString(),
+          q: title,
+        },
+      });
     };
 
     const handleLongPress = () => {
@@ -226,14 +227,12 @@ const VideoCard = forwardRef<View, VideoCardProps>(
             )}
           </View>
           <View style={styles.infoContainer}>
-            <ThemedText numberOfLines={1} style={styles.titleText}>{title}</ThemedText>
             {isContinueWatching && (
-              <View style={styles.infoRow}>
-                <ThemedText style={styles.continueLabel}>
-                  第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
-                </ThemedText>
-              </View>
+              <Text style={styles.continueLabel}>
+                第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
+              </Text>
             )}
+            <ThemedText numberOfLines={1} style={styles.titleText}>{title}</ThemedText>
           </View>
         </Pressable>
       </Animated.View>

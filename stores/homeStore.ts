@@ -152,8 +152,17 @@ const useHomeStore = create<HomeState>((set, get) => ({
           return;
         }
         const records = await PlayRecordManager.getAll();
-        const rowItems = Object.entries(records)
-          .map(([key, record]) => {
+        // 按标题合并：同剧不同源的记录合并为一条，保留最新播放的
+        const mergedByTitle = new Map<string, { item: any; key: string }>();
+        Object.entries(records).forEach(([key, record]) => {
+          const titleKey = (record.title || '').replace(/\s+/g, '').toLowerCase();
+          const existing = mergedByTitle.get(titleKey);
+          if (!existing || (record.save_time || 0) > (existing.item.save_time || 0)) {
+            mergedByTitle.set(titleKey, { item: record, key });
+          }
+        });
+        const rowItems = Array.from(mergedByTitle.entries())
+          .map(([_, { key, item: record }]) => {
             const [source, id] = key.split("+");
             return {
               ...record,
