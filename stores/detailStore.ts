@@ -9,6 +9,44 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
 
+/**
+ * 将中文数字归一化为阿拉伯数字，用于模糊匹配
+ * 例: "第四季" → "第4季", "一百二十三" → "123"
+ * 支持: 零一二三四五六七八九十
+ */
+function normalizeChineseNumbers(str: string): string {
+  const chineseNumMap: Record<string, string> = {
+    '零': '0', '一': '1', '二': '2', '三': '3', '四': '4',
+    '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
+    '〇': '0', '两': '2',
+  };
+  let result = '';
+  for (const char of str) {
+    result += chineseNumMap[char] || char;
+  }
+  return result;
+}
+
+/**
+ * 增强标题匹配：先将中文数字归一化后再比较
+ * 支持 "第四季" == "第4季", "第三集" == "第3集" 等
+ */
+function titleMatches(searchTitle: string, targetTitle: string): boolean {
+  const s = searchTitle.replace(/\s+/g, '').toLowerCase();
+  const t = targetTitle.replace(/\s+/g, '').toLowerCase();
+  // 精确匹配
+  if (s === t) return true;
+  // 归一化中文数字后匹配
+  const sNorm = normalizeChineseNumbers(s);
+  const tNorm = normalizeChineseNumbers(t);
+  if (sNorm === tNorm) return true;
+  // includes 匹配
+  if (t.includes(s) || s.includes(t)) return true;
+  // 归一化后 includes 匹配
+  if (tNorm.includes(sNorm) || sNorm.includes(tNorm)) return true;
+  return false;
+}
+
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
   latency?: number;
@@ -121,29 +159,29 @@ const useDetailStore = create<DetailState>((set, get) => ({
     // [资料源识别]：豆瓣和 Bangumi 仅提供资料，不提供视频
     const isMetadataSource = preferredSource === "douban" || preferredSource === "bangumi";
 
-    // [预载入优化]：从内存池秒开——尝试多种 key 变体
+    // [预载入优化]：从内存池秒开——只使用精确 key 匹配，避免子串匹配导致缓错视频
     if (!isMetadataSource && preferredSource) {
       const qLower = q.trim().toLowerCase();
-      // 尝试多种 key 变体
+      // 只尝试精确 key 变体（去符号），不用子串匹配（防止匹配到错误的缓存视频）
       const poolKeys = [
         `${qLower}_${preferredSource}`,
         `${qLower.replace(/[\s+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '')}_${preferredSource}`,
       ];
-      // 如果原始 q 较长，再尝试前6个字符
-      if (qLower.length > 6) {
-        poolKeys.push(`${qLower.substring(0, 6)}_${preferredSource}`);
-        poolKeys.push(`${qLower.substring(0, Math.floor(qLower.length * 0.7))}_${preferredSource}`);
-      }
 
       for (const key of poolKeys) {
         const poolResult = SearchDetailPool.get(key);
         if (poolResult) {
-          set({
-            searchResults: [poolResult as SearchResultWithResolution],
-            detail: poolResult as SearchResultWithResolution,
-            loading: false,
-            error: null,
-          });
+          // 验证缓存结果的标题确实匹配搜索词（防止缓存错乱）
+          const poolTitle = (poolResult.title || "").replace(/\s+/g, '').toLowerCase();
+          if (titleMatches(qLower, poolTitle)) {
+            set({
+              searchResults: [poolResult as SearchResultWithResolution],
+              detail: poolResult as SearchResultWithResolution,
+              loading: false,
+              error: null,
+            });
+            logger.info(`[POOL] Cache hit for "${q}" → "${poolResult.title}" (${poolResult.source_name})`);
+          }
           break;
         }
       }
@@ -160,34 +198,35 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
-      // 获取当前主剧集的“核心特征”，用于跨源精确匹配，强制物理去空格
-      const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
-      const currentCore = getCoreKey(q);
+      const searchTitle = q.replace(/\s+/g, '').toLowerCase();
 
-      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开，强制无视空格
-      const strictlyMatchedResults = results.filter(r => {
-          const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-          const targetCore = getCoreKey(r.title);
-          const searchCore = q.replace(/\s+/g, '').toLowerCase();
-
-          // 匹配条件：只要标题包含核心词，或者核心词包含标题
-          return targetCore.includes(currentCore) ||
-                 currentCore.includes(targetCore) ||
-                 targetTitle.includes(searchCore);
+      // 使用增强匹配（支持中文数字归一化）
+      const matchedResults = results.filter(r => {
+        const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+        return titleMatches(searchTitle, targetTitle);
       });
 
-      if (strictlyMatchedResults.length === 0) {
-        // [关键修复]：如果是在资料源路径下且这是第一个结果，无条件信任它（解决首页点击失效）
-        if (isMetadataSource && state.searchResults.length === 0) {
-           strictlyMatchedResults.push(results[0]);
-        } else {
-           if (state.detail) set({ loading: false });
-           return;
+      if (matchedResults.length === 0) {
+        // 无匹配结果，尝试对 q 和结果都做中文数字归一化后重新匹配
+        const qNorm = normalizeChineseNumbers(searchTitle);
+        const normMatched = results.filter(r => {
+          const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+          const tNorm = normalizeChineseNumbers(targetTitle);
+          return tNorm.includes(qNorm) || qNorm.includes(tNorm);
+        });
+        if (normMatched.length > 0) {
+          logger.info(`[MATCH] Normalized number match found ${normMatched.length} results`);
+          matchedResults.push(...normMatched);
         }
       }
 
+      if (matchedResults.length === 0) {
+        if (get().detail) set({ loading: false });
+        return;
+      }
+
       // [源去重与合并]
-      const resultsWithLatency = strictlyMatchedResults.map(r => ({ ...r, latency: defaultLatency }));
+      const resultsWithLatency = matchedResults.map(r => ({ ...r, latency: defaultLatency }));
       const existingSources = new Set(state.searchResults.map((r) => r.source));
       const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
 
@@ -254,7 +293,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
               const exactMatches = response.results.filter(r => {
                 const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
                 const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-                return targetTitle === searchTitle || targetTitle.includes(searchTitle) || searchTitle.includes(targetTitle);
+                return titleMatches(searchTitle, targetTitle);
               });
               if (exactMatches.length > 0) {
                 processAndSetResults(exactMatches, 100);
@@ -274,26 +313,27 @@ const useDetailStore = create<DetailState>((set, get) => ({
             const { results: allResults } = await api.searchVideos(q);
             logger.info(`[FALLBACK] All sources search returned ${allResults.length} total results`);
 
-            // 精确标题匹配过滤
+            // 使用增强匹配（支持中文数字归一化）
+            const searchTitle = q.replace(/\s+/g, '').toLowerCase();
             const filteredResults = allResults.filter(r => {
               const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-              const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-              return targetTitle === searchTitle || targetTitle.includes(searchTitle) || searchTitle.includes(targetTitle);
+              return titleMatches(searchTitle, targetTitle);
             });
-            logger.info(`[FALLBACK] Exact title matches: ${filteredResults.length}`);
+            logger.info(`[FALLBACK] Title matches: ${filteredResults.length}`);
 
             if (filteredResults.length > 0) {
               await processAndSetResults(filteredResults, 100);
               set({ loading: false });
             } else {
-              // 放宽匹配再试一次
+              // 中文数字归一化后宽松匹配
+              const qNorm = normalizeChineseNumbers(searchTitle);
               const looseResults = allResults.filter(r => {
                 const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-                return targetTitle.includes(searchTitle.slice(0, 4)) || searchTitle.includes(targetTitle.slice(0, 4));
+                const tNorm = normalizeChineseNumbers(targetTitle);
+                return tNorm.includes(qNorm) || qNorm.includes(tNorm);
               });
               if (looseResults.length > 0) {
-                logger.info(`[FALLBACK] Loose title matches: ${looseResults.length}`);
+                logger.info(`[FALLBACK] Normalized loose matches: ${looseResults.length}`);
                 await processAndSetResults(looseResults, 100);
                 set({ loading: false });
               } else {
@@ -354,6 +394,27 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         await Promise.all(tasks);
         updateProgress({ isComplete: true });
+
+        // [增强] 单个源搜索无结果时，尝试聚合搜索 api.searchVideos（与手动搜索一致）
+        if (get().searchResults.length === 0 && !signal.aborted) {
+          logger.info(`[FALLBACK] Individual source searches returned 0 results, trying aggregated search...`);
+          try {
+            const { results: allResults } = await api.searchVideos(q);
+            if (allResults.length > 0) {
+              const searchTitle = q.replace(/\s+/g, '').toLowerCase();
+              const matched = allResults.filter(r => {
+                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                return titleMatches(searchTitle, targetTitle);
+              });
+              if (matched.length > 0) {
+                logger.info(`[FALLBACK] Aggregated search found ${matched.length} matches`);
+                await processAndSetResults(matched, 100);
+              }
+            }
+          } catch (aggError) {
+            logger.warn(`[FALLBACK] Aggregated search failed:`, aggError);
+          }
+        }
       }
 
       // 最后同步一下收藏状态并自动开启测速优化

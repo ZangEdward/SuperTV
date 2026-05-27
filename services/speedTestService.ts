@@ -29,8 +29,10 @@ export class SpeedTestService {
 
     try {
       // 1. 获取 M3U8 内容 (同时作为第一次 RTT 参考)
+      // 加时间戳参数防止 CDN 缓存干扰测速
+      const cacheBustUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
       const m3u8StartTime = performance.now();
-      const m3u8Res = await fetch(url, {
+      const m3u8Res = await fetch(cacheBustUrl, {
         signal: mainController.signal,
         headers: { 'Range': 'bytes=0-1024' } // 仅请求开头，大幅提速
       });

@@ -37,15 +37,10 @@ export function populateDetailPool(results: SearchResult[]) {
     const coreTitle = r.title.trim().toLowerCase();
     // 标准 key
     SearchDetailPool.set(`${coreTitle}_${r.source}`, r);
-    // 无符号 key
+    // 无符号 key（去除特殊符号后的标题）
     const noSymbol = coreTitle.replace(/[\s+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '');
-    if (noSymbol !== coreTitle) {
+    if (noSymbol !== coreTitle && noSymbol.length >= 2) {
       SearchDetailPool.set(`${noSymbol}_${r.source}`, r);
-    }
-    // 核心词 key（前6字）
-    const core = coreTitle.substring(0, 6);
-    if (core.length >= 3) {
-      SearchDetailPool.set(`${core}_${r.source}`, r);
     }
   });
 }
