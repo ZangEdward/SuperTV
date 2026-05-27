@@ -229,43 +229,87 @@ const useDetailStore = create<DetailState>((set, get) => ({
         // [路径 A] 有确定的视频源：精准获取，同步开启换源检索
         updateProgress({ total: 1, currentSource: '首选源' });
 
+        let preferredResult: SearchResult[] = [];
+        let preferredSearchError: any = null;
+
         try {
           const response = await api.searchVideo(q, preferredSource, signal);
-          if (response.results.length > 0) {
-            await processAndSetResults(response.results, 0);
-          }
+          preferredResult = response.results;
         } catch (error) {
-          logger.warn(`Preferred source "${preferredSource}" failed, will fallback`);
+          preferredSearchError = error;
+          logger.warn(`Preferred source "${preferredSource}" failed:`, error);
         }
 
         if (signal.aborted) return;
-        
-        // 2. 异步启动全网检索（用于换源），等待所有源返回结果
-        // [修复] 去掉短超时限制，持续等待直到所有搜索结果返回或 30s 安全超时
-        const fallbackTimeout = setTimeout(() => {
-          if (!signal.aborted) {
-            logger.warn(`[FALLBACK] Background search 30s safety timeout - current sources: ${get().searchResults.length}`);
-            updateProgress({ isComplete: true });
-          }
-        }, 30000);
 
-        api.searchVideos(q).then(response => {
-          clearTimeout(fallbackTimeout);
-          if (signal.aborted) return;
-          if (response.results.length > 0) {
-            return processAndSetResults(response.results, 100);
+        if (preferredResult.length > 0) {
+          // 首选源成功
+          logger.info(`[SUCCESS] Preferred source "${preferredSource}" found ${preferredResult.length} results`);
+          await processAndSetResults(preferredResult, 0);
+          set({ loading: false });
+
+          // 后台异步搜索其他源做换源备选（不阻塞）
+          api.searchVideos(q).then(response => {
+            if (!signal.aborted && response.results.length > 0) {
+              const exactMatches = response.results.filter(r => {
+                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                const searchTitle = q.replace(/\s+/g, '').toLowerCase();
+                return targetTitle === searchTitle || targetTitle.includes(searchTitle) || searchTitle.includes(targetTitle);
+              });
+              if (exactMatches.length > 0) {
+                processAndSetResults(exactMatches, 100);
+              }
+            }
+          }).catch(() => {});
+
+        } else {
+          // 首选源失败——立即同步搜索所有源（不依赖后台异步）
+          if (preferredSearchError) {
+            logger.warn(`[FALLBACK] Preferred source "${preferredSource}" failed, trying all sources immediately`);
+          } else {
+            logger.warn(`[FALLBACK] Preferred source "${preferredSource}" returned 0 results, trying all sources immediately`);
           }
-        }).catch(e => {
-          clearTimeout(fallbackTimeout);
-          if (!signal.aborted) {
-            logger.warn(`[FALLBACK] Background search error:`, e);
+
+          try {
+            const { results: allResults } = await api.searchVideos(q);
+            logger.info(`[FALLBACK] All sources search returned ${allResults.length} total results`);
+
+            // 精确标题匹配过滤
+            const filteredResults = allResults.filter(r => {
+              const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+              const searchTitle = q.replace(/\s+/g, '').toLowerCase();
+              return targetTitle === searchTitle || targetTitle.includes(searchTitle) || searchTitle.includes(targetTitle);
+            });
+            logger.info(`[FALLBACK] Exact title matches: ${filteredResults.length}`);
+
+            if (filteredResults.length > 0) {
+              await processAndSetResults(filteredResults, 100);
+              set({ loading: false });
+            } else {
+              // 放宽匹配再试一次
+              const looseResults = allResults.filter(r => {
+                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                const searchTitle = q.replace(/\s+/g, '').toLowerCase();
+                return targetTitle.includes(searchTitle.slice(0, 4)) || searchTitle.includes(targetTitle.slice(0, 4));
+              });
+              if (looseResults.length > 0) {
+                logger.info(`[FALLBACK] Loose title matches: ${looseResults.length}`);
+                await processAndSetResults(looseResults, 100);
+                set({ loading: false });
+              } else {
+                const errorMsg = `未找到 "${q}" 的播放源，请检查标题或稍后重试`;
+                logger.error(`[ERROR] ${errorMsg}`);
+                set({ error: errorMsg, loading: false });
+              }
+            }
+          } catch (fallbackError) {
+            logger.error(`[ERROR] Fallback search failed:`, fallbackError);
+            set({
+              error: `搜索失败：${fallbackError instanceof Error ? fallbackError.message : '网络错误，请稍后重试'}`,
+              loading: false
+            });
           }
-        }).finally(() => {
-          if (!signal.aborted) {
-            updateProgress({ isComplete: true });
-            logger.info(`[FALLBACK] Background search completed - sources found: ${get().searchResults.length}`);
-          }
-        });
+        }
 
       } else {
         // [路径 B] 资料源或无确定的源：激进全网并发加载
