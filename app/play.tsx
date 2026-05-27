@@ -24,6 +24,7 @@ import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import { ArrowLeft, Cast, Download, Zap } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import useDetailStore from "@/stores/detailStore";
+import { api, SearchResult } from "@/services/api";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
 import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
 import useCacheStore from "@/stores/cacheStore";
@@ -58,6 +59,7 @@ export default function PlayScreen() {
 
   const [isReverse, setIsReverse] = useState(false);
   const [isInitFailed, setIsInitFailed] = useState(false);
+  const [fuzzyResults, setFuzzyResults] = useState<SearchResult[]>([]);
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources' | 'desc'>('episodes');
 
   const detail = useDetailStore(state => state.detail);
@@ -309,6 +311,24 @@ export default function PlayScreen() {
     }
   }, [detail, detailLoading, detailError, params.fileUri]);
 
+  // [模糊推荐] 确定无法播放时，搜索近似结果推荐给用户
+  useEffect(() => {
+    if (!isInitFailed || !params.title) return;
+    const searchTitle = params.title;
+    setFuzzyResults([]);
+    api.searchVideos(searchTitle).then(res => {
+      if (res?.results) {
+        // 去除当前正在找的剧名本身
+        const filtered = res.results.filter(r => {
+          const rTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+          const qTitle = (searchTitle || "").replace(/\s+/g, '').toLowerCase();
+          return rTitle !== qTitle && !rTitle.includes(qTitle);
+        });
+        setFuzzyResults(filtered.slice(0, 20));
+      }
+    }).catch(() => {});
+  }, [isInitFailed, params.title]);
+
   useEffect(() => {
     const backAction = () => {
       if (showCastModal) {
@@ -347,9 +367,66 @@ export default function PlayScreen() {
   if (!isLocalFile && !detail && isInitFailed) {
     return (
       <ThemedView style={[styles.tvContainer, { justifyContent: "center", alignItems: "center", backgroundColor: isTV ? "black" : "#151718" }]}>
-        <View style={{ alignItems: "center", paddingHorizontal: 20 }}>
-          <Text style={{ color: "#ff4444", fontSize: 18, marginBottom: 12 }}>无法加载播放源</Text>
-          <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
+        <View style={{ alignItems: "center", paddingHorizontal: 20, maxWidth: 800, width: '100%' }}>
+          <Text style={{ color: "#ff8c00", fontSize: isTV ? 28 : 20, marginBottom: 8, textAlign: "center" }}>
+            😅 不好意思，视频失踪啦
+          </Text>
+          <Text style={{ color: "#aaa", fontSize: isTV ? 18 : 14, marginBottom: 24, textAlign: "center" }}>
+            没有找到「{params.title || ""}」的播放源
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+            <StyledButton text="返回" onPress={() => router.back()} variant="ghost" />
+            <StyledButton text="去搜索" onPress={() => {
+              router.back();
+              setTimeout(() => router.push({ pathname: "/search", params: { q: params.title } }), 300);
+            }} />
+          </View>
+
+          {fuzzyResults.length > 0 && (
+            <>
+              <Text style={{ color: "#888", fontSize: isTV ? 16 : 13, marginBottom: 12, alignSelf: 'flex-start' }}>
+                可以推荐你看看这些：
+              </Text>
+              <ScrollView style={{ width: '100%', maxHeight: isTV ? 500 : 300 }} showsVerticalScrollIndicator={true}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 }}>
+                  {fuzzyResults.map((item, idx) => (
+                    <TouchableOpacity
+                      key={`${item.source}-${item.id}-${idx}`}
+                      style={{
+                        backgroundColor: '#1a1a2e',
+                        borderRadius: 8,
+                        paddingVertical: 10,
+                        paddingHorizontal: 16,
+                        marginBottom: 4,
+                        width: isTV ? '30%' : '45%',
+                        borderWidth: 1,
+                        borderColor: '#333',
+                      }}
+                      onPress={() => {
+                        router.push({
+                          pathname: "/detail",
+                          params: { source: 'all', q: item.title },
+                        });
+                      }}
+                    >
+                      <Text style={{ color: "#ddd", fontSize: isTV ? 15 : 13, fontWeight: '600' }} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                      {item.source_name && (
+                        <Text style={{ color: "#666", fontSize: 11, marginTop: 4 }}>{item.source_name}</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </>
+          )}
+
+          {fuzzyResults.length === 0 && (
+            <Text style={{ color: "#555", fontSize: isTV ? 14 : 12, marginTop: 8 }}>
+              正在搜索类似内容...
+            </Text>
+          )}
         </View>
       </ThemedView>
     );
