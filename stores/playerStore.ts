@@ -3,7 +3,8 @@ import Toast from "react-native-toast-message";
 import { AVPlaybackStatus, Video } from "expo-av";
 import { RefObject } from "react";
 import { PlayRecord, PlayRecordManager, PlayerSettingsManager } from "@/services/storage";
-import useDetailStore, { episodesSelectorBySource } from "./detailStore";
+import useDetailStore, { episodesSelectorBySource, calculateSourceScore } from "./detailStore";
+import { SpeedTestService } from "@/services/speedTestService";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { parseEpisode } from "@/utils/episode";
 import Logger from '@/utils/Logger';
@@ -770,17 +771,158 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   handleVideoError: async (errorType: 'ssl' | 'network' | 'other', failedUrl: string) => {
-    logger.error(`[VIDEO_ERROR] ${errorType} error for URL: ${failedUrl}`);
+    const perfStart = performance.now();
+    logger.error(`[VIDEO_ERROR] Handling ${errorType} error for URL: ${failedUrl}`);
 
-    // [逻辑变更]：播放页不再自动切换播放源
-    // 仅停止加载并显示错误提示，让用户回到详情页或使用选源弹窗手动切换
-    set({ isLoading: false });
+    const detailStoreState = useDetailStore.getState();
+    const { detail } = detailStoreState;
+    const { currentEpisodeIndex } = get();
 
-    Toast.show({
-      type: "error",
-      text1: "播放失败",
-      text2: "当前线路响应异常或解析错误，请尝试手动切换播放源"
-    });
+    if (!detail) {
+      logger.error(`[VIDEO_ERROR] Cannot fallback - no detail available`);
+      set({ isLoading: false });
+      Toast.show({ type: "error", text1: "播放失败", text2: "无法获取视频详情" });
+      return;
+    }
+
+    // 标记当前 source 为失败
+    const currentSource = detail.source;
+    const errorReason = `${errorType} error: ${failedUrl.substring(0, 100)}...`;
+    useDetailStore.getState().markSourceAsFailed(currentSource, errorReason);
+
+    // [快速回退] 优先从 1 秒内获取到的源中挑选，进行 2 秒快速评分
+    let fallbackSource = null;
+    const quickCandidates = useDetailStore.getState().getQuickFallbackSources(currentSource, currentEpisodeIndex, 1000);
+
+    if (quickCandidates.length > 0) {
+      logger.info(`[QUICK] ${quickCandidates.length} sources available within 1s window, running 2s quick speed test...`);
+
+      // 对候选源做 2 秒快速测速（并发测所有，总预算 2 秒）
+      const QUICK_TEST_TIMEOUT = 2000;
+      const speedTestController = new AbortController();
+      const speedTestTimeout = setTimeout(() => speedTestController.abort(), QUICK_TEST_TIMEOUT);
+
+      try {
+        const testResults = await Promise.all(
+          quickCandidates.map(async (candidate) => {
+            const episodeUrl = candidate.episodes?.[currentEpisodeIndex] || candidate.episodes?.[0];
+            if (!episodeUrl) return { source: candidate.source, latency: Infinity, speed: 0 };
+
+            const result = await SpeedTestService.testM3U8Speed(episodeUrl, speedTestController.signal);
+            return { source: candidate.source, ...result };
+          })
+        );
+        clearTimeout(speedTestTimeout);
+
+        // 将测速结果写回 detailStore 并评分排序
+        const sourceScores = new Map<string, { speed: number; latency: number }>();
+        for (const r of testResults) {
+          sourceScores.set(r.source, { speed: r.speed, latency: r.latency });
+        }
+
+        // 用测速数据重新评分，选最优
+        const scoredCandidates = quickCandidates
+          .map(c => {
+            const testData = sourceScores.get(c.source);
+            const scored = {
+              ...c,
+              speed: testData?.speed ?? c.speed,
+              latency: testData?.latency ?? c.latency,
+            };
+            return { source: c.source, score: calculateSourceScore(scored), data: scored };
+          })
+          .sort((a, b) => b.score - a.score);
+
+        // 同时把测速结果写回 detailStore 的 searchResults
+        const detailState = useDetailStore.getState();
+        const updatedResults = detailState.searchResults.map(r => {
+          const testData = sourceScores.get(r.source);
+          return testData ? { ...r, speed: testData.speed, latency: testData.latency } : r;
+        });
+        useDetailStore.setState({
+          searchResults: updatedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a)),
+        });
+
+        if (scoredCandidates.length > 0) {
+          const best = scoredCandidates[0];
+          fallbackSource = quickCandidates.find(c => c.source === best.source);
+          logger.info(`[QUICK] Best fallback by speed test: ${best.source} (score: ${best.score.toFixed(1)}, speed: ${best.data.speed} MB/s)`);
+
+          // 如果测速最优源不是当前 detail（可能在搜索列表中但未设为 detail），保障找到
+          if (!fallbackSource) {
+            fallbackSource = useDetailStore.getState().searchResults.find(r => r.source === best.source) || null;
+          }
+        }
+      } catch (e) {
+        clearTimeout(speedTestTimeout);
+        logger.warn(`[QUICK] Speed test interrupted:`, e);
+      }
+    }
+
+    // 如果没有快速候选源或测速失败，降级到普通 available 源
+    if (!fallbackSource) {
+      fallbackSource = useDetailStore.getState().getNextAvailableSource(currentSource, currentEpisodeIndex);
+      if (fallbackSource) {
+        logger.info(`[FALLBACK] Using standard fallback source: ${fallbackSource.source} (${fallbackSource.source_name})`);
+      }
+    }
+
+    if (!fallbackSource) {
+      logger.error(`[VIDEO_ERROR] No fallback sources available for episode ${currentEpisodeIndex + 1}`);
+      set({ isLoading: false });
+      Toast.show({
+        type: "error",
+        text1: "播放失败",
+        text2: "所有播放源都不可用，请稍后重试",
+      });
+      return;
+    }
+
+    logger.info(`[VIDEO_ERROR] Switching to fallback source: ${fallbackSource.source} (${fallbackSource.source_name})`);
+
+    try {
+      // 更新 DetailStore 的当前 detail 为 fallback source
+      await useDetailStore.getState().setDetail(fallbackSource);
+
+      // 重新加载当前集数的 episodes（使用 parseEpisode 保留自定义剧集标题）
+      const newEpisodes = fallbackSource.episodes || [];
+      if (newEpisodes.length > currentEpisodeIndex) {
+        const mappedEpisodes = (newEpisodes || []).map((ep, index) =>
+          parseEpisode(ep, index, fallbackSource?.episodes_titles?.[index])
+        );
+
+        set({
+          episodes: mappedEpisodes,
+          isLoading: false, // 让 Video 组件重新渲染
+        });
+
+        const perfEnd = performance.now();
+        logger.info(`[VIDEO_ERROR] Successfully switched to fallback source in ${(perfEnd - perfStart).toFixed(2)}ms`);
+        logger.info(`[VIDEO_ERROR] New episode URL: ${newEpisodes[currentEpisodeIndex].substring(0, 100)}...`);
+
+        Toast.show({
+          type: "success",
+          text1: "已切换播放源",
+          text2: `正在使用 ${fallbackSource.source_name}`,
+        });
+      } else {
+        logger.error(`[VIDEO_ERROR] Fallback source doesn't have episode ${currentEpisodeIndex + 1}`);
+        set({ isLoading: false });
+        Toast.show({
+          type: "error",
+          text1: "播放失败",
+          text2: "备用源没有当前剧集，请尝试手动切换",
+        });
+      }
+    } catch (error) {
+      logger.error(`[VIDEO_ERROR] Failed to switch to fallback source:`, error);
+      set({ isLoading: false });
+      Toast.show({
+        type: "error",
+        text1: "切换播放源失败",
+        text2: "请尝试手动切换播放源",
+      });
+    }
   },
 }));
 

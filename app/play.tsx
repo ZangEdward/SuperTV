@@ -21,7 +21,7 @@ import { SpeedSelectionModal } from "@/components/SpeedSelectionModal";
 import { CastModal } from "@/components/CastModal";
 import { SeekingBar } from "@/components/SeekingBar";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
-import { ArrowLeft, Cast, Download } from "lucide-react-native";
+import { ArrowLeft, Cast, Download, Zap } from "lucide-react-native";
 import { StatusBar } from "expo-status-bar";
 import useDetailStore from "@/stores/detailStore";
 import { useTVRemoteHandler } from "@/hooks/useTVRemoteHandler";
@@ -65,6 +65,7 @@ export default function PlayScreen() {
   const setDetail = useDetailStore(state => state.setDetail);
   const detailError = useDetailStore(state => state.error);
   const detailLoading = useDetailStore(state => state.loading);
+  const isOptimizing = useDetailStore(state => state.isOptimizing);
   const optimizeSources = useDetailStore(state => state.optimizeSources);
 
   const status = usePlayerStore(state => state.status);
@@ -424,6 +425,23 @@ export default function PlayScreen() {
 
           {activeTab === 'sources' && (
             <ScrollView style={styles.episodeScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.sourceHeader}>
+                <Text style={styles.sourceHeaderText}>共 {searchResults?.length || 0} 个播放源</Text>
+                <TouchableOpacity
+                  style={[styles.optimizeBtn, isOptimizing && styles.optimizeBtnDisabled]}
+                  onPress={() => { if (!isOptimizing) optimizeSources(); }}
+                  disabled={isOptimizing}
+                >
+                  {isOptimizing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Zap size={14} color="#fff" fill="#fff" />
+                  )}
+                  <Text style={styles.optimizeBtnText}>
+                    {isOptimizing ? '测速中...' : '一键优化'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.episodeScrollContent}>
                 {(searchResults || []).map((item, idx) => {
                   if (!item) return null;
@@ -516,6 +534,11 @@ const styles = StyleSheet.create({
   metaText: { color: '#555', fontSize: 12 },
   episodeScroll: { flex: 1, marginBottom: 12 },
   episodeScrollContent: { flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 60 },
+  sourceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingRight: 4 },
+  sourceHeaderText: { color: '#888', fontSize: 13 },
+  optimizeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#00bb5e', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4 },
+  optimizeBtnDisabled: { backgroundColor: '#2a5a3a' },
+  optimizeBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
   mobileEpItem: { backgroundColor: "#1a1a1a", paddingHorizontal: 10, paddingVertical: 10, borderRadius: 8, marginRight: 8, marginBottom: 8, justifyContent: 'center', minWidth: 50, borderWidth: 1, borderColor: '#222' },
   mobileEpItemActive: { backgroundColor: "#00bb5e" },
   mobileEpText: { color: "#999", fontSize: 13, fontWeight: "600", textAlign: 'center' },

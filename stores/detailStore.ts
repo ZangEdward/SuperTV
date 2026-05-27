@@ -56,7 +56,8 @@ interface DetailState {
   isFavorited: boolean;
   failedSources: Set<string>;
   searchProgress: SearchProgress;
-  isOptimizing: boolean; // 新增：记录是否正在测速
+  isOptimizing: boolean;
+  _initStartTime: number; // init 开始时间戳，用于快速回退时间窗口
 
   init: (q: string, preferredSource?: string, id?: string) => Promise<void>;
   setDetail: (detail: SearchResultWithResolution) => Promise<void>;
@@ -64,6 +65,7 @@ interface DetailState {
   toggleFavorite: () => Promise<void>;
   markSourceAsFailed: (source: string, reason: string) => void;
   getNextAvailableSource: (currentSource: string, episodeIndex: number) => SearchResultWithResolution | null;
+  getQuickFallbackSources: (currentSource: string, episodeIndex: number, maxAgeMs?: number) => SearchResultWithResolution[];
   optimizeSources: () => Promise<void>;
 }
 
@@ -87,6 +89,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
   failedSources: new Set(),
   searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
   isOptimizing: false,
+  _initStartTime: 0,
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
@@ -110,6 +113,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
       allSourcesLoaded: false,
       controller: newController,
       searchProgress: { total: 0, completed: 0, currentSource: null, isComplete: false },
+      _initStartTime: Date.now(),
     });
 
     const { videoSource } = useSettingsStore.getState();
@@ -212,11 +216,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
       // [关键] 将搜索结果填充到 SearchDetailPool，供下次秒开使用
       populateDetailPool(results);
 
-      // [核心优化] 只要有了搜索结果，立即异步启动测速优化，无需等待 init 结束
-      if (finalResults.length > 0 && !get().isOptimizing) {
-        get().optimizeSources();
-      }
-
       // 如果选中的详情还没有剧集数据，异步拉取一次
       const selectedDetail = shouldUpdateDetail ? finalResults[0] : get().detail;
       if (selectedDetail && (!selectedDetail.episodes || selectedDetail.episodes.length === 0)) {
@@ -241,12 +240,20 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         if (signal.aborted) return;
         
-        // 2. 异步启动全网检索（用于换源），不阻塞当前显示
-        api.searchVideos(q).then(response => {
-          if (!signal.aborted && response.results.length > 0) {
-            processAndSetResults(response.results, 100);
-          }
-        }).catch(() => {});
+        // 2. 异步启动全网检索（用于换源），限制 1 秒内获取到的源才用于快速回退
+        Promise.race([
+          api.searchVideos(q).then(response => {
+            if (!signal.aborted && response.results.length > 0) {
+              processAndSetResults(response.results, 100);
+            }
+          }),
+          new Promise<void>(resolve => setTimeout(() => {
+            if (!signal.aborted) {
+              logger.info(`[QUICK] 1s search window closed - current sources: ${get().searchResults.length}`);
+            }
+            resolve();
+          }, 1000))
+        ]).catch(() => {});
 
       } else {
         // [路径 B] 资料源或无确定的源：激进全网并发加载
@@ -299,9 +306,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
         const { source, id: vid } = finalState.detail;
         const isFavorited = await FavoriteManager.isFavorited(source, vid.toString());
         set({ isFavorited });
-
-        // [自动优化] 异步启动测速，不阻塞 UI
-        setTimeout(() => get().optimizeSources(), 500);
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
@@ -318,78 +322,63 @@ const useDetailStore = create<DetailState>((set, get) => ({
     if (get().isOptimizing) return;
 
     set({ isOptimizing: true });
-    logger.info(`[SPEED] Background source optimization started...`);
+    logger.info(`[SPEED] Quick source optimization started...`);
 
+    const QUICK_TEST_TIMEOUT = 2000;
     const testController = new AbortController();
     const signal = testController.signal;
+    const speedTestTimeout = setTimeout(() => testController.abort(), QUICK_TEST_TIMEOUT);
 
     try {
-      const testBatchSize = 15;
+      // 取有剧集的所有源（不排除失败源，手动触发时应重新测）
+      const allResults = get().searchResults;
+      const candidates = allResults.filter(r => r.episodes && r.episodes.length > 0);
 
-      // 使用 while 循环配合快照检查，确保 init 过程中新发现的源也能被测速
-      let hasUntested = true;
-      const testedSources = new Set<string>();
-
-      while (hasUntested && !signal.aborted) {
-        const allResults = get().searchResults;
-        const pending = allResults.filter(r => !testedSources.has(r.source));
-
-        if (pending.length === 0) {
-          hasUntested = false;
-          break;
-        }
-
-        const batch = pending.slice(0, testBatchSize);
-        await Promise.all(batch.map(async (item) => {
-          if (signal.aborted) return;
-          testedSources.add(item.source);
-          try {
-            let episodes = item.episodes;
-            if (!episodes || episodes.length === 0) {
-              const detail = await api.getVideoDetail(item.source, item.id.toString());
-              episodes = detail.episodes || [];
-            }
-
-            if (episodes.length === 0 || signal.aborted) return;
-
-            const testUrl = episodes.length > 1 ? episodes[1] : episodes[0];
-            const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
-
-            if (signal.aborted) return;
-
-            set(state => {
-              const updatedResults = state.searchResults.map(r =>
-                r.source === item.source ? { ...r, ...metrics } : r
-              );
-              return {
-                searchResults: [...updatedResults].sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a))
-              };
-            });
-          } catch {}
-        }));
-
-        // 如果 init 还在进行中，稍等一下看有没有新源进来
-        if (get().loading && !signal.aborted) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } else {
-          // 如果 init 已经结束且当前批次就是最后一批，则退出
-          if (pending.length <= testBatchSize) hasUntested = false;
-        }
+      if (candidates.length === 0) {
+        logger.warn(`[SPEED] No sources available for testing`);
+        set({ isOptimizing: false });
+        return;
       }
 
-      // [核心逻辑]：全网测速完成后，自动为用户切换到评分最高的源
+      logger.info(`[SPEED] Quick testing ${candidates.length} sources with ${QUICK_TEST_TIMEOUT}ms budget...`);
+
+      // 并行测速所有候选源，2 秒截止
+      const testResults = await Promise.all(
+        candidates.map(async (item) => {
+          if (signal.aborted) return null;
+          const testUrl = item.episodes!.length > 1 ? item.episodes![1] : item.episodes![0];
+          if (!testUrl) return null;
+          const metrics = await SpeedTestService.testM3U8Speed(testUrl, signal);
+          return { source: item.source, ...metrics };
+        })
+      );
+      clearTimeout(speedTestTimeout);
+
+      // 写回测速结果并重排
+      const sourceMap = new Map<string, { speed: number; latency: number }>();
+      for (const r of testResults) {
+        if (r) sourceMap.set(r.source, { speed: r.speed, latency: r.latency });
+      }
+
+      set(state => {
+        const updatedResults = state.searchResults.map(r => {
+          const data = sourceMap.get(r.source);
+          return data ? { ...r, speed: data.speed, latency: data.latency } : r;
+        });
+        return { searchResults: updatedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a)) };
+      });
+
+      // 测速完成后自动切换到评分最高的源
       if (!signal.aborted) {
         const bestResults = get().searchResults;
         if (bestResults.length > 0) {
           const topSource = bestResults[0];
           const currentDetail = get().detail;
 
-          // 只有当最优源与当前选中的源不同时，才执行自动优选切换
           if (currentDetail && topSource.source !== currentDetail.source) {
-            logger.info(`[SPEED] Post-test optimization: Auto-switching to best verified source: ${topSource.source_name} (${topSource.speed} MB/s)`);
+            logger.info(`[SPEED] Auto-switching to best source: ${topSource.source_name} (score: ${calculateSourceScore(topSource).toFixed(1)})`);
             set({ detail: topSource });
 
-            // 异步补全详情数据
             if (!topSource.episodes || topSource.episodes.length === 0) {
               get().setDetail(topSource);
             }
@@ -397,10 +386,11 @@ const useDetailStore = create<DetailState>((set, get) => ({
         }
       }
     } catch (e) {
+      clearTimeout(speedTestTimeout);
       logger.warn('[SPEED] Optimization interrupted', e);
     } finally {
       set({ isOptimizing: false });
-      logger.info(`[SPEED] Background source optimization finished.`);
+      logger.info(`[SPEED] Quick source optimization finished.`);
     }
   },
 
@@ -471,20 +461,26 @@ const useDetailStore = create<DetailState>((set, get) => ({
     );
 
     if (availableSources.length === 0) return null;
-    
-    const sortedSources = availableSources.sort((a, b) => {
-      const aRes = a.resolution || '';
-      const bRes = b.resolution || '';
-      const priority = (res: string) => {
-        if (res.includes('1080')) return 4;
-        if (res.includes('720')) return 3;
-        if (res.includes('480')) return 2;
-        return 1;
-      };
-      return priority(bRes) - priority(aRes);
-    });
+
+    // 使用 calculateSourceScore 多维度加权排序（速度40% + 延迟30% + 分辨率20% + 稳定性10%）
+    const sortedSources = [...availableSources].sort(
+      (a, b) => calculateSourceScore(b) - calculateSourceScore(a)
+    );
 
     return sortedSources[0];
+  },
+
+  getQuickFallbackSources: (currentSource: string, episodeIndex: number) => {
+    const { searchResults, failedSources } = get();
+
+    // 只过滤掉当前失败源和已标记失败的源
+    // 时间窗口由 init 中 background search 的 1s Promise.race 保证
+    return searchResults.filter(result =>
+      result.source !== currentSource &&
+      !failedSources.has(result.source) &&
+      result.episodes &&
+      result.episodes.length > episodeIndex
+    );
   },
 }));
 
