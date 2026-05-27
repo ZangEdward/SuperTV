@@ -3,7 +3,8 @@ import Toast from "react-native-toast-message";
 import { AVPlaybackStatus, Video } from "expo-av";
 import { RefObject } from "react";
 import { PlayRecord, PlayRecordManager, PlayerSettingsManager } from "@/services/storage";
-import useDetailStore, { episodesSelectorBySource, calculateSourceScore } from "./detailStore";
+import useDetailStore, { episodesSelectorBySource, calculateSourceScore, SearchResultWithResolution } from "./detailStore";
+import { api, SearchResult } from "@/services/api";
 import { SpeedTestService } from "@/services/speedTestService";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { parseEpisode } from "@/utils/episode";
@@ -365,6 +366,26 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
           episodes = episodesSelectorBySource(source)(useDetailStore.getState());
         }
       }
+    }
+
+    // [优选源] 如果已有测速评分结果，自动选择评分最高的播放源
+    const allScoredSources = useDetailStore.getState().searchResults
+      .filter(r => r.speed !== undefined && r.latency !== undefined && r.episodes?.length > episodeIndex)
+      .sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a));
+
+    if (allScoredSources.length > 0 && detail) {
+      const bestScored = allScoredSources[0];
+      if (bestScored.source !== detail.source && bestScored.episodes?.length > episodeIndex) {
+        logger.info(`[OPTIMIZE] Auto-selecting best scored source: ${bestScored.source_name} (score: ${calculateSourceScore(bestScored).toFixed(1)}, speed: ${bestScored.speed} MB/s) over ${detail.source_name}`);
+        detail = bestScored;
+        episodes = bestScored.episodes || [];
+        // 同步更新 detailStore 的 detail 为最优源
+        useDetailStore.getState().setDetail(bestScored);
+      } else {
+        logger.info(`[OPTIMIZE] Current source "${detail.source_name}" is already the best scored source`);
+      }
+    } else {
+      logger.info(`[OPTIMIZE] No speed test results available, using default source`);
     }
 
     // 最终验证：确保我们有有效的detail和episodes数据
@@ -864,6 +885,84 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       fallbackSource = useDetailStore.getState().getNextAvailableSource(currentSource, currentEpisodeIndex);
       if (fallbackSource) {
         logger.info(`[FALLBACK] Using standard fallback source: ${fallbackSource.source} (${fallbackSource.source_name})`);
+      }
+    }
+
+    // [全新搜索+测速] 无现成回退源时，发起 1s 快速搜索 + 2s 测速评分
+    if (!fallbackSource) {
+      logger.info(`[FRESH_SEARCH] No existing fallback sources - initiating fresh 1s search + 2s speed test`);
+
+      // 使用 Promise.race 实现 1s 超时（searchVideos 不支持 AbortSignal）
+      let searchResponse: { results: SearchResult[] } | null = null;
+      try {
+        searchResponse = await Promise.race([
+          api.searchVideos(detail.title),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+        ]);
+      } catch (e) {
+        logger.warn(`[FRESH_SEARCH] Search failed:`, e);
+      }
+
+      if (searchResponse && searchResponse.results && searchResponse.results.length > 0) {
+        // 过滤出有当前剧集且不是已失败源的源
+        const freshCandidates = searchResponse.results
+          .filter(r => r.episodes?.length > currentEpisodeIndex && r.source !== currentSource)
+          .map(r => ({ ...r })) as SearchResultWithResolution[];
+
+        if (freshCandidates.length > 0) {
+          logger.info(`[FRESH_SEARCH] Found ${freshCandidates.length} candidates, running 2s speed test...`);
+
+          // 2s 并发测速
+          const speedTestController = new AbortController();
+          const speedTestTimeout = setTimeout(() => speedTestController.abort(), 2000);
+
+          const speedResults = await Promise.all(
+            freshCandidates.map(async (candidate) => {
+              const episodeUrl = candidate.episodes![currentEpisodeIndex] || candidate.episodes![0];
+              if (!episodeUrl) return null;
+              const metrics = await SpeedTestService.testM3U8Speed(episodeUrl, speedTestController.signal);
+              return { source: candidate.source, ...metrics, data: candidate };
+            })
+          );
+          clearTimeout(speedTestTimeout);
+
+          // 评分排序取最优
+          const validResults = speedResults
+            .filter((r): r is NonNullable<typeof r> => r !== null && r.speed > 0)
+            .sort((a, b) => {
+              const scoreA = calculateSourceScore({ ...a.data, speed: a.speed, latency: a.latency } as SearchResultWithResolution);
+              const scoreB = calculateSourceScore({ ...b.data, speed: b.speed, latency: b.latency } as SearchResultWithResolution);
+              return scoreB - scoreA;
+            });
+
+          if (validResults.length > 0) {
+            const best = validResults[0];
+            fallbackSource = freshCandidates.find(c => c.source === best.source) || null;
+            logger.info(`[FRESH_SEARCH] Best fresh source: ${best.source} (speed: ${best.speed} MB/s, latency: ${best.latency}ms)`);
+
+            // 将测速结果写回 detailStore
+            const detailState = useDetailStore.getState();
+            const updatedResults = [...detailState.searchResults];
+            for (const r of speedResults) {
+              if (r && r.speed > 0) {
+                const idx = updatedResults.findIndex(u => u.source === r!.source);
+                const merged = { ...(idx >= 0 ? updatedResults[idx] : r.data), speed: r.speed, latency: r.latency };
+                if (idx >= 0) {
+                  updatedResults[idx] = merged;
+                } else {
+                  updatedResults.push(merged);
+                }
+              }
+            }
+            useDetailStore.setState({
+              searchResults: updatedResults.sort((a, b) => calculateSourceScore(b) - calculateSourceScore(a)),
+            });
+          } else {
+            logger.warn(`[FRESH_SEARCH] All fresh candidates timed out or failed speed test`);
+          }
+        }
+      } else {
+        logger.warn(`[FRESH_SEARCH] No results from fresh search (timed out or empty)`);
       }
     }
 

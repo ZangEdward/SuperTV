@@ -314,6 +314,25 @@ const useDetailStore = create<DetailState>((set, get) => ({
     } finally {
       if (!signal.aborted) {
         set({ loading: false, allSourcesLoaded: true });
+
+        // [自动测速优选] 进入详情页后，自动触发测速评分并选择最优源
+        // 确保搜索结果数 > 1 且当前未在优化中，才触发
+        const currentResults = get().searchResults;
+        if (currentResults.length > 1 && !get().isOptimizing) {
+          // 判断是否仍在当前页面(非导航离开)：保存 signal 引用供定时器检查
+          const currentSignal = signal;
+          // 小延迟让 UI 先渲染完成，避免阻塞交互
+          setTimeout(() => {
+            // 如果用户已经导航离开(signal 被 abort)，跳过优化避免不必要的后台操作
+            if (currentSignal.aborted) {
+              logger.info('[AUTO_OPTIMIZE] Skipped - user navigated away');
+              return;
+            }
+            get().optimizeSources().catch((e) => {
+              logger.warn('[AUTO_OPTIMIZE] Auto speed test failed:', e);
+            });
+          }, 300);
+        }
       }
     }
   },
