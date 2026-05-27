@@ -322,14 +322,38 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       detail = useDetailStore.getState().detail;
 
       if (!detail) {
-        logger.error(`[ERROR] Detail not found after initialization for "${title}" (source: ${source}, id: ${id})`);
-        set({ isLoading: false });
-        return;
+        logger.warn(`[FALLBACK] Preferred source "${source}" returned no detail, waiting 1s for background search...`);
+
+        // [关键修复] 首选源失败时，等待 1s 背景搜索窗口收集其他源
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        detail = useDetailStore.getState().detail;
+        const searchResults = useDetailStore.getState().searchResults;
+
+        if (!detail) {
+          // 尝试从 searchResults 中找可用源
+          const fallbackSource = searchResults.find(r => r.episodes && r.episodes.length > 0);
+          if (fallbackSource) {
+            logger.info(`[FALLBACK] Using background search result: ${fallbackSource.source_name} (${fallbackSource.source})`);
+            detail = fallbackSource;
+            episodes = fallbackSource.episodes;
+          } else {
+            logger.error(`[ERROR] No detail found after init and background search for "${title}"`);
+            set({ isLoading: false });
+            return;
+          }
+        } else {
+          logger.info(`[FALLBACK] Background search found detail: ${detail.source_name}`);
+          episodes = episodesSelectorBySource(detail.source)(useDetailStore.getState());
+        }
       }
 
       // 使用DetailStore找到的实际source来获取episodes，而不是原始的preferredSource
-      logger.info(`[INFO] Using actual source "${detail.source}" instead of preferred source "${source}"`);
-      episodes = episodesSelectorBySource(detail.source)(useDetailStore.getState());
+      // (但如果上面 fallback 时已赋值 episodes，则跳过)
+      if (!episodes || episodes.length === 0) {
+        logger.info(`[INFO] Using actual source "${detail.source}" instead of preferred source "${source}"`);
+        episodes = episodesSelectorBySource(detail.source)(useDetailStore.getState());
+      }
 
       if (!episodes || episodes.length === 0) {
         logger.error(`[ERROR] No episodes found for "${title}" from source "${detail.source}" (${detail.source_name})`);
@@ -801,6 +825,21 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
 
     if (!detail) {
       logger.error(`[VIDEO_ERROR] Cannot fallback - no detail available`);
+      
+      // [增强] 即使没有 detail，尝试从 searchResults 中找到可用源
+      const searchResults = useDetailStore.getState().searchResults;
+      const fallbackFromSearch = searchResults.find(r => r.episodes && r.episodes.length > currentEpisodeIndex);
+      if (fallbackFromSearch) {
+        logger.info(`[VIDEO_ERROR] Found fallback from searchResults: ${fallbackFromSearch.source_name}`);
+        await useDetailStore.getState().setDetail(fallbackFromSearch);
+        const newEpisodes = fallbackFromSearch.episodes || [];
+        const mappedEpisodes = (newEpisodes).map((ep, index) =>
+          parseEpisode(ep, index, fallbackFromSearch?.episodes_titles?.[index])
+        );
+        set({ episodes: mappedEpisodes, isLoading: false });
+        return;
+      }
+      
       set({ isLoading: false });
       Toast.show({ type: "error", text1: "播放失败", text2: "无法获取视频详情" });
       return;
