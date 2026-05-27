@@ -1,5 +1,6 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { View, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import useFavoritesStore from "@/stores/favoritesStore";
@@ -72,9 +73,14 @@ export default function FavoritesScreen() {
     return content;
   }
 
+  const router = useRouter();
+  const goHome = useCallback(() => {
+    router.replace('/');
+  }, [router]);
+
   return (
     <ResponsiveNavigation>
-      <ResponsiveHeader title="我的收藏" showBackButton={false} />
+      <ResponsiveHeader title="我的收藏" showBackButton={true} onBackPress={goHome} />
       {content}
     </ResponsiveNavigation>
   );

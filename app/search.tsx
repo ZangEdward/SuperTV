@@ -35,6 +35,7 @@ export default function SearchScreen() {
   const textInputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const { showModal: showRemoteModal, lastMessage, targetPage, clearMessage } = useRemoteControlStore();
   const { remoteInputEnabled } = useSettingsStore();
   const router = useRouter();
@@ -47,6 +48,28 @@ export default function SearchScreen() {
     loadHistory();
     setTimeout(() => textInputRef.current?.focus(), 100);
   }, []);
+
+  // [搜索建议] 用户输入时防抖获取搜索建议
+  const suggestionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleInputChange = (text: string) => {
+    setKeyword(text);
+    // 清除旧建议
+    if (text.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    if (suggestionTimerRef.current) clearTimeout(suggestionTimerRef.current);
+    suggestionTimerRef.current = setTimeout(async () => {
+      const result = await api.getSearchSuggestions(text);
+      setSuggestions(result);
+    }, 300);
+  };
+
+  const handleSuggestionPress = (suggestion: string) => {
+    setSuggestions([]);
+    setKeyword(suggestion);
+    handleSearchInternal(suggestion);
+  };
 
   const loadHistory = async () => {
     try {
@@ -202,6 +225,7 @@ export default function SearchScreen() {
                 style={dynamicStyles.historyPill}
                 onPress={() => {
                   setKeyword(item);
+                  setSuggestions([]);
                   handleSearchInternal(item);
                 }}
               >
@@ -228,14 +252,17 @@ export default function SearchScreen() {
             placeholder="搜索电影、剧集..."
             placeholderTextColor="#555"
             value={keyword}
-            onChangeText={setKeyword}
+            onChangeText={handleInputChange}
             onSubmitEditing={onSearchPress}
             onFocus={() => setIsInputFocused(true)}
-            onBlur={() => setIsInputFocused(false)}
+            onBlur={() => {
+              // 延迟隐藏建议，让点击建议项先触发
+              setTimeout(() => setIsInputFocused(false), 200);
+            }}
             returnKeyType="search"
           />
           {keyword.length > 0 && (
-            <TouchableOpacity onPress={() => setKeyword('')} style={{ padding: 10 }}>
+            <TouchableOpacity onPress={() => { setKeyword(''); setSuggestions([]); }} style={{ padding: 10 }}>
               <X size={18} color="#888" />
             </TouchableOpacity>
           )}
@@ -249,6 +276,24 @@ export default function SearchScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* 搜索建议下拉 */}
+      {suggestions.length > 0 && (
+        <View style={[dynamicStyles.suggestionsContainer, { maxHeight: deviceType === 'tv' ? 400 : 250 }]}>
+          <ScrollView showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+            {suggestions.map((suggestion, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={dynamicStyles.suggestionItem}
+                onPress={() => handleSuggestionPress(suggestion)}
+              >
+                <Search size={14} color="#888" style={{ marginRight: 10 }} />
+                <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>{suggestion}</ThemedText>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {results.length === 0 && !loading ? (
         renderHistory()
@@ -332,9 +377,13 @@ export default function SearchScreen() {
 
   if (deviceType === 'tv') return content;
 
+  const goHome = useCallback(() => {
+    router.replace('/');
+  }, [router]);
+
   return (
     <ResponsiveNavigation>
-      <ResponsiveHeader title="搜索" showBackButton={false} />
+      <ResponsiveHeader title="搜索" showBackButton={true} onBackPress={goHome} />
       {content}
     </ResponsiveNavigation>
   );
@@ -343,11 +392,38 @@ export default function SearchScreen() {
 const createResponsiveStyles = (deviceType: string, spacing: number) => {
   return StyleSheet.create({
     container: { flex: 1, paddingTop: deviceType === "tv" ? 40 : 0, backgroundColor: '#121212' },
-    searchHeader: { flexDirection: "row", paddingHorizontal: spacing + 4, paddingVertical: 14, alignItems: "center" },
+    searchHeader: { flexDirection: "row", paddingHorizontal: spacing + 4, paddingVertical: 14, alignItems: "center", position: 'relative' },
     inputContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', height: 44, backgroundColor: "#1c1c1e", borderRadius: 22, borderWidth: 1, borderColor: "transparent" },
     input: { flex: 1, paddingLeft: 8, color: "white", fontSize: 15 },
     searchCircleBtn: { width: 44, height: 44, marginLeft: 10, justifyContent: "center", alignItems: "center", borderRadius: 22, backgroundColor: Colors.dark.primary },
     qrCircleBtn: { width: 44, height: 44, marginLeft: 10, justifyContent: "center", alignItems: "center", borderRadius: 22, backgroundColor: '#2c2c2e' },
+
+    // 搜索建议
+    suggestionsContainer: {
+      position: 'absolute',
+      top: (deviceType === 'mobile' ? 28 : 52) + 50,
+      left: 0,
+      right: 0,
+      zIndex: 100,
+      backgroundColor: '#1a1a2e',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#333',
+      overflow: 'hidden',
+    },
+    suggestionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#222',
+    },
+    suggestionText: {
+      color: '#ccc',
+      fontSize: 14,
+      flex: 1,
+    },
     historyContainer: { paddingHorizontal: spacing + 8, paddingTop: 10 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 },
     sectionTitleRow: { flexDirection: 'row', alignItems: 'center' },

@@ -1,0 +1,696 @@
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  GestureResponderEvent,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ThemedView } from "@/components/ThemedView";
+import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
+import useDetailStore from "@/stores/detailStore";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Zap } from "lucide-react-native";
+import { SpeedTestService } from "@/services/speedTestService";
+import { StatusBar } from "expo-status-bar";
+
+const formatTime = (milliseconds: number) => {
+  if (!milliseconds && milliseconds !== 0) return "00:00";
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  }
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+};
+
+export default function CastControlScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { deviceType } = useResponsiveLayout();
+  const isMobile = deviceType === "mobile";
+
+  const [activeTab, setActiveTab] = useState<'episodes' | 'sources'>('episodes');
+  const [isReverse, setIsReverse] = useState(false);
+  const [barWidth, setBarWidth] = useState(0);
+  const [localSeeking, setLocalSeeking] = useState(false);
+  const [localSeekRatio, setLocalSeekRatio] = useState(0);
+
+  const status = usePlayerStore(state => state.status);
+  const currentEpisodeIndex = usePlayerStore(state => state.currentEpisodeIndex);
+  const episodes = usePlayerStore(state => state.episodes);
+  const isCasting = usePlayerStore(state => state.isCasting);
+  const castingDevice = usePlayerStore(state => state.castingDevice);
+  const togglePlayPause = usePlayerStore(state => state.togglePlayPause);
+  const playEpisode = usePlayerStore(state => state.playEpisode);
+  const stopCast = usePlayerStore(state => state.stopCast);
+  const seekToPosition = usePlayerStore(state => state.seekToPosition);
+  const syncCastProgress = usePlayerStore(state => state.syncCastProgress);
+  const currentEpisode = usePlayerStore(selectCurrentEpisode);
+
+  const detail = useDetailStore(state => state.detail);
+  const searchResults = useDetailStore(state => state.searchResults);
+  const isOptimizing = useDetailStore(state => state.isOptimizing);
+  const optimizeSources = useDetailStore(state => state.optimizeSources);
+  const setDetail = useDetailStore(state => state.setDetail);
+  const loadVideo = usePlayerStore(state => state.loadVideo);
+
+  const positionMillis = status?.isLoaded ? status.positionMillis : 0;
+  const durationMillis = status?.isLoaded ? (status.durationMillis || 0) : 0;
+  const progressRatio = localSeeking
+    ? localSeekRatio
+    : durationMillis > 0
+      ? positionMillis / durationMillis
+      : 0;
+  const isPlaying = status?.isLoaded ? status.isPlaying : false;
+
+  const hasPrevEpisode = currentEpisodeIndex > 0;
+  const hasNextEpisode = currentEpisodeIndex < episodes.length - 1;
+
+  // 非投屏状态时安全返回
+  useEffect(() => {
+    if (!isCasting && !castingDevice) {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/");
+      }
+    }
+  }, []); // 仅在挂载时检查一次
+
+  // 定期同步投屏进度
+  useEffect(() => {
+    if (!isCasting) return;
+    const interval = setInterval(() => {
+      syncCastProgress();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isCasting, syncCastProgress]);
+
+  const handleExitCast = useCallback(async () => {
+    try {
+      await stopCast();
+    } catch (e) {
+      // ignore
+    }
+    // stopCast 会重置投屏状态，导航回上个页面
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
+  }, [stopCast, router]);
+
+  const handlePrevEpisode = useCallback(() => {
+    if (hasPrevEpisode) {
+      playEpisode(currentEpisodeIndex - 1);
+    }
+  }, [hasPrevEpisode, playEpisode, currentEpisodeIndex]);
+
+  const handleNextEpisode = useCallback(() => {
+    if (hasNextEpisode) {
+      playEpisode(currentEpisodeIndex + 1);
+    }
+  }, [hasNextEpisode, playEpisode, currentEpisodeIndex]);
+
+  const handleProgressTouch = useCallback(
+    (e: GestureResponderEvent) => {
+      if (barWidth <= 0) return;
+      const touchX = e.nativeEvent.locationX;
+      const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
+      setLocalSeeking(true);
+      setLocalSeekRatio(ratio);
+    },
+    [barWidth],
+  );
+
+  const handleProgressRelease = useCallback(
+    (e: GestureResponderEvent) => {
+      if (barWidth <= 0) return;
+      const touchX = e.nativeEvent.locationX;
+      const ratio = Math.max(0, Math.min(touchX / barWidth, 1));
+      setLocalSeeking(false);
+      seekToPosition(ratio, true);
+    },
+    [barWidth, seekToPosition],
+  );
+
+  const formatDuration = durationMillis > 0 ? formatTime(durationMillis) : "00:00";
+  const formatPosition = formatTime(positionMillis);
+
+  const videoTitle = detail?.title || "";
+  const episodeList = React.useMemo(() => {
+    if (!episodes || episodes.length === 0) return [];
+    const list = episodes.map((ep, i) => ({ ...ep, index: i }));
+    return isReverse ? [...list].reverse() : list;
+  }, [episodes, isReverse]);
+
+  // 点击播放集数
+  const handleEpisodePress = useCallback(
+    (idx: number) => {
+      playEpisode(idx);
+    },
+    [playEpisode],
+  );
+
+  // 切换播放源
+  const handleSourcePress = useCallback(
+    async (item: any) => {
+      const sourceKey = detail?.source;
+      if (!item || !item.source || item.source === sourceKey) return;
+
+      const currentPos = status?.isLoaded ? status.positionMillis : undefined;
+
+      try {
+        if (typeof setDetail === "function") {
+          await setDetail(item);
+        }
+
+        if (typeof loadVideo === "function") {
+          loadVideo({
+            source: item.source,
+            id: (item.id || "").toString(),
+            episodeIndex: currentEpisodeIndex,
+            title: item.title || detail?.title || "播放",
+            position: currentPos,
+          });
+        }
+      } catch (e) {
+        console.error("Switch source failed:", e);
+      }
+    },
+    [detail, status, setDetail, loadVideo, currentEpisodeIndex],
+  );
+
+  return (
+    <ThemedView style={styles.container}>
+      <StatusBar style="light" animated={true} />
+
+      {/* 顶部栏：标题 + 退出投屏 */}
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
+        <TouchableOpacity onPress={handleExitCast} style={styles.backBtn}>
+          <ArrowLeft size={22} color="white" />
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {videoTitle || "投屏播放"}
+          </Text>
+          {currentEpisode && (
+            <Text style={styles.episodeTitle} numberOfLines={1}>
+              {currentEpisode.title}
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity onPress={handleExitCast} style={styles.exitCastBtn}>
+          <Text style={styles.exitCastText}>退出投屏</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 投屏设备信息 */}
+      {castingDevice && (
+        <View style={styles.castInfoBar}>
+          <View style={styles.castInfoDot} />
+          <Text style={styles.castInfoText}>
+            正在投屏至：{castingDevice.name}
+          </Text>
+        </View>
+      )}
+
+      {/* 主控制区域 */}
+      <View style={styles.controlSection}>
+        {/* 时间显示 */}
+        <Text style={styles.timeDisplay}>
+          {formatPosition} / {formatDuration}
+        </Text>
+
+        {/* 可拖动进度条 */}
+        <View
+          style={styles.progressBarContainer}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={handleProgressTouch}
+          onResponderMove={handleProgressTouch}
+          onResponderRelease={handleProgressRelease}
+        >
+          <View style={styles.progressBarBackground} />
+          <View style={[styles.progressBarFilled, { width: `${progressRatio * 100}%` }]} />
+          <View style={[styles.progressBarThumb, { left: `${progressRatio * 100}%` }]} />
+        </View>
+
+        {/* 控制按钮 */}
+        <View style={styles.controlButtons}>
+          <TouchableOpacity
+            onPress={handlePrevEpisode}
+            disabled={!hasPrevEpisode}
+            style={styles.controlBtn}
+          >
+            <SkipBack size={28} color={hasPrevEpisode ? "white" : "#444"} />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={togglePlayPause} style={styles.playBtn}>
+            {isPlaying ? (
+              <Pause size={36} color="white" />
+            ) : (
+              <Play size={36} color="white" />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleNextEpisode}
+            disabled={!hasNextEpisode}
+            style={styles.controlBtn}
+          >
+            <SkipForward size={28} color={hasNextEpisode ? "white" : "#444"} />
+          </TouchableOpacity>
+        </View>
+
+        {/* 微控制标签 */}
+        <View style={styles.controlLabels}>
+          <Text style={[styles.controlLabel, !hasPrevEpisode && styles.controlLabelDisabled]}>
+            上一集
+          </Text>
+          <Text style={styles.controlLabel}>
+            {isPlaying ? "暂停" : "恢复"}
+          </Text>
+          <Text style={[styles.controlLabel, !hasNextEpisode && styles.controlLabelDisabled]}>
+            下一集
+          </Text>
+        </View>
+      </View>
+
+      {/* 底部选集/播放源 */}
+      <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <View style={styles.tabBar}>
+          {(['episodes', 'sources'] as const).map(tab => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tabItem, activeTab === tab && styles.tabActive]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <Text style={[styles.tabLabel, activeTab === tab && styles.tabLabelActive]}>
+                {tab === 'episodes' ? '选集' : '播放源'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {activeTab === 'episodes' && (
+          <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.episodeGrid}>
+              <TouchableOpacity
+                style={styles.reverseBtn}
+                onPress={() => setIsReverse(prev => !prev)}
+              >
+                <Text style={styles.reverseBtnText}>
+                  {isReverse ? '正序' : '倒序'}
+                </Text>
+              </TouchableOpacity>
+              {episodeList.map((ep) => (
+                <TouchableOpacity
+                  key={ep.index}
+                  style={[
+                    styles.episodeItem,
+                    ep.index === currentEpisodeIndex && styles.episodeItemActive,
+                  ]}
+                  onPress={() => handleEpisodePress(ep.index)}
+                >
+                  <Text
+                    style={[
+                      styles.episodeText,
+                      ep.index === currentEpisodeIndex && styles.episodeTextActive,
+                    ]}
+                  >
+                    {ep.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+
+        {activeTab === 'sources' && (
+          <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.sourceHeader}>
+              <Text style={styles.sourceHeaderText}>
+                共 {searchResults?.length || 0} 个播放源
+              </Text>
+              <TouchableOpacity
+                style={[styles.optimizeBtn, isOptimizing && styles.optimizeBtnDisabled]}
+                onPress={() => {
+                  if (!isOptimizing) optimizeSources();
+                }}
+                disabled={isOptimizing}
+              >
+                {isOptimizing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Zap size={14} color="#fff" fill="#fff" />
+                )}
+                <Text style={styles.optimizeBtnText}>
+                  {isOptimizing ? "测速中..." : "一键优化"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.sourceGrid}>
+              {(searchResults || []).map((item, idx) => {
+                if (!item) return null;
+                const isSelected = (detail?.source) === item.source;
+                return (
+                  <TouchableOpacity
+                    key={`${item.source}-${idx}`}
+                    style={[
+                      styles.sourceItem,
+                      isSelected && styles.sourceItemActive,
+                    ]}
+                    onPress={() => handleSourcePress(item)}
+                  >
+                    <View style={{ alignItems: "center" }}>
+                      <Text
+                        style={[styles.sourceName, isSelected && styles.sourceNameActive]}
+                        numberOfLines={1}
+                      >
+                        {item.source_name}
+                      </Text>
+                      {item.speed !== undefined && item.speed > 0 ? (
+                        <Text
+                          style={[
+                            styles.sourceMeta,
+                            isSelected && styles.sourceMetaActive,
+                          ]}
+                        >
+                          {SpeedTestService.formatSpeed(item.speed)} ·{" "}
+                          {Math.round(item.latency || 0)}ms
+                        </Text>
+                      ) : (
+                        <Text style={styles.sourceMetaPlaceholder}>待测速</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        )}
+      </View>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#151718",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    backgroundColor: "#151718",
+  },
+  backBtn: {
+    padding: 4,
+    marginRight: 8,
+  },
+  headerTitleContainer: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "bold",
+    color: "#00bb5e",
+  },
+  episodeTitle: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 2,
+  },
+  exitCastBtn: {
+    backgroundColor: "#ff4444",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  exitCastText: {
+    color: "white",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  castInfoBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: "#1a2a1a",
+  },
+  castInfoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#00bb5e",
+    marginRight: 8,
+  },
+  castInfoText: {
+    color: "#aaa",
+    fontSize: 12,
+  },
+  controlSection: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  timeDisplay: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 16,
+    letterSpacing: 1,
+  },
+  progressBarContainer: {
+    width: "100%",
+    height: 32,
+    position: "relative",
+    justifyContent: "center",
+    marginBottom: 32,
+  },
+  progressBarBackground: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 2,
+  },
+  progressBarFilled: {
+    position: "absolute",
+    left: 0,
+    height: 4,
+    backgroundColor: "#00bb5e",
+    borderRadius: 2,
+  },
+  progressBarThumb: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#00bb5e",
+    marginLeft: -8,
+    top: 8,
+  },
+  controlButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 36,
+  },
+  controlBtn: {
+    padding: 8,
+  },
+  playBtn: {
+    backgroundColor: "#00bb5e",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  controlLabels: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 48,
+    marginTop: 8,
+  },
+  controlLabel: {
+    color: "#888",
+    fontSize: 12,
+    textAlign: "center",
+    width: 50,
+  },
+  controlLabelDisabled: {
+    color: "#444",
+  },
+  bottomSection: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: "#222",
+    paddingTop: 4,
+  },
+  tabBar: {
+    flexDirection: "row",
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1a1a1a",
+    paddingHorizontal: 10,
+  },
+  tabItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 8,
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#00bb5e",
+  },
+  tabLabel: {
+    color: "#888",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  tabLabelActive: {
+    color: "#00bb5e",
+  },
+  listScroll: {
+    flex: 1,
+    marginBottom: 8,
+  },
+  episodeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 10,
+    paddingBottom: 40,
+  },
+  reverseBtn: {
+    backgroundColor: "#2a2a2a",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 8,
+    marginBottom: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#444",
+  },
+  reverseBtnText: {
+    color: "#aaa",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  episodeItem: {
+    backgroundColor: "#1a1a1a",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 8,
+    marginBottom: 8,
+    justifyContent: "center",
+    minWidth: 50,
+    borderWidth: 1,
+    borderColor: "#222",
+  },
+  episodeItemActive: {
+    backgroundColor: "#00bb5e",
+  },
+  episodeText: {
+    color: "#999",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  episodeTextActive: {
+    color: "#fff",
+  },
+  sourceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingRight: 18,
+  },
+  sourceHeaderText: {
+    color: "#888",
+    fontSize: 13,
+  },
+  optimizeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#00bb5e",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  optimizeBtnDisabled: {
+    backgroundColor: "#2a5a3a",
+  },
+  optimizeBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  sourceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 10,
+    paddingBottom: 40,
+  },
+  sourceItem: {
+    backgroundColor: "#1a1a1a",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginRight: 8,
+    marginBottom: 8,
+    justifyContent: "center",
+    minWidth: "45%",
+    borderWidth: 1,
+    borderColor: "#222",
+  },
+  sourceItemActive: {
+    backgroundColor: "#00bb5e",
+  },
+  sourceName: {
+    color: "#999",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  sourceNameActive: {
+    color: "#fff",
+  },
+  sourceMeta: {
+    fontSize: 9,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
+    textAlign: "center",
+  },
+  sourceMetaActive: {
+    color: "rgba(255,255,255,0.9)",
+  },
+  sourceMetaPlaceholder: {
+    fontSize: 9,
+    color: "#555",
+    marginTop: 2,
+    textAlign: "center",
+  },
+});

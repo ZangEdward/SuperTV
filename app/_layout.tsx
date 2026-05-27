@@ -217,6 +217,7 @@ export default function RootLayout() {
                 <Stack.Screen name="cache-detail" />
                 {Platform.OS !== "web" && <Stack.Screen name="play" />}
                 <Stack.Screen name="search" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="cast-control" />
                 <Stack.Screen name="live" />
                 <Stack.Screen name="settings" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="favorites" options={{ gestureEnabled: false }} />

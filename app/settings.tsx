@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { View, StyleSheet, Alert, Platform } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { useRouter } from "expo-router";
@@ -235,9 +235,13 @@ export default function SettingsScreen() {
     return renderSettingsContent();
   }
 
+  const goHome = useCallback(() => {
+    router.replace('/');
+  }, [router]);
+
   return (
     <ResponsiveNavigation>
-      <ResponsiveHeader title="设置" showBackButton={false} />
+      <ResponsiveHeader title="设置" showBackButton={true} onBackPress={goHome} />
       {renderSettingsContent()}
     </ResponsiveNavigation>
   );

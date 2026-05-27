@@ -62,6 +62,15 @@ export default function PlayScreen() {
   const [fuzzyResults, setFuzzyResults] = useState<SearchResult[]>([]);
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources' | 'desc'>('episodes');
 
+  // [投屏控制] 移动端/平板端在投屏状态下跳转到投屏控制页
+  const isCasting = usePlayerStore(state => state.isCasting);
+  const castingDevice = usePlayerStore(state => state.castingDevice);
+  useEffect(() => {
+    if ((isMobile || deviceType === 'tablet') && isCasting && castingDevice) {
+      router.replace('/cast-control');
+    }
+  }, [isMobile, deviceType, isCasting, castingDevice, router]);
+
   const detail = useDetailStore(state => state.detail);
   const searchResults = useDetailStore(state => state.searchResults);
   const setDetail = useDetailStore(state => state.setDetail);
