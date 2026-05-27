@@ -9,111 +9,6 @@ import Logger from "@/utils/Logger";
 
 const logger = Logger.withTag('DetailStore');
 
-/**
- * 将中文数字归一化为阿拉伯数字，用于模糊匹配
- * 例: "第四季" → "第4季", "一百二十三" → "123"
- * 支持: 零一二三四五六七八九十
- */
-function normalizeChineseNumbers(str: string): string {
-  const chineseNumMap: Record<string, string> = {
-    '零': '0', '一': '1', '二': '2', '三': '3', '四': '4',
-    '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
-    '〇': '0', '两': '2',
-  };
-  let result = '';
-  for (const char of str) {
-    result += chineseNumMap[char] || char;
-  }
-  return result;
-}
-
-/**
- * 增强标题匹配：先将中文数字归一化后再比较
- * 支持 "第四季" == "第4季", "第三集" == "第3集" 等
- */
-function titleMatches(searchTitle: string, targetTitle: string): boolean {
-  const s = searchTitle.replace(/\s+/g, '').toLowerCase();
-  const t = targetTitle.replace(/\s+/g, '').toLowerCase();
-  // 精确匹配
-  if (s === t) return true;
-  // 归一化中文数字后匹配
-  const sNorm = normalizeChineseNumbers(s);
-  const tNorm = normalizeChineseNumbers(t);
-  if (sNorm === tNorm) return true;
-  // includes 匹配
-  if (t.includes(s) || s.includes(t)) return true;
-  // 归一化后 includes 匹配
-  if (tNorm.includes(sNorm) || sNorm.includes(tNorm)) return true;
-  return false;
-}
-
-/**
- * 生成渐进式搜索词列表：从完整词开始，逐步去掉最后一个空格分隔的段落
- * "1 2 3 4" → ["1234", "123", "12", "1"]
- * "Re:从零 第四季" → ["Re:从零第四季", "Re:从零"]
- * 用于搜索无结果时逐步放宽条件
- */
-function progressiveSearchTerms(query: string): string[] {
-  const parts = query.trim().split(/\s+/);
-  if (parts.length <= 1) return [query.replace(/\s+/g, '')];
-  const terms: string[] = [];
-  for (let i = parts.length; i >= 1; i--) {
-    terms.push(parts.slice(0, i).join('').replace(/\s+/g, ''));
-  }
-  return [...new Set(terms)];
-}
-
-/**
- * 生成搜索变体列表——借鉴 LunaTV 的多策略搜索
- * 依次尝试不同格式，提高搜索结果命中率
- */
-function generateSearchVariants(originalQuery: string): string[] {
-  const variants: string[] = [];
-  const trimmed = originalQuery.trim();
-  if (!trimmed) return variants;
-
-  // 1. 原始查询（含空格——后端可能做分词）
-  variants.push(trimmed);
-
-  // 2. 去除所有空格
-  const noSpaces = trimmed.replace(/\s+/g, '');
-  if (noSpaces !== trimmed) variants.push(noSpaces);
-
-  // 3. 中文数字归一化变体（"第四季" → "第4季"）
-  const numNormalized = normalizeChineseNumbers(noSpaces);
-  if (numNormalized !== noSpaces) variants.push(numNormalized);
-
-  // 4. 如果包含空格，生成关键词组合
-  if (trimmed.includes(' ')) {
-    const keywords = trimmed.split(/\s+/).filter(Boolean);
-    // 主关键词 + 最后一个词组合（如 "现在就出发 第二季" → "现在就出发第二季"）
-    if (keywords.length >= 2) {
-      const mainKeyword = keywords[0];
-      const lastKeyword = keywords[keywords.length - 1];
-      // 如果最后一个词含"第/季/集/部/篇/章"，拼接到主关键词
-      if (/第|季|集|部|篇|章/.test(lastKeyword)) {
-        const combined = mainKeyword + lastKeyword;
-        if (!variants.includes(combined)) variants.push(combined);
-      }
-      // 空格变冒号（"死神来了 血脉诅咒" → "死神来了：血脉诅咒"）
-      const withColon = trimmed.replace(/\s+/g, '：');
-      if (!variants.includes(withColon)) variants.push(withColon);
-      // 仅主关键词
-      if (mainKeyword.length > 1 && !variants.includes(mainKeyword)) {
-        variants.push(mainKeyword);
-      }
-    }
-  }
-
-  // 5. 渐进式去掉最后一段（从完整词逐步缩短）
-  const progressive = progressiveSearchTerms(trimmed);
-  for (const t of progressive) {
-    if (!variants.includes(t)) variants.push(t);
-  }
-
-  return variants;
-}
-
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
   latency?: number;
@@ -198,8 +93,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
-    // 保存原始查询词（含空格），用于渐进式模糊搜索
-    const rawQuery = q || "";
     // 强制去除空格进行搜索，适配某些源的严格匹配
     q = (q || "").replace(/\s+/g, '');
     logger.info(`[PERF] DetailStore.init START - q: ${q}, preferredSource: ${preferredSource}, id: ${id}`);
@@ -228,29 +121,29 @@ const useDetailStore = create<DetailState>((set, get) => ({
     // [资料源识别]：豆瓣和 Bangumi 仅提供资料，不提供视频
     const isMetadataSource = preferredSource === "douban" || preferredSource === "bangumi";
 
-    // [预载入优化]：从内存池秒开——只使用精确 key 匹配，避免子串匹配导致缓错视频
+    // [预载入优化]：从内存池秒开——尝试多种 key 变体
     if (!isMetadataSource && preferredSource) {
       const qLower = q.trim().toLowerCase();
-      // 只尝试精确 key 变体（去符号），不用子串匹配（防止匹配到错误的缓存视频）
+      // 尝试多种 key 变体
       const poolKeys = [
         `${qLower}_${preferredSource}`,
         `${qLower.replace(/[\s+·./\\()（）【】\[\]《》{}：:、;；，,。！？!?""'『』«»\-—–—_*~`@#$%^&|<>]+/g, '')}_${preferredSource}`,
       ];
+      // 如果原始 q 较长，再尝试前6个字符
+      if (qLower.length > 6) {
+        poolKeys.push(`${qLower.substring(0, 6)}_${preferredSource}`);
+        poolKeys.push(`${qLower.substring(0, Math.floor(qLower.length * 0.7))}_${preferredSource}`);
+      }
 
       for (const key of poolKeys) {
         const poolResult = SearchDetailPool.get(key);
         if (poolResult) {
-          // 验证缓存结果的标题确实匹配搜索词（防止缓存错乱）
-          const poolTitle = (poolResult.title || "").replace(/\s+/g, '').toLowerCase();
-          if (titleMatches(qLower, poolTitle)) {
-            set({
-              searchResults: [poolResult as SearchResultWithResolution],
-              detail: poolResult as SearchResultWithResolution,
-              loading: false,
-              error: null,
-            });
-            logger.info(`[POOL] Cache hit for "${q}" → "${poolResult.title}" (${poolResult.source_name})`);
-          }
+          set({
+            searchResults: [poolResult as SearchResultWithResolution],
+            detail: poolResult as SearchResultWithResolution,
+            loading: false,
+            error: null,
+          });
           break;
         }
       }
@@ -267,35 +160,34 @@ const useDetailStore = create<DetailState>((set, get) => ({
       if (signal.aborted || results.length === 0) return;
 
       const state = get();
-      const searchTitle = q.replace(/\s+/g, '').toLowerCase();
+      // 获取当前主剧集的“核心特征”，用于跨源精确匹配，强制物理去空格
+      const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
+      const currentCore = getCoreKey(q);
 
-      // 使用增强匹配（支持中文数字归一化）
-      const matchedResults = results.filter(r => {
-        const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-        return titleMatches(searchTitle, targetTitle);
+      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开，强制无视空格
+      const strictlyMatchedResults = results.filter(r => {
+          const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+          const targetCore = getCoreKey(r.title);
+          const searchCore = q.replace(/\s+/g, '').toLowerCase();
+
+          // 匹配条件：只要标题包含核心词，或者核心词包含标题
+          return targetCore.includes(currentCore) ||
+                 currentCore.includes(targetCore) ||
+                 targetTitle.includes(searchCore);
       });
 
-      if (matchedResults.length === 0) {
-        // 无匹配结果，尝试对 q 和结果都做中文数字归一化后重新匹配
-        const qNorm = normalizeChineseNumbers(searchTitle);
-        const normMatched = results.filter(r => {
-          const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-          const tNorm = normalizeChineseNumbers(targetTitle);
-          return tNorm.includes(qNorm) || qNorm.includes(tNorm);
-        });
-        if (normMatched.length > 0) {
-          logger.info(`[MATCH] Normalized number match found ${normMatched.length} results`);
-          matchedResults.push(...normMatched);
+      if (strictlyMatchedResults.length === 0) {
+        // [关键修复]：如果是在资料源路径下且这是第一个结果，无条件信任它（解决首页点击失效）
+        if (isMetadataSource && state.searchResults.length === 0) {
+           strictlyMatchedResults.push(results[0]);
+        } else {
+           if (state.detail) set({ loading: false });
+           return;
         }
       }
 
-      if (matchedResults.length === 0) {
-        if (get().detail) set({ loading: false });
-        return;
-      }
-
       // [源去重与合并]
-      const resultsWithLatency = matchedResults.map(r => ({ ...r, latency: defaultLatency }));
+      const resultsWithLatency = strictlyMatchedResults.map(r => ({ ...r, latency: defaultLatency }));
       const existingSources = new Set(state.searchResults.map((r) => r.source));
       const newResults = resultsWithLatency.filter((r) => !existingSources.has(r.source));
 
@@ -337,129 +229,31 @@ const useDetailStore = create<DetailState>((set, get) => ({
         // [路径 A] 有确定的视频源：精准获取，同步开启换源检索
         updateProgress({ total: 1, currentSource: '首选源' });
 
-        let preferredResult: SearchResult[] = [];
-        let preferredSearchError: any = null;
-
         try {
           const response = await api.searchVideo(q, preferredSource, signal);
-          preferredResult = response.results;
+          if (response.results.length > 0) {
+            await processAndSetResults(response.results, 0);
+          }
         } catch (error) {
-          preferredSearchError = error;
-          logger.warn(`Preferred source "${preferredSource}" failed:`, error);
+          logger.warn(`Preferred source "${preferredSource}" failed, will fallback`);
         }
 
         if (signal.aborted) return;
-
-        if (preferredResult.length > 0) {
-          // 首选源成功
-          logger.info(`[SUCCESS] Preferred source "${preferredSource}" found ${preferredResult.length} results`);
-          await processAndSetResults(preferredResult, 0);
-          set({ loading: false });
-
-          // 后台异步搜索其他源做换源备选（不阻塞）
+        
+        // 2. 异步启动全网检索（用于换源），限制 1 秒内获取到的源才用于快速回退
+        Promise.race([
           api.searchVideos(q).then(response => {
             if (!signal.aborted && response.results.length > 0) {
-              const exactMatches = response.results.filter(r => {
-                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-                return titleMatches(searchTitle, targetTitle);
-              });
-              if (exactMatches.length > 0) {
-                processAndSetResults(exactMatches, 100);
-              }
+              processAndSetResults(response.results, 100);
             }
-          }).catch(() => {});
-
-        } else {
-          // 首选源失败——立即同步搜索所有源（不依赖后台异步）
-          if (preferredSearchError) {
-            logger.warn(`[FALLBACK] Preferred source "${preferredSource}" failed, trying all sources immediately`);
-          } else {
-            logger.warn(`[FALLBACK] Preferred source "${preferredSource}" returned 0 results, trying all sources immediately`);
-          }
-
-          try {
-            const { results: allResults } = await api.searchVideos(q);
-            logger.info(`[FALLBACK] All sources search returned ${allResults.length} total results`);
-
-            // 使用增强匹配（支持中文数字归一化）
-            const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-            let filteredResults = allResults.filter(r => {
-              const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-              return titleMatches(searchTitle, targetTitle);
-            });
-            logger.info(`[FALLBACK] Title matches: ${filteredResults.length}`);
-
-            // 渐进式搜索：逐步去掉最后一段空格分词再试
-            if (filteredResults.length === 0) {
-              const searchVariants = generateSearchVariants(rawQuery);
-              // 跳过第一个（已用完整词搜过）
-              for (const variant of searchVariants.slice(1)) {
-                if (signal.aborted) break;
-                logger.info(`[FALLBACK] Search variant: "${variant}"`);
-                try {
-                  const { results: progResults } = await api.searchVideos(variant);
-                  filteredResults = progResults.filter(r => {
-                    const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                    return titleMatches(variant, targetTitle);
-                  });
-                  if (filteredResults.length > 0) {
-                    logger.info(`[FALLBACK] Variant "${variant}" found ${filteredResults.length} matches`);
-                    break;
-                  }
-                } catch { continue; }
-              }
+          }),
+          new Promise<void>(resolve => setTimeout(() => {
+            if (!signal.aborted) {
+              logger.info(`[QUICK] 1s search window closed - current sources: ${get().searchResults.length}`);
             }
-
-            if (filteredResults.length > 0) {
-              await processAndSetResults(filteredResults, 100);
-              set({ loading: false });
-            } else {
-              // 中文数字归一化后宽松匹配
-              const qNorm = normalizeChineseNumbers(searchTitle);
-              let looseResults = allResults.filter(r => {
-                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                const tNorm = normalizeChineseNumbers(targetTitle);
-                return tNorm.includes(qNorm) || qNorm.includes(tNorm);
-              });
-              // 渐进式宽松匹配
-              if (looseResults.length === 0) {
-                const searchVariants = generateSearchVariants(rawQuery);
-                for (const variant of searchVariants.slice(1)) {
-                  if (signal.aborted) break;
-                  try {
-                    const { results: progResults } = await api.searchVideos(variant);
-                    const progNorm = normalizeChineseNumbers(variant.replace(/\s+/g, '').toLowerCase());
-                    looseResults = progResults.filter(r => {
-                      const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                      const tNorm = normalizeChineseNumbers(targetTitle);
-                      return tNorm.includes(progNorm) || progNorm.includes(tNorm);
-                    });
-                    if (looseResults.length > 0) {
-                      logger.info(`[FALLBACK] Variant loose match found ${looseResults.length} with "${variant}"`);
-                      break;
-                    }
-                  } catch { continue; }
-                }
-              }
-              if (looseResults.length > 0) {
-                logger.info(`[FALLBACK] Normalized loose matches: ${looseResults.length}`);
-                await processAndSetResults(looseResults, 100);
-                set({ loading: false });
-              } else {
-                const errorMsg = `未找到 "${q}" 的播放源，请检查标题或稍后重试`;
-                logger.error(`[ERROR] ${errorMsg}`);
-                set({ error: errorMsg, loading: false });
-              }
-            }
-          } catch (fallbackError) {
-            logger.error(`[ERROR] Fallback search failed:`, fallbackError);
-            set({
-              error: `搜索失败：${fallbackError instanceof Error ? fallbackError.message : '网络错误，请稍后重试'}`,
-              loading: false
-            });
-          }
-        }
+            resolve();
+          }, 1000))
+        ]).catch(() => {});
 
       } else {
         // [路径 B] 资料源或无确定的源：激进全网并发加载
@@ -504,35 +298,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         await Promise.all(tasks);
         updateProgress({ isComplete: true });
-
-        // [增强] 单个源搜索无结果时，尝试聚合搜索 api.searchVideos（与手动搜索一致）
-        if (get().searchResults.length === 0 && !signal.aborted) {
-          logger.info(`[FALLBACK] Individual source searches returned 0 results, trying aggregated search...`);
-          let found = false;
-          // 多策略搜索变体
-          const searchVariants = generateSearchVariants(rawQuery);
-          for (const variant of searchVariants) {
-            if (signal.aborted || found) break;
-            logger.info(`[FALLBACK] Trying search variant: "${variant}"`);
-            try {
-              const { results: allResults } = await api.searchVideos(variant);
-              if (allResults.length > 0) {
-                const searchTitle = variant.replace(/\s+/g, '').toLowerCase();
-                const matched = allResults.filter(r => {
-                  const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                  return titleMatches(searchTitle, targetTitle);
-                });
-                if (matched.length > 0) {
-                  logger.info(`[FALLBACK] Variant "${variant}" found ${matched.length} matches`);
-                  await processAndSetResults(matched, 100);
-                  found = true;
-                }
-              }
-            } catch (aggError) {
-              logger.warn(`[FALLBACK] Aggregated search failed:`, aggError);
-            }
-          }
-        }
       }
 
       // 最后同步一下收藏状态并自动开启测速优化
@@ -549,25 +314,6 @@ const useDetailStore = create<DetailState>((set, get) => ({
     } finally {
       if (!signal.aborted) {
         set({ loading: false, allSourcesLoaded: true });
-
-        // [自动测速优选] 进入详情页后，自动触发测速评分并选择最优源
-        // 确保搜索结果数 > 1 且当前未在优化中，才触发
-        const currentResults = get().searchResults;
-        if (currentResults.length > 1 && !get().isOptimizing) {
-          // 判断是否仍在当前页面(非导航离开)：保存 signal 引用供定时器检查
-          const currentSignal = signal;
-          // 小延迟让 UI 先渲染完成，避免阻塞交互
-          setTimeout(() => {
-            // 如果用户已经导航离开(signal 被 abort)，跳过优化避免不必要的后台操作
-            if (currentSignal.aborted) {
-              logger.info('[AUTO_OPTIMIZE] Skipped - user navigated away');
-              return;
-            }
-            get().optimizeSources().catch((e) => {
-              logger.warn('[AUTO_OPTIMIZE] Auto speed test failed:', e);
-            });
-          }, 300);
-        }
       }
     }
   },
@@ -728,7 +474,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const { searchResults, failedSources } = get();
 
     // 只过滤掉当前失败源和已标记失败的源
-    // 搜索结果由 init 中 background search 完整等待保证
+    // 时间窗口由 init 中 background search 的 1s Promise.race 保证
     return searchResults.filter(result =>
       result.source !== currentSource &&
       !failedSources.has(result.source) &&

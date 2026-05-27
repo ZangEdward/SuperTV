@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, Image, ScrollView, ActivityIndicator, TouchableOpacity, Alert, BackHandler } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -56,6 +56,20 @@ export default function DetailScreen() {
       abort();
     };
   }, [abort, init, q, source, id]);
+
+  // 硬件返回键 → 返回上一页
+  useEffect(() => {
+    const onBackPress = () => {
+      if (router.canGoBack()) {
+        router.back();
+      }
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      try { subscription.remove(); } catch (e) {}
+    };
+  }, [router]);
 
   const handlePlay = (episodeIndex: number) => {
     if (!detail) return;

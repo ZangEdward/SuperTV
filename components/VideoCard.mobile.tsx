@@ -135,6 +135,21 @@ const VideoCardMobile = forwardRef<View, VideoCardMobileProps>(
           <View style={styles.card}>
             <Image source={{ uri: api.getImageProxyUrl(poster) }} style={styles.poster} />
             
+            {/* 进度条 — 绿色进度条在底部 */}
+            {isContinueWatching && (
+              <View style={styles.progressContainer}>
+                <View style={[styles.progressBar, { width: `${(progress || 0) * 100}%` }]} />
+              </View>
+            )}
+
+            {/* 继续观看标识 */}
+            {isContinueWatching && (
+              <View style={styles.continueWatchingBadge}>
+                <Play size={12} color="#ffffff" fill="#ffffff" />
+                <Text style={styles.continueWatchingText}>继续</Text>
+              </View>
+            )}
+
             {/* 年份 (Top-Left) */}
             {showYearBadge && (
               <View style={styles.seleneYearBadge}>

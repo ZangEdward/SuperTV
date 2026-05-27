@@ -76,6 +76,15 @@ module.exports = function withMulticastPlugin(config) {
           "$": { "android:name": "android.permission.FOREGROUND_SERVICE" }
         });
       }
+      // FOREGROUND_SERVICE_MEDIA_PLAYBACK for Android 14+ (targetSDK=34)
+      const hasFgsMediaPlayback = manifest["uses-permission"].some(
+        (p) => p["$"]["android:name"] === "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      );
+      if (!hasFgsMediaPlayback) {
+        manifest["uses-permission"].push({
+          "$": { "android:name": "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" }
+        });
+      }
       // POST_NOTIFICATIONS for Android 13+
       const hasPostNotifications = manifest["uses-permission"].some(
         (p) => p["$"]["android:name"] === "android.permission.POST_NOTIFICATIONS"

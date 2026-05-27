@@ -318,9 +318,9 @@ export default function SearchScreen() {
         )}
       </View>
 
-      {/* 搜索建议下拉 — 参考 LunaTV 模式 */}
-      {suggestions.length > 0 && (
-        <View style={[dynamicStyles.suggestionsContainer, { maxHeight: deviceType === 'tv' ? 400 : 250 }]}>
+      {/* 搜索建议下拉 — 仅移动/平板端 */}
+      {suggestions.length > 0 && deviceType !== 'tv' && (
+        <View style={[dynamicStyles.suggestionsContainer, { maxHeight: 250 }]}>
           <ScrollView
             showsVerticalScrollIndicator={true}
             keyboardShouldPersistTaps="handled"
@@ -342,15 +342,15 @@ export default function SearchScreen() {
                 >
                   <Search size={14} color="#888" style={{ marginRight: 10 }} />
                   {matchIndex >= 0 && keyword.length >= 2 ? (
-                    <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>
-                      <ThemedText style={{ color: '#888' }}>{beforeMatch}</ThemedText>
-                      <ThemedText style={{ color: '#00bb5e', fontWeight: '700' }}>{matchText}</ThemedText>
-                      <ThemedText style={{ color: '#888' }}>{afterMatch}</ThemedText>
-                    </ThemedText>
+                    <Text numberOfLines={1} style={dynamicStyles.suggestionText}>
+                      <Text style={{ color: '#888' }}>{beforeMatch}</Text>
+                      <Text style={{ color: '#00bb5e', fontWeight: '700' }}>{matchText}</Text>
+                      <Text style={{ color: '#888' }}>{afterMatch}</Text>
+                    </Text>
                   ) : (
-                    <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>
+                    <Text numberOfLines={1} style={dynamicStyles.suggestionText}>
                       {suggestion}
-                    </ThemedText>
+                    </Text>
                   )}
                 </TouchableOpacity>
               );
