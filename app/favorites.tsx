@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, BackHandler } from "react-native";
 import { useRouter } from "expo-router";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
@@ -24,6 +24,18 @@ export default function FavoritesScreen() {
   useEffect(() => {
     fetchFavorites();
   }, [fetchFavorites]);
+
+  // 硬件返回键 → 回到首页
+  useEffect(() => {
+    const onBackPress = () => {
+      router.replace('/');
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      try { subscription.remove(); } catch (e) {}
+    };
+  }, [router]);
 
   const renderItem = ({ item }: { item: Favorite & { key: string }; index: number }) => {
     const [source, id] = item.key.split("+");

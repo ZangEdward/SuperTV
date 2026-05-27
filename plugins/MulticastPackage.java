@@ -20,6 +20,7 @@ public class MulticastPackage implements ReactPackage {
         List<NativeModule> modules = new ArrayList<>();
         modules.add(new MulticastModule(reactContext));
         modules.add(new NativeCryptoModule(reactContext));
+        modules.add(new CastNotificationModule(reactContext));
         return modules;
     }
 }

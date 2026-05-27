@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Animated } from "react-native";
+import { View, TextInput, StyleSheet, Alert, Keyboard, TouchableOpacity, ScrollView, Animated, BackHandler } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
@@ -49,24 +49,63 @@ export default function SearchScreen() {
     setTimeout(() => textInputRef.current?.focus(), 100);
   }, []);
 
-  // [搜索建议] 用户输入时防抖获取搜索建议
-  const suggestionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleInputChange = (text: string) => {
-    setKeyword(text);
-    // 清除旧建议
+  // 硬件返回键 → 回到首页
+  useEffect(() => {
+    const onBackPress = () => {
+      router.replace('/');
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      try { subscription.remove(); } catch (e) {}
+    };
+  }, [router]);
+
+  // [搜索建议] 参考 LunaTV 模式：AbortController + 防抖
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 防抖获取搜索建议
+  const fetchDebouncedSuggestions = useCallback((text: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim().length < 2) {
       setSuggestions([]);
       return;
     }
-    if (suggestionTimerRef.current) clearTimeout(suggestionTimerRef.current);
-    suggestionTimerRef.current = setTimeout(async () => {
-      const result = await api.getSearchSuggestions(text);
-      setSuggestions(result);
+    debounceRef.current = setTimeout(async () => {
+      // 取消上一次未完成的请求，防竞态
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const result = await api.getSearchSuggestions(text);
+        // 只有当前请求未被取消才更新
+        if (!controller.signal.aborted) {
+          setSuggestions(result);
+        }
+      } catch {
+        if (!controller.signal.aborted) setSuggestions([]);
+      }
     }, 300);
+  }, []);
+
+  // 清理定时器和请求
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
+
+  const handleInputChange = (text: string) => {
+    setKeyword(text);
+    fetchDebouncedSuggestions(text);
   };
 
   const handleSuggestionPress = (suggestion: string) => {
     setSuggestions([]);
+    setIsInputFocused(false);
     setKeyword(suggestion);
     handleSearchInternal(suggestion);
   };
@@ -115,6 +154,8 @@ export default function SearchScreen() {
   const handleSearchInternal = (text?: string) => {
     const term = text || keyword;
     if (!term.trim()) return;
+    setSuggestions([]);
+    setIsInputFocused(false);
     addHistoryItem(term.trim());
     Keyboard.dismiss();
     search(term);
@@ -277,20 +318,43 @@ export default function SearchScreen() {
         )}
       </View>
 
-      {/* 搜索建议下拉 */}
+      {/* 搜索建议下拉 — 参考 LunaTV 模式 */}
       {suggestions.length > 0 && (
         <View style={[dynamicStyles.suggestionsContainer, { maxHeight: deviceType === 'tv' ? 400 : 250 }]}>
-          <ScrollView showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
-            {suggestions.map((suggestion, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={dynamicStyles.suggestionItem}
-                onPress={() => handleSuggestionPress(suggestion)}
-              >
-                <Search size={14} color="#888" style={{ marginRight: 10 }} />
-                <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>{suggestion}</ThemedText>
-              </TouchableOpacity>
-            ))}
+          <ScrollView
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+          >
+            {suggestions.map((suggestion, idx) => {
+              // 高亮匹配文本
+              const keywordLower = keyword.toLowerCase();
+              const suggestionLower = suggestion.toLowerCase();
+              const matchIndex = suggestionLower.indexOf(keywordLower);
+              const beforeMatch = matchIndex > 0 ? suggestion.slice(0, matchIndex) : '';
+              const matchText = matchIndex >= 0 ? suggestion.slice(matchIndex, matchIndex + keyword.length) : '';
+              const afterMatch = matchIndex >= 0 ? suggestion.slice(matchIndex + keyword.length) : '';
+
+              return (
+                <TouchableOpacity
+                  key={idx}
+                  style={dynamicStyles.suggestionItem}
+                  onPress={() => handleSuggestionPress(suggestion)}
+                >
+                  <Search size={14} color="#888" style={{ marginRight: 10 }} />
+                  {matchIndex >= 0 && keyword.length >= 2 ? (
+                    <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>
+                      <ThemedText style={{ color: '#888' }}>{beforeMatch}</ThemedText>
+                      <ThemedText style={{ color: '#00bb5e', fontWeight: '700' }}>{matchText}</ThemedText>
+                      <ThemedText style={{ color: '#888' }}>{afterMatch}</ThemedText>
+                    </ThemedText>
+                  ) : (
+                    <ThemedText numberOfLines={1} style={dynamicStyles.suggestionText}>
+                      {suggestion}
+                    </ThemedText>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       )}

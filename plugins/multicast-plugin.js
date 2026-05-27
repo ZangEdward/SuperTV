@@ -1,4 +1,4 @@
-const { withDangerousMod, withMainApplication } = require("@expo/config-plugins");
+const { withDangerousMod, withMainApplication, withAndroidManifest } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -16,20 +16,23 @@ module.exports = function withMulticastPlugin(config) {
         fs.mkdirSync(androidSrcMainPath, { recursive: true });
       }
 
-      fs.writeFileSync(
-        path.join(androidSrcMainPath, "MulticastModule.java"),
-        fs.readFileSync(path.join(__dirname, "MulticastModule.java"), "utf8")
-      );
+      const filesToCopy = [
+        "MulticastModule.java",
+        "MulticastPackage.java",
+        "NativeCryptoModule.java",
+        "CastForegroundService.java",
+        "CastNotificationModule.java",
+      ];
 
-      fs.writeFileSync(
-        path.join(androidSrcMainPath, "MulticastPackage.java"),
-        fs.readFileSync(path.join(__dirname, "MulticastPackage.java"), "utf8")
-      );
-
-      fs.writeFileSync(
-        path.join(androidSrcMainPath, "NativeCryptoModule.java"),
-        fs.readFileSync(path.join(__dirname, "NativeCryptoModule.java"), "utf8")
-      );
+      filesToCopy.forEach(fileName => {
+        const srcPath = path.join(__dirname, fileName);
+        if (fs.existsSync(srcPath)) {
+          fs.writeFileSync(
+            path.join(androidSrcMainPath, fileName),
+            fs.readFileSync(srcPath, "utf8")
+          );
+        }
+      });
 
       return config;
     },
@@ -56,6 +59,57 @@ module.exports = function withMulticastPlugin(config) {
     }
 
     config.modResults.contents = src;
+    return config;
+  });
+
+  // 3. 修改 AndroidManifest.xml - 添加前台服务权限和服务声明
+  config = withAndroidManifest(config, (config) => {
+    const manifest = config.modResults.manifest;
+
+    // 添加 FOREGROUND_SERVICE 权限
+    if (manifest["uses-permission"]) {
+      const hasForegroundService = manifest["uses-permission"].some(
+        (p) => p["$"]["android:name"] === "android.permission.FOREGROUND_SERVICE"
+      );
+      if (!hasForegroundService) {
+        manifest["uses-permission"].push({
+          "$": { "android:name": "android.permission.FOREGROUND_SERVICE" }
+        });
+      }
+      // POST_NOTIFICATIONS for Android 13+
+      const hasPostNotifications = manifest["uses-permission"].some(
+        (p) => p["$"]["android:name"] === "android.permission.POST_NOTIFICATIONS"
+      );
+      if (!hasPostNotifications) {
+        manifest["uses-permission"].push({
+          "$": { "android:name": "android.permission.POST_NOTIFICATIONS" }
+        });
+      }
+    }
+
+    // 添加前台服务声明
+    const application = manifest["application"];
+    if (application && application.length > 0) {
+      let services = application[0]["service"];
+      if (!services) {
+        services = [];
+        application[0]["service"] = services;
+      }
+
+      const hasCastService = services.some(
+        (s) => s["$"]["android:name"] === ".CastForegroundService"
+      );
+      if (!hasCastService) {
+        services.push({
+          "$": {
+            "android:name": ".CastForegroundService",
+            "android:exported": "false",
+            "android:foregroundServiceType": "mediaPlayback"
+          }
+        });
+      }
+    }
+
     return config;
   });
 

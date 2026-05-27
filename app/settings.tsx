@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { View, StyleSheet, Alert, Platform } from "react-native";
+import { View, StyleSheet, Alert, Platform, BackHandler } from "react-native";
 import { useTVEventHandler } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -62,6 +62,18 @@ export default function SettingsScreen() {
       loadSettings();
     }
   }, [loadSettings]);
+
+  // 硬件返回键 → 回到首页
+  useEffect(() => {
+    const onBackPress = () => {
+      router.replace('/');
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      try { subscription.remove(); } catch (e) {}
+    };
+  }, [router]);
 
   useEffect(() => {
     if (lastMessage && !targetPage) {

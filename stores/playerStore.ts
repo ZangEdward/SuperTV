@@ -7,6 +7,7 @@ import useDetailStore, { episodesSelectorBySource, calculateSourceScore, SearchR
 import { api, SearchResult } from "@/services/api";
 import { SpeedTestService } from "@/services/speedTestService";
 import { dlnaService, DLNADevice } from "@/services/dlnaService";
+import { castNotificationService } from "@/services/castNotificationService";
 import { parseEpisode } from "@/utils/episode";
 import Logger from '@/utils/Logger';
 
@@ -129,6 +130,15 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ _castSyncTimer: timer });
       // 立即触发一次同步
       get().syncCastProgress();
+
+      // 启动前台通知
+      const detail = useDetailStore.getState().detail;
+      const episodes = get().episodes;
+      const episodeIndex = get().currentEpisodeIndex;
+      const currentEpisode = episodes[episodeIndex];
+      const title = detail?.title || "正在投屏";
+      const episodeLabel = currentEpisode?.title || (episodeIndex >= 0 ? `第 ${episodeIndex + 1} 集` : "");
+      castNotificationService.start(title, episodeLabel, device.name);
     } else {
       set({ castingDevice: null, isCasting: false, _castSyncTimer: undefined });
     }
@@ -193,6 +203,9 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
         await dlnaService.stopCast(castingDevice);
       } catch (e) {}
     }
+
+    // 停止前台通知
+    castNotificationService.stop();
 
     // 清除同步定时器并重置投屏状态
     const prevTimer = get()._castSyncTimer;
@@ -549,6 +562,13 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       if (isCasting && castingDevice) {
         try {
           await dlnaService.castVideo(castingDevice, episode.url, episode.title);
+
+          // 更新通知栏显示新剧集
+          const detail = useDetailStore.getState().detail;
+          const title = detail?.title || "正在投屏";
+          const episodeLabel = episode?.title || `第 ${index + 1} 集`;
+          castNotificationService.update(title, episodeLabel, castingDevice.name);
+
           return;
         } catch (error) {
           logger.error("Failed to cast next episode:", error);
