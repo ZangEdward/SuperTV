@@ -240,20 +240,32 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
         if (signal.aborted) return;
         
-        // 2. 异步启动全网检索（用于换源），限制 1 秒内获取到的源才用于快速回退
-        Promise.race([
-          api.searchVideos(q).then(response => {
-            if (!signal.aborted && response.results.length > 0) {
-              processAndSetResults(response.results, 100);
-            }
-          }),
-          new Promise<void>(resolve => setTimeout(() => {
-            if (!signal.aborted) {
-              logger.info(`[QUICK] 1s search window closed - current sources: ${get().searchResults.length}`);
-            }
-            resolve();
-          }, 1000))
-        ]).catch(() => {});
+        // 2. 异步启动全网检索（用于换源），等待所有源返回结果
+        // [修复] 去掉短超时限制，持续等待直到所有搜索结果返回或 30s 安全超时
+        const fallbackTimeout = setTimeout(() => {
+          if (!signal.aborted) {
+            logger.warn(`[FALLBACK] Background search 30s safety timeout - current sources: ${get().searchResults.length}`);
+            updateProgress({ isComplete: true });
+          }
+        }, 30000);
+
+        api.searchVideos(q).then(response => {
+          clearTimeout(fallbackTimeout);
+          if (signal.aborted) return;
+          if (response.results.length > 0) {
+            return processAndSetResults(response.results, 100);
+          }
+        }).catch(e => {
+          clearTimeout(fallbackTimeout);
+          if (!signal.aborted) {
+            logger.warn(`[FALLBACK] Background search error:`, e);
+          }
+        }).finally(() => {
+          if (!signal.aborted) {
+            updateProgress({ isComplete: true });
+            logger.info(`[FALLBACK] Background search completed - sources found: ${get().searchResults.length}`);
+          }
+        });
 
       } else {
         // [路径 B] 资料源或无确定的源：激进全网并发加载
@@ -493,7 +505,7 @@ const useDetailStore = create<DetailState>((set, get) => ({
     const { searchResults, failedSources } = get();
 
     // 只过滤掉当前失败源和已标记失败的源
-    // 时间窗口由 init 中 background search 的 1s Promise.race 保证
+    // 搜索结果由 init 中 background search 完整等待保证
     return searchResults.filter(result =>
       result.source !== currentSource &&
       !failedSources.has(result.source) &&

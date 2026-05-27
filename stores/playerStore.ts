@@ -322,28 +322,89 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       detail = useDetailStore.getState().detail;
 
       if (!detail) {
-        logger.warn(`[FALLBACK] Preferred source "${source}" returned no detail, waiting 1s for background search...`);
+        logger.warn(`[FALLBACK] Preferred source "${source}" returned no detail, waiting for background search results...`);
 
-        // [关键修复] 首选源失败时，等待 1s 背景搜索窗口收集其他源
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // [关键修复] 持续等待直到获取到有效播放源或全网搜索完成
+        // 每 500ms 检查一次，无超时限制——确保能找到有效播放源才继续
+        const checkInterval = 500;
+        let waited = 0;
 
-        detail = useDetailStore.getState().detail;
-        const searchResults = useDetailStore.getState().searchResults;
+        while (true) {
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+          waited += checkInterval;
 
-        if (!detail) {
-          // 尝试从 searchResults 中找可用源
-          const fallbackSource = searchResults.find(r => r.episodes && r.episodes.length > 0);
-          if (fallbackSource) {
-            logger.info(`[FALLBACK] Using background search result: ${fallbackSource.source_name} (${fallbackSource.source})`);
-            detail = fallbackSource;
-            episodes = fallbackSource.episodes;
-          } else {
-            logger.error(`[ERROR] No detail found after init and background search for "${title}"`);
-            set({ isLoading: false });
-            return;
+          // 检查是否有自动切换的 detail
+          detail = useDetailStore.getState().detail;
+          if (detail) {
+            logger.info(`[FALLBACK] Detail found after ${waited}ms: ${detail.source_name}`);
+            break;
           }
-        } else {
-          logger.info(`[FALLBACK] Background search found detail: ${detail.source_name}`);
+
+          // 检查 searchResults 中是否有带 episodes 的源
+          const searchResults = useDetailStore.getState().searchResults;
+          const searchProgress = useDetailStore.getState().searchProgress;
+
+          const sourceWithEpisodes = searchResults.find(r => r.episodes && r.episodes.length > 0);
+          if (sourceWithEpisodes) {
+            logger.info(`[FALLBACK] Found source with episodes after ${waited}ms: ${sourceWithEpisodes.source_name} (${sourceWithEpisodes.source})`);
+            detail = sourceWithEpisodes;
+            episodes = sourceWithEpisodes.episodes;
+            // 同步更新 detailStore 的 detail
+            useDetailStore.getState().setDetail(sourceWithEpisodes);
+            break;
+          }
+
+          // 全网搜索已完成但无有效源——尝试从无 episodes 的结果中获取剧集
+          if (searchProgress.isComplete) {
+            logger.info(`[FALLBACK] Background search completed after ${waited}ms, ${searchResults.length} sources found`);
+
+            if (searchResults.length > 0) {
+              // 有搜索结果但没有 episodes，尝试主动获取剧集
+              const firstResult = searchResults[0];
+              logger.info(`[FALLBACK] Found source "${firstResult.source_name}" without episodes, fetching episodes...`);
+              try {
+                await useDetailStore.getState().setDetail(firstResult);
+                const updatedDetail = useDetailStore.getState().detail;
+                if (updatedDetail && updatedDetail.episodes && updatedDetail.episodes.length > 0) {
+                  detail = updatedDetail;
+                  episodes = updatedDetail.episodes;
+                  logger.info(`[FALLBACK] Successfully fetched ${episodes.length} episodes for "${firstResult.source_name}"`);
+                  break;
+                }
+              } catch (fetchErr) {
+                logger.error(`[FALLBACK] Failed to fetch episodes for "${firstResult.source_name}":`, fetchErr);
+              }
+
+              // 第一个源不行，尝试其他源
+              for (let i = 1; i < searchResults.length; i++) {
+                const altResult = searchResults[i];
+                logger.info(`[FALLBACK] Trying alternative source "${altResult.source_name}"...`);
+                try {
+                  await useDetailStore.getState().setDetail(altResult);
+                  const updatedDetail = useDetailStore.getState().detail;
+                  if (updatedDetail && updatedDetail.episodes && updatedDetail.episodes.length > 0) {
+                    detail = updatedDetail;
+                    episodes = updatedDetail.episodes;
+                    logger.info(`[FALLBACK] Alternative source "${altResult.source_name}" works!`);
+                    break;
+                  }
+                } catch (fetchErr) {
+                  logger.warn(`[FALLBACK] Alternative source "${altResult.source_name}" also failed:`, fetchErr);
+                }
+              }
+            }
+
+            if (!detail) {
+              logger.error(`[ERROR] No valid source found after full background search for "${title}"`);
+              set({ isLoading: false });
+              return;
+            }
+            break;
+          }
+        }
+
+        // 如果通过带 episodes 的源找到 detail，获取 episodes
+        if (detail && (!episodes || episodes.length === 0)) {
           episodes = episodesSelectorBySource(detail.source)(useDetailStore.getState());
         }
       }
@@ -931,13 +992,10 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     if (!fallbackSource) {
       logger.info(`[FRESH_SEARCH] No existing fallback sources - initiating fresh 1s search + 2s speed test`);
 
-      // 使用 Promise.race 实现 1s 超时（searchVideos 不支持 AbortSignal）
+      // [修复] 等待搜索完成，不设超时限制，确保能找到有效播放源
       let searchResponse: { results: SearchResult[] } | null = null;
       try {
-        searchResponse = await Promise.race([
-          api.searchVideos(detail.title),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
-        ]);
+        searchResponse = await api.searchVideos(detail.title);
       } catch (e) {
         logger.warn(`[FRESH_SEARCH] Search failed:`, e);
       }
