@@ -11,6 +11,12 @@ interface SearchSuggestionsProps {
   maxHeight?: number;
 }
 
+interface SuggestionItem {
+  text: string;
+  type?: string;
+  score?: number;
+}
+
 export default function SearchSuggestions({
   query,
   isVisible,
@@ -18,13 +24,22 @@ export default function SearchSuggestions({
   onClose,
   maxHeight = 250,
 }: SearchSuggestionsProps) {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchSuggestions = useCallback(async (q: string) => {
     try {
+      // 假设 api.getSearchSuggestions 返回 string[] 或者 SuggestionItem[]
+      // 这里统一处理为 SuggestionItem[] 以避免在渲染时将对象传给 Text
       const result = await api.getSearchSuggestions(q);
-      setSuggestions(result);
+      if (Array.isArray(result)) {
+        const normalized = result.map(item =>
+          typeof item === 'string' ? { text: item } : item
+        );
+        setSuggestions(normalized);
+      } else {
+        setSuggestions([]);
+      }
     } catch {
       setSuggestions([]);
     }
@@ -58,12 +73,12 @@ export default function SearchSuggestions({
             style={styles.item}
             onPress={() => {
               setSuggestions([]);
-              onSelect(suggestion);
+              onSelect(suggestion.text);
             }}
           >
             <Search size={14} color="#888" style={{ marginRight: 10 }} />
             <Text numberOfLines={1} style={styles.text}>
-              {suggestion}
+              {suggestion.text}
             </Text>
           </TouchableOpacity>
         ))}

@@ -19,7 +19,7 @@ class CastNotificationService {
   private currentEpisode = '';
   private currentDeviceName = '';
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly HEARTBEAT_INTERVAL = 15000; // 15秒心跳
+  private readonly HEARTBEAT_INTERVAL = 5000; // 缩短心跳至5秒，增加恢复及时性
 
   /**
    * 启动投屏通知（前台服务）
@@ -32,18 +32,20 @@ class CastNotificationService {
     }
 
     try {
-      await CastNotificationModule.startCastNotification(
-        title || '正在投屏',
-        episode || '',
-        deviceName || ''
-      );
-      this.isActive = true;
       this.currentTitle = title || '正在投屏';
       this.currentEpisode = episode || '';
       this.currentDeviceName = deviceName || '';
-      logger.info(`[Notification] Started: "${title}" ${episode}`);
+      this.isActive = true;
 
-      // 启动心跳定时器：定期刷新通知，防止被系统移除后不恢复
+      await CastNotificationModule.startCastNotification(
+        this.currentTitle,
+        this.currentEpisode,
+        this.currentDeviceName
+      );
+
+      logger.info(`[Notification] Started: "${this.currentTitle}" ${this.currentEpisode}`);
+
+      // 启动心跳定时器：定期检查并刷新通知
       this.startHeartbeat();
     } catch (error) {
       logger.error('[Notification] Failed to start:', error);
@@ -54,19 +56,20 @@ class CastNotificationService {
    * 更新通知内容（换集时调用）
    */
   async update(title: string, episode: string, deviceName: string) {
-    if (Platform.OS !== 'android' || !this.isActive) return;
+    if (Platform.OS !== 'android') return;
     if (!CastNotificationModule) return;
+
+    this.currentTitle = title || '正在投屏';
+    this.currentEpisode = episode || '';
+    this.currentDeviceName = deviceName || '';
 
     try {
       await CastNotificationModule.updateCastNotification(
-        title || '正在投屏',
-        episode || '',
-        deviceName || ''
+        this.currentTitle,
+        this.currentEpisode,
+        this.currentDeviceName
       );
-      this.currentTitle = title || '正在投屏';
-      this.currentEpisode = episode || '';
-      this.currentDeviceName = deviceName || '';
-      logger.info(`[Notification] Updated: "${title}" ${episode}`);
+      logger.info(`[Notification] Updated: "${this.currentTitle}" ${this.currentEpisode}`);
     } catch (error) {
       logger.error('[Notification] Failed to update:', error);
     }
@@ -76,12 +79,11 @@ class CastNotificationService {
    * 停止投屏通知并关闭前台服务
    */
   async stop() {
-    if (Platform.OS !== 'android' || !this.isActive) return;
+    if (Platform.OS !== 'android') return;
     if (!CastNotificationModule) return;
 
     try {
       this.stopHeartbeat();
-
       await CastNotificationModule.stopCastNotification();
       this.isActive = false;
       this.currentTitle = '';
@@ -94,19 +96,21 @@ class CastNotificationService {
   }
 
   /**
-   * 心跳保活：定期重新发送通知，确保被系统移除后快速恢复
+   * 心跳保活：定期检查服务活跃状态，确保通知不丢失
    */
   private startHeartbeat() {
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       if (!this.isActive || !CastNotificationModule) return;
-      // 重新发送当前状态，START_STICKY 会处理通知恢复
-      CastNotificationModule.startCastNotification(
+
+      // 这里的重新调用会由 CastForegroundService 的 onStartCommand 处理，
+      // 如果通知被移除，会通过更新或重启服务机制重新创建通知
+      CastNotificationModule.updateCastNotification(
         this.currentTitle,
         this.currentEpisode,
         this.currentDeviceName
       ).catch(() => {
-        // 心跳失败不日志，避免刷屏
+        // 心跳失败不报错
       });
     }, this.HEARTBEAT_INTERVAL);
   }

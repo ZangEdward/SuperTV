@@ -148,13 +148,14 @@ export default function PlayScreen() {
       });
   }, []);
 
-  const videoElement = useMemo(() => (
-    currentEpisode?.url ? (
-      <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />
-    ) : (
-      <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />
-    )
-  ), [currentEpisode?.url, videoProps]);
+  const videoElement = useMemo(() => {
+    // 确保 episode 存在且 url 不为空，否则不要渲染 Video 组件
+    if (currentEpisode && currentEpisode.url && currentEpisode.url.trim() !== "") {
+      return <Video ref={videoRef} style={styles.videoPlayer} {...videoProps} />;
+    }
+    // 否则显示加载动画
+    return <LoadingContainer style={styles.loadingContainer} currentEpisode={currentEpisode} />;
+  }, [currentEpisode, videoProps]);
 
   const videoContent = useMemo(() => (
     <View style={styles.videoWrapper}>
@@ -301,8 +302,11 @@ export default function PlayScreen() {
     return () => {
       try {
         if (typeof reset === 'function') reset();
-        if (isMobile && ScreenOrientation?.lockAsync && ScreenOrientation?.OrientationLock?.PORTRAIT) {
-          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+        if (isMobile && ScreenOrientation?.lockAsync) {
+          const promise = ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+          if (promise && typeof promise.catch === 'function') {
+            promise.catch(() => {});
+          }
         }
       } catch (e) {}
     };
