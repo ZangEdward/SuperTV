@@ -47,6 +47,22 @@ function titleMatches(searchTitle: string, targetTitle: string): boolean {
   return false;
 }
 
+/**
+ * 生成渐进式搜索词列表：从完整词开始，逐步去掉最后一个空格分隔的段落
+ * "1 2 3 4" → ["1234", "123", "12", "1"]
+ * "Re:从零 第四季" → ["Re:从零第四季", "Re:从零"]
+ * 用于搜索无结果时逐步放宽条件
+ */
+function progressiveSearchTerms(query: string): string[] {
+  const parts = query.trim().split(/\s+/);
+  if (parts.length <= 1) return [query.replace(/\s+/g, '')];
+  const terms: string[] = [];
+  for (let i = parts.length; i >= 1; i--) {
+    terms.push(parts.slice(0, i).join('').replace(/\s+/g, ''));
+  }
+  return [...new Set(terms)];
+}
+
 export type SearchResultWithResolution = SearchResult & {
   resolution?: string | null;
   latency?: number;
@@ -131,6 +147,8 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
   init: async (q, preferredSource, id) => {
     const perfStart = performance.now();
+    // 保存原始查询词（含空格），用于渐进式模糊搜索
+    const rawQuery = q || "";
     // 强制去除空格进行搜索，适配某些源的严格匹配
     q = (q || "").replace(/\s+/g, '');
     logger.info(`[PERF] DetailStore.init START - q: ${q}, preferredSource: ${preferredSource}, id: ${id}`);
@@ -315,11 +333,32 @@ const useDetailStore = create<DetailState>((set, get) => ({
 
             // 使用增强匹配（支持中文数字归一化）
             const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-            const filteredResults = allResults.filter(r => {
+            let filteredResults = allResults.filter(r => {
               const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
               return titleMatches(searchTitle, targetTitle);
             });
             logger.info(`[FALLBACK] Title matches: ${filteredResults.length}`);
+
+            // 渐进式搜索：无结果时逐步去掉最后一段空格分词再试
+            if (filteredResults.length === 0) {
+              const progressiveTerms = progressiveSearchTerms(rawQuery);
+              // 跳过第一个（已用完整词搜过）
+              for (const progressiveTerm of progressiveTerms.slice(1)) {
+                if (signal.aborted) break;
+                logger.info(`[FALLBACK] Progressive search term: "${progressiveTerm}"`);
+                try {
+                  const { results: progResults } = await api.searchVideos(progressiveTerm);
+                  filteredResults = progResults.filter(r => {
+                    const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                    return titleMatches(progressiveTerm, targetTitle);
+                  });
+                  if (filteredResults.length > 0) {
+                    logger.info(`[FALLBACK] Progressive search found ${filteredResults.length} matches with "${progressiveTerm}"`);
+                    break;
+                  }
+                } catch { continue; }
+              }
+            }
 
             if (filteredResults.length > 0) {
               await processAndSetResults(filteredResults, 100);
@@ -327,11 +366,31 @@ const useDetailStore = create<DetailState>((set, get) => ({
             } else {
               // 中文数字归一化后宽松匹配
               const qNorm = normalizeChineseNumbers(searchTitle);
-              const looseResults = allResults.filter(r => {
+              let looseResults = allResults.filter(r => {
                 const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
                 const tNorm = normalizeChineseNumbers(targetTitle);
                 return tNorm.includes(qNorm) || qNorm.includes(tNorm);
               });
+              // 渐进式宽松匹配
+              if (looseResults.length === 0) {
+                const progressiveTerms = progressiveSearchTerms(rawQuery);
+                for (const progressiveTerm of progressiveTerms.slice(1)) {
+                  if (signal.aborted) break;
+                  try {
+                    const { results: progResults } = await api.searchVideos(progressiveTerm);
+                    const progNorm = normalizeChineseNumbers(progressiveTerm.replace(/\s+/g, '').toLowerCase());
+                    looseResults = progResults.filter(r => {
+                      const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                      const tNorm = normalizeChineseNumbers(targetTitle);
+                      return tNorm.includes(progNorm) || progNorm.includes(tNorm);
+                    });
+                    if (looseResults.length > 0) {
+                      logger.info(`[FALLBACK] Progressive loose match found ${looseResults.length} with "${progressiveTerm}"`);
+                      break;
+                    }
+                  } catch { continue; }
+                }
+              }
               if (looseResults.length > 0) {
                 logger.info(`[FALLBACK] Normalized loose matches: ${looseResults.length}`);
                 await processAndSetResults(looseResults, 100);
@@ -398,21 +457,29 @@ const useDetailStore = create<DetailState>((set, get) => ({
         // [增强] 单个源搜索无结果时，尝试聚合搜索 api.searchVideos（与手动搜索一致）
         if (get().searchResults.length === 0 && !signal.aborted) {
           logger.info(`[FALLBACK] Individual source searches returned 0 results, trying aggregated search...`);
-          try {
-            const { results: allResults } = await api.searchVideos(q);
-            if (allResults.length > 0) {
-              const searchTitle = q.replace(/\s+/g, '').toLowerCase();
-              const matched = allResults.filter(r => {
-                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
-                return titleMatches(searchTitle, targetTitle);
-              });
-              if (matched.length > 0) {
-                logger.info(`[FALLBACK] Aggregated search found ${matched.length} matches`);
-                await processAndSetResults(matched, 100);
+          let found = false;
+          // 渐进式搜索：逐步去掉最后一段空格分词
+          const progressiveTerms = progressiveSearchTerms(rawQuery);
+          for (const progressiveTerm of progressiveTerms) {
+            if (signal.aborted || found) break;
+            logger.info(`[FALLBACK] Trying progressive term: "${progressiveTerm}"`);
+            try {
+              const { results: allResults } = await api.searchVideos(progressiveTerm);
+              if (allResults.length > 0) {
+                const searchTitle = progressiveTerm.replace(/\s+/g, '').toLowerCase();
+                const matched = allResults.filter(r => {
+                  const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                  return titleMatches(searchTitle, targetTitle);
+                });
+                if (matched.length > 0) {
+                  logger.info(`[FALLBACK] Aggregated search found ${matched.length} matches with "${progressiveTerm}"`);
+                  await processAndSetResults(matched, 100);
+                  found = true;
+                }
               }
+            } catch (aggError) {
+              logger.warn(`[FALLBACK] Aggregated search failed:`, aggError);
             }
-          } catch (aggError) {
-            logger.warn(`[FALLBACK] Aggregated search failed:`, aggError);
           }
         }
       }

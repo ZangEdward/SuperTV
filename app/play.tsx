@@ -111,13 +111,11 @@ export default function PlayScreen() {
       return true;
     }
     // [优化源匹配] 经过测速优选或失败回退后，源可能已切换
-    // 只要标题一致且有剧集数据，即可播放
-    if (detail.episodes && detail.episodes.length > 0) {
-      const paramTitle = (params.title || "").trim().toLowerCase();
-      const detailTitle = (detail.title || "").trim().toLowerCase();
-      if (detailTitle === paramTitle || detailTitle.includes(paramTitle) || paramTitle.includes(detailTitle)) {
-        return true;
-      }
+    // 只要标题一致即可播放（episodes 可能在后台加载中）
+    const paramTitle = (params.title || "").replace(/\s+/g, '').toLowerCase();
+    const detailTitle = (detail.title || "").replace(/\s+/g, '').toLowerCase();
+    if (detailTitle === paramTitle || detailTitle.includes(paramTitle) || paramTitle.includes(detailTitle)) {
+      return true;
     }
     return false;
   }, [detail, params.id, params.source, params.fileUri, params.title]);

@@ -45,6 +45,21 @@ export function populateDetailPool(results: SearchResult[]) {
   });
 }
 
+/**
+ * 生成渐进式搜索词列表：从完整词开始，逐步去掉最后一个空格分隔的段落
+ * "1 2 3 4" → ["1234", "123", "12", "1"]
+ * 用于搜索无结果时逐步放宽条件
+ */
+export function progressiveSearchTerms(query: string): string[] {
+  const parts = query.trim().split(/\s+/);
+  if (parts.length <= 1) return [query.replace(/\s+/g, '')];
+  const terms: string[] = [];
+  for (let i = parts.length; i >= 1; i--) {
+    terms.push(parts.slice(0, i).join('').replace(/\s+/g, ''));
+  }
+  return [...new Set(terms)];
+}
+
 export interface SearchProgress {
   total: number;
   completed: number;
@@ -278,9 +293,45 @@ const useSearchStore = create<SearchState>((set, get) => ({
         if (signal.aborted) return;
       }
 
+      // ============ Phase 3: 渐进式搜索 ============
+      // 如果以上搜索无结果，逐步去掉最后一段空格分词再试
+      if (get().results.length === 0 && !signal.aborted) {
+        const progressiveTerms = progressiveSearchTerms(rawTerm);
+        // 跳过第一个（已用完整词搜过）
+        for (const progressiveTerm of progressiveTerms.slice(1)) {
+          if (signal.aborted) break;
+          logger.info(`[SEARCH] Progressive search term: "${progressiveTerm}"`);
+          await new Promise(r => setTimeout(r, 300));
+          if (signal.aborted) break;
+          await executeSearchPhase(progressiveTerm, 'fuzzy');
+          if (get().results.length > 0) {
+            logger.info(`[SEARCH] Progressive search found results with "${progressiveTerm}"`);
+            break;
+          }
+        }
+      }
+
       // 最终同步状态
       if (!signal.aborted) {
         const finalResults = get().results;
+
+        // [渐进排序] 按匹配精度排序：完整原始词匹配 > 渐进词匹配
+        // 匹配词越长越精确，排前面
+        if (finalResults.length > 1) {
+          const rawClean = rawTerm.replace(/\s+/g, '').toLowerCase();
+          const progressiveTerms = progressiveSearchTerms(rawTerm);
+          const sortedResults = [...finalResults].sort((a, b) => {
+            const aTitle = (a.title || "").replace(/\s+/g, '').toLowerCase();
+            const bTitle = (b.title || "").replace(/\s+/g, '').toLowerCase();
+            // 计算每个结果的"匹配深度"（匹配到第几层渐进词）
+            const aDepth = progressiveTerms.findIndex(t => aTitle.includes(t) || t.includes(aTitle));
+            const bDepth = progressiveTerms.findIndex(t => bTitle.includes(t) || t.includes(bTitle));
+            // 深度越小（越精确）排越前；找不到的排最后
+            return (aDepth === -1 ? 999 : aDepth) - (bDepth === -1 ? 999 : bDepth);
+          });
+          set({ results: sortedResults });
+        }
+
         set({ loading: false });
         updateProgress({ isComplete: true, completed: get().searchProgress.total });
 

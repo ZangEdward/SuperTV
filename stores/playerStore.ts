@@ -314,7 +314,36 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
       const detailInitStart = performance.now();
       logger.info(`[PERF] DetailStore.init START - ${title}`);
 
-      await useDetailStore.getState().init(title, source, id);
+      // [安全超时] init 最多等待 30 秒，防止网络挂起导致永久卡加载
+      await Promise.race([
+        useDetailStore.getState().init(title, source, id),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('INIT_TIMEOUT')), 30000)
+        )
+      ]).catch(async (error) => {
+        if (error.message === 'INIT_TIMEOUT') {
+          logger.error(`[TIMEOUT] DetailStore.init timed out after 30s for "${title}"`);
+          // 超时后尝试直接搜索所有源作为最终兜底
+          try {
+            const { results } = await api.searchVideos(title);
+            if (results && results.length > 0) {
+              const searchTitle = (title || "").replace(/\s+/g, '').toLowerCase();
+              const matched = results.filter(r => {
+                const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
+                return targetTitle.includes(searchTitle) || searchTitle.includes(targetTitle);
+              });
+              if (matched.length > 0) {
+                const detailStore = useDetailStore.getState();
+                detailStore.setDetail(matched[0] as any);
+              }
+            }
+          } catch (fallbackErr) {
+            logger.error(`[TIMEOUT] Fallback search also failed:`, fallbackErr);
+          }
+        } else {
+          logger.error(`[ERROR] DetailStore.init error:`, error);
+        }
+      });
 
       const detailInitEnd = performance.now();
       logger.info(`[PERF] DetailStore.init END - took ${(detailInitEnd - detailInitStart).toFixed(2)}ms`);
