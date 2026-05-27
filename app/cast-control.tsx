@@ -36,6 +36,14 @@ export default function CastControlScreen() {
   const insets = useSafeAreaInsets();
   const { deviceType } = useResponsiveLayout();
   const isMobile = deviceType === "mobile";
+  const isTV = deviceType === "tv";
+
+  // TV端不需要投屏控制页（TV本身就是被投屏设备）
+  useEffect(() => {
+    if (isTV) {
+      router.replace('/');
+    }
+  }, [isTV, router]);
 
   const [activeTab, setActiveTab] = useState<'episodes' | 'sources'>('episodes');
   const [isReverse, setIsReverse] = useState(false);
