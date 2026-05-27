@@ -106,8 +106,21 @@ export default function PlayScreen() {
     if (!!params.fileUri) return true;
     const detailId = String(detail.id || "");
     const paramId = String(params.id || "");
-    return (detailId === paramId || detailId === "0" || paramId === "0") && detail.source === params.source;
-  }, [detail, params.id, params.source, params.fileUri]);
+    // 精确匹配：id 和 source 都匹配
+    if ((detailId === paramId || detailId === "0" || paramId === "0") && detail.source === params.source) {
+      return true;
+    }
+    // [优化源匹配] 经过测速优选或失败回退后，源可能已切换
+    // 只要标题一致且有剧集数据，即可播放
+    if (detail.episodes && detail.episodes.length > 0) {
+      const paramTitle = (params.title || "").trim().toLowerCase();
+      const detailTitle = (detail.title || "").trim().toLowerCase();
+      if (detailTitle === paramTitle || detailTitle.includes(paramTitle) || paramTitle.includes(detailTitle)) {
+        return true;
+      }
+    }
+    return false;
+  }, [detail, params.id, params.source, params.fileUri, params.title]);
 
   const episodes = useMemo(() => {
     if (!detail || !Array.isArray(detail.episodes)) return [];
