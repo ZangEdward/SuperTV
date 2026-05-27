@@ -6,7 +6,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect, useState } from "react";
-import { Platform, View, StyleSheet, useColorScheme } from "react-native";
+import { Platform, View, StyleSheet, useColorScheme, PermissionsAndroid } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -118,6 +118,28 @@ export default function RootLayout() {
           loadSettings(),
           loadCache()
         ]);
+
+        // 初次启动即索取通知权限（Android 13+）
+        if (Platform.OS === 'android' && Platform.Version >= 33) {
+          try {
+            const granted = await PermissionsAndroid.request(
+              'android.permission.POST_NOTIFICATIONS' as any,
+              {
+                title: '通知权限',
+                message: 'SuperTV 需要通知权限来推送投屏状态和应用更新提醒',
+                buttonPositive: '允许',
+                buttonNegative: '拒绝',
+              }
+            );
+            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+              logger.info('[Permission] POST_NOTIFICATIONS granted');
+            } else {
+              logger.warn('[Permission] POST_NOTIFICATIONS denied');
+            }
+          } catch (e) {
+            logger.warn('[Permission] POST_NOTIFICATIONS request error', e);
+          }
+        }
         // 关键：App 启动即开启组播锁
         if (Platform.OS === 'android' && MulticastModule) {
           MulticastModule.acquire();

@@ -11,9 +11,15 @@ const { CastNotificationModule } = NativeModules;
  * 1. 显示当前投屏内容（剧名 + 集数）
  * 2. 提供快速回到投屏控制页的入口
  * 3. 防止应用被系统杀死（前台服务保活）
+ * 4. 通知被删后自动重新弹出（START_STICKY + 心跳保活）
  */
 class CastNotificationService {
   private isActive = false;
+  private currentTitle = '';
+  private currentEpisode = '';
+  private currentDeviceName = '';
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly HEARTBEAT_INTERVAL = 15000; // 15秒心跳
 
   /**
    * 启动投屏通知（前台服务）
@@ -32,7 +38,13 @@ class CastNotificationService {
         deviceName || ''
       );
       this.isActive = true;
+      this.currentTitle = title || '正在投屏';
+      this.currentEpisode = episode || '';
+      this.currentDeviceName = deviceName || '';
       logger.info(`[Notification] Started: "${title}" ${episode}`);
+
+      // 启动心跳定时器：定期刷新通知，防止被系统移除后不恢复
+      this.startHeartbeat();
     } catch (error) {
       logger.error('[Notification] Failed to start:', error);
     }
@@ -51,6 +63,9 @@ class CastNotificationService {
         episode || '',
         deviceName || ''
       );
+      this.currentTitle = title || '正在投屏';
+      this.currentEpisode = episode || '';
+      this.currentDeviceName = deviceName || '';
       logger.info(`[Notification] Updated: "${title}" ${episode}`);
     } catch (error) {
       logger.error('[Notification] Failed to update:', error);
@@ -65,11 +80,41 @@ class CastNotificationService {
     if (!CastNotificationModule) return;
 
     try {
+      this.stopHeartbeat();
+
       await CastNotificationModule.stopCastNotification();
       this.isActive = false;
+      this.currentTitle = '';
+      this.currentEpisode = '';
+      this.currentDeviceName = '';
       logger.info('[Notification] Stopped');
     } catch (error) {
       logger.error('[Notification] Failed to stop:', error);
+    }
+  }
+
+  /**
+   * 心跳保活：定期重新发送通知，确保被系统移除后快速恢复
+   */
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.isActive || !CastNotificationModule) return;
+      // 重新发送当前状态，START_STICKY 会处理通知恢复
+      CastNotificationModule.startCastNotification(
+        this.currentTitle,
+        this.currentEpisode,
+        this.currentDeviceName
+      ).catch(() => {
+        // 心跳失败不日志，避免刷屏
+      });
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 }

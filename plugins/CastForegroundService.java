@@ -26,6 +26,12 @@ public class CastForegroundService extends Service {
     public static final String EXTRA_EPISODE = "cast_episode";
     public static final String EXTRA_DEVICE_NAME = "cast_device_name";
 
+    // 持久化通知状态，供服务被系统杀死后重启恢复
+    private static String savedTitle = null;
+    private static String savedEpisode = null;
+    private static String savedDeviceName = null;
+    private static boolean isCastingActive = false;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -34,11 +40,24 @@ public class CastForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent == null) return START_STICKY;
+        // 系统因通知被删除而杀死服务后，通过 START_STICKY 重启
+        // intent 为 null 表示系统重启，使用保存的状态重新弹出通知
+        if (intent == null) {
+            if (isCastingActive && savedTitle != null) {
+                Notification notification = buildNotification(savedTitle, savedEpisode, savedDeviceName);
+                startForeground(NOTIFICATION_ID, notification);
+                return START_STICKY;
+            }
+            return START_NOT_STICKY;
+        }
 
         String action = intent.getAction();
 
         if (ACTION_STOP.equals(action)) {
+            isCastingActive = false;
+            savedTitle = null;
+            savedEpisode = null;
+            savedDeviceName = null;
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
@@ -52,10 +71,23 @@ public class CastForegroundService extends Service {
         if (episode == null) episode = "";
         if (deviceName == null) deviceName = "";
 
+        // 持久化保存当前通知状态（用于服务重启恢复）
+        savedTitle = title;
+        savedEpisode = episode;
+        savedDeviceName = deviceName;
+        isCastingActive = true;
+
         Notification notification = buildNotification(title, episode, deviceName);
         startForeground(NOTIFICATION_ID, notification);
 
         return START_STICKY;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // 用户划掉最近任务时，不停止服务（投屏仍在继续）
+        // 前台服务通知保持服务存活，无需额外操作
+        super.onTaskRemoved(rootIntent);
     }
 
     @Nullable

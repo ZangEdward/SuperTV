@@ -245,6 +245,8 @@ class UpdateService {
 
   /** --------------------------------------------------------------
    *  4️⃣ 安装 APK
+   *  Android 14+ 专用修复：优先使用 ACTION_INSTALL_PACKAGE，
+   *  并确保 FLAG_GRANT_READ_URI_PERMISSION 正确传递
    * --------------------------------------------------------------- */
   async installApk(fileUri: string): Promise<void> {
     try {
@@ -255,19 +257,37 @@ class UpdateService {
 
       if (Platform.OS === 'android') {
         const contentUri = await FileSystem.getContentUriAsync(fileUri);
-        const flags = 1 | 0x10000000 | 0x04000000;
 
+        // Intent flags:
+        // FLAG_ACTIVITY_NEW_TASK      = 0x10000000
+        // FLAG_GRANT_READ_URI_PERMISSION = 0x00000001
+        // FLAG_ACTIVITY_CLEAR_TOP    = 0x04000000
+        const installFlags = 0x10000000 | 0x00000001 | 0x04000000;
+
+        // Android 14+ (API 34) 优先使用 ACTION_INSTALL_PACKAGE
+        const isAndroid14OrAbove = Platform.Version >= 34;
+        const primaryAction = isAndroid14OrAbove
+          ? 'android.intent.action.INSTALL_PACKAGE'
+          : 'android.intent.action.VIEW';
+
+        // 若 Android 14+ 尝试 ACTION_INSTALL_PACKAGE 失败，再回退到 ACTION_VIEW
         try {
-          await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          await IntentLauncher.startActivityAsync(primaryAction as any, {
             data: contentUri,
             type: ANDROID_MIME_TYPE,
-            flags: flags,
+            flags: installFlags,
           });
+          logger.info(`[Install] APK install intent sent: ${primaryAction}`);
         } catch (launcherError) {
-          await IntentLauncher.startActivityAsync('android.intent.action.INSTALL_PACKAGE', {
+          logger.warn(`[Install] Primary action failed (${primaryAction}), trying fallback`, launcherError);
+          // 尝试另一个 action
+          const fallbackAction = isAndroid14OrAbove
+            ? 'android.intent.action.VIEW'
+            : 'android.intent.action.INSTALL_PACKAGE';
+          await IntentLauncher.startActivityAsync(fallbackAction as any, {
             data: contentUri,
             type: ANDROID_MIME_TYPE,
-            flags: 1,
+            flags: installFlags,
           });
         }
       } else {
