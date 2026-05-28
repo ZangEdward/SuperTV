@@ -16,6 +16,7 @@ import useDetailStore from "@/stores/detailStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Zap } from "lucide-react-native";
 import { SpeedTestService } from "@/services/speedTestService";
+import { parseEpisode } from "@/utils/episode";
 import { StatusBar } from "expo-status-bar";
 
 const formatTime = (milliseconds: number) => {
