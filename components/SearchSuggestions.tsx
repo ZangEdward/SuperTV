@@ -53,8 +53,21 @@ export default function SearchSuggestions({
   }, []);
 
   const fetchSuggestions = useCallback(async (q: string) => {
+    const qLower = q.toLowerCase();
+    const isAlpha = /^[a-z]{2,}$/i.test(qLower.replace(/\s+/g, ''));
+
+    // 1. 拼音输入 → 优先 atianqi API（"gqwy" → "怪奇物语"）
+    let pinyinHits: string[] = [];
+    if (isAlpha) {
+      pinyinHits = await fetchPinyinSuggestions(q);
+      if (pinyinHits.length > 0) {
+        setSuggestions(pinyinHits.map(t => ({ text: t, type: 'pinyin' })));
+        return;
+      }
+    }
+
+    // 2. 非拼音或拼音API无结果 → 后台搜索建议
     try {
-      // 1. 先尝试后台搜索建议
       const result = await api.getSearchSuggestions(q);
       if (Array.isArray(result) && result.length > 0) {
         setSuggestions(result.map(item =>
@@ -64,19 +77,10 @@ export default function SearchSuggestions({
       }
     } catch { /* fall through */ }
 
-    const qLower = q.toLowerCase();
-
-    // 2. if 输入像拼音 → atianqi API 联想（"gqwy" → "怪奇物语"）
-    const isAlpha = /^[a-z]{2,}$/i.test(qLower.replace(/\s+/g, ''));
-    let pinyinHits: string[] = [];
-    if (isAlpha) {
-      pinyinHits = await fetchPinyinSuggestions(q);
-    }
-
-    // 3. 在默认建议池里按文字匹配
+    // 3. 默认建议池文字匹配
     const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
 
-    // 4. 在 SearchDetailPool 里按文字匹配
+    // 4. SearchDetailPool 文字匹配
     const poolHits: string[] = [];
     try {
       const { SearchDetailPool } = require('@/stores/searchStore');
@@ -89,10 +93,10 @@ export default function SearchSuggestions({
       });
     } catch { /* ignore */ }
 
-    // 5. 合并去重（拼音联想 > 建议池 > 历史池）
+    // 5. 合并去重
     const merged: SuggestionItem[] = [];
     const added = new Set<string>();
-    for (const t of [...pinyinHits, ...trendingHits, ...poolHits]) {
+    for (const t of [...trendingHits, ...poolHits]) {
       if (!added.has(t)) { added.add(t); merged.push({ text: t }); }
     }
     setSuggestions(merged.slice(0, 12));

@@ -1,103 +1,109 @@
-import React, { useState } from "react";
+import React, { useCallback } from "react";
 import { View, StyleSheet, Switch, Platform, Pressable } from "react-native";
 import { ThemedText } from "../ThemedText";
-import { SettingsSection } from "./SettingsSection";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import Colors from "@/constants/Colors";
 
-/** TV端可独立聚焦的开关行 */
-function FocusableRow({
-  label,
-  subtitle,
-  value,
-  onToggle,
-}: {
-  label: string;
-  subtitle: string;
-  value: boolean;
-  onToggle: (v: boolean) => void;
-}) {
+interface PlayerSettingsSectionProps {
+  onChanged?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  onPress?: () => void;
+}
+
+export function PlayerSettingsSection({ onChanged, onFocus, onBlur, onPress }: PlayerSettingsSectionProps) {
+  const { adFilterEnabled, setAdFilterEnabled } = useSettingsStore();
   const { deviceType } = useResponsiveLayout();
   const isTV = deviceType === 'tv';
-  const [focused, setFocused] = useState(false);
+  const [isFocused, setIsFocused] = React.useState(false);
+
+  const handleToggle = useCallback((value: boolean) => {
+    setAdFilterEnabled(value);
+    onChanged?.();
+  }, [setAdFilterEnabled, onChanged]);
+
+  const handlePress = useCallback(() => {
+    handleToggle(!adFilterEnabled);
+  }, [adFilterEnabled, handleToggle]);
 
   const content = (
-    <View style={[styles.row, focused && styles.rowFocused]}>
-      <View style={styles.info}>
-        <ThemedText style={styles.label}>{label}</ThemedText>
-        <ThemedText style={styles.subtitle}>{subtitle}</ThemedText>
+    <View style={[styles.container, isTV && isFocused && styles.containerFocused]}>
+      <View style={styles.headerRow}>
+        <View style={styles.info}>
+          <ThemedText style={styles.title}>播放器设置</ThemedText>
+          <ThemedText style={styles.subtitle}>M3U8 广告过滤：自动识别并移除视频流中的广告片段</ThemedText>
+        </View>
+        <Switch
+          value={adFilterEnabled}
+          onValueChange={handleToggle}
+          trackColor={{ false: "#333", true: Colors.dark.primary }}
+          thumbColor={Platform.OS === 'ios' ? undefined : (adFilterEnabled ? "#fff" : "#f4f3f4")}
+        />
       </View>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        trackColor={{ false: "#333", true: Colors.dark.primary }}
-        thumbColor={Platform.OS === 'ios' ? undefined : (value ? "#fff" : "#f4f3f4")}
-      />
     </View>
   );
 
-  if (!isTV) return content;
+  if (!isTV) {
+    return (
+      <View style={[styles.section, styles.sectionPadding]}>
+        {content}
+      </View>
+    );
+  }
 
   return (
     <Pressable
-      style={{ marginTop: 12 }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onPress={() => onToggle(!value)}
+      style={[styles.section, isFocused && styles.sectionFocused]}
+      onFocus={() => { setIsFocused(true); onFocus?.(); }}
+      onBlur={() => { setIsFocused(false); onBlur?.(); }}
+      onPress={handlePress}
     >
       {content}
     </Pressable>
   );
 }
 
-interface PlayerSettingsSectionProps {
-  onChanged?: () => void;
-  onFocus?: () => void;
-}
-
-export function PlayerSettingsSection({ onChanged, onFocus }: PlayerSettingsSectionProps) {
-  const { adFilterEnabled, downloadAdFilterEnabled, setAdFilterEnabled, setDownloadAdFilterEnabled } = useSettingsStore();
-
-  return (
-    <SettingsSection onFocus={onFocus}>
-      <View style={styles.container}>
-        <ThemedText style={styles.title}>播放器设置</ThemedText>
-
-        <FocusableRow
-          label="M3U8 广告过滤"
-          subtitle="自动识别并移除视频流中的广告片段。若设备 CPU 较低出现卡顿建议关闭。"
-          value={adFilterEnabled}
-          onToggle={(v) => { setAdFilterEnabled(v); onChanged?.(); }}
-        />
-
-        <FocusableRow
-          label="下载时过滤广告"
-          subtitle="在视频下载/缓存过程中尝试移除广告。由于较耗 CPU，默认关闭。"
-          value={downloadAdFilterEnabled}
-          onToggle={(v) => { setDownloadAdFilterEnabled(v); onChanged?.(); }}
-        />
-      </View>
-    </SettingsSection>
-  );
-}
-
 const styles = StyleSheet.create({
+  section: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#333",
+    marginBottom: 16,
+  },
+  sectionPadding: {
+    padding: 20,
+  },
+  sectionFocused: {
+    borderColor: Colors.dark.primary,
+  },
   container: {
-    padding: 4,
+    padding: 20,
+    borderRadius: 12,
+  },
+  containerFocused: {
+    backgroundColor: "#007AFF10",
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  info: {
+    flex: 1,
+    marginRight: 12,
   },
   title: {
     fontSize: 18,
     fontWeight: "bold",
-    marginBottom: 16,
     color: 'white',
+    marginBottom: 4,
   },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    padding: 12,
+  subtitle: {
+    fontSize: 12,
+    color: "#888",
+  },
+});
     borderRadius: 8,
   },
   info: {

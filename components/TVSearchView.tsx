@@ -22,12 +22,14 @@ const logger = Logger.withTag('TVSearchView');
 const HISTORY_KEY = "tv_search_history";
 const MAX_HISTORY = 15;
 
-const KEYBOARD_KEYS = [
-  '远程', '删除', 'Q', 'W', 'E', 'R',
-  'T', 'Y', 'U', 'I', 'O', 'P',
-  'A', 'S', 'D', 'F', 'G', 'H',
-  'J', 'K', 'L', 'Z', 'X', 'C',
-  'V', 'B', 'N', 'M', '确', '定',
+// TVBoxOS 式键盘布局：6列，首行功能键各占3列，其余字母每行6个
+const KEYBOARD_ROWS: { key: string; span?: number }[][] = [
+  [{ key: '远程', span: 3 }, { key: '删除', span: 3 }],
+  [{ key: 'Q' }, { key: 'W' }, { key: 'E' }, { key: 'R' }, { key: 'T' }, { key: 'Y' }],
+  [{ key: 'U' }, { key: 'I' }, { key: 'O' }, { key: 'P' }, { key: 'A' }, { key: 'S' }],
+  [{ key: 'D' }, { key: 'F' }, { key: 'G' }, { key: 'H' }, { key: 'J' }, { key: 'K' }],
+  [{ key: 'L' }, { key: 'Z' }, { key: 'X' }, { key: 'C' }, { key: 'V' }, { key: 'B' }],
+  [{ key: 'N' }, { key: 'M' }, { key: '搜索', span: 2 }, { key: '清空', span: 2 }],
 ];
 
 // 搜索建议（取代热词API，使用本应用后端）
@@ -132,8 +134,8 @@ export default function TVSearchView() {
   const onKeyPress = useCallback((key: string) => {
     if (key === '删除') setQuery(p => p.slice(0, -1));
     else if (key === '远程') { /* 远程搜索预留 */ }
-    else if (key === '确定' || key === '确' || key === '定') doSearch();
-    else if (key === 'CLEAR') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
+    else if (key === '搜索') doSearch();
+    else if (key === '清空') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
     else setQuery(p => p + key.toLowerCase());
   }, [doSearch]);
 
@@ -206,28 +208,34 @@ export default function TVSearchView() {
         </View>
       )}
 
-      {/* 键盘 */}
+      {/* 键盘（TVBoxOS 式布局） */}
       <View style={styles.keyboard}>
-        <View style={styles.kbGrid}>
-          {KEYBOARD_KEYS.map((key, i) => {
-            const isFunc = i < 2; const isSearch = key === '确' || key === '定';
-            return (
-              <TouchableOpacity
-                key={`${key}-${i}`}
-                style={[
-                  styles.kbKey,
-                  isFunc && styles.kbFuncKey,
-                  isSearch && styles.kbSearchKey,
-                ]}
-                onPress={() => onKeyPress(key)}
-              >
-                {key === '远程' ? <Text style={[styles.kbKeyText, { fontSize: 11 }]}>远程</Text> :
-                 key === '删除' ? <Delete size={18} color="#ff6b6b" /> :
-                 <Text style={styles.kbKeyText}>{key}</Text>}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {KEYBOARD_ROWS.map((row, ri) => (
+          <View key={ri} style={styles.kbRow}>
+            {row.map((item) => {
+              const span = item.span || 1;
+              const isFunc = item.key === '远程' || item.key === '删除';
+              const isSearch = item.key === '搜索' || item.key === '清空';
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.kbKey,
+                    { width: `${(100 / 6) * span}%` },
+                    isFunc && styles.kbFuncKey,
+                    isSearch && styles.kbSearchKey,
+                  ]}
+                  onPress={() => onKeyPress(item.key)}
+                >
+                  {item.key === '远程' ? <Text style={[styles.kbKeyText, { fontSize: 11 }]}>远程</Text> :
+                   item.key === '删除' ? <Delete size={18} color="#ff6b6b" /> :
+                   item.key === '清空' ? <Text style={styles.kbKeyText}>清空</Text> :
+                   <Text style={styles.kbKeyText}>{item.key}</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       {/* 搜索结果 */}
@@ -286,11 +294,11 @@ const styles = StyleSheet.create({
   wordItem: { paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   wordText: { color: '#ccc', fontSize: 14 },
   keyboard: { paddingHorizontal: 8, marginBottom: 4 },
-  kbGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  kbKey: { width: '16.666%', height: 40, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2a2a2e', borderWidth: 1, borderColor: '#3a3a3e', borderRadius: 6 },
+  kbRow: { flexDirection: 'row', marginBottom: 4, gap: 4 },
+  kbKey: { height: 42, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2a2a2e', borderWidth: 1, borderColor: '#3a3a3e', borderRadius: 8 },
   kbFuncKey: { backgroundColor: '#1e1e22' },
   kbSearchKey: { backgroundColor: Colors.dark.primary, borderColor: Colors.dark.primary },
-  kbKeyText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  kbKeyText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   resultsArea: { flex: 1, paddingHorizontal: 8 },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingBottom: 40 },
