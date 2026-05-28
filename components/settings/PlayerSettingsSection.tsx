@@ -104,19 +104,3 @@ const styles = StyleSheet.create({
     color: "#888",
   },
 });
-    borderRadius: 8,
-  },
-  info: {
-    flex: 1,
-    marginRight: 10,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  subtitle: {
-    fontSize: 12,
-    color: "#888",
-    marginTop: 4,
-  },
-});
