@@ -322,12 +322,35 @@ const useDetailStore = create<DetailState>((set, get) => ({
               return titleMatches(searchTitle, targetTitle);
             });
 
-            // 精确匹配不到→渐进去尾再搜：1 2 3 4 → 1 2 3 → 1 2 → 1
+            // 精确匹配不到→渐进去尾重搜
+            // 1) 有空格时：1 2 3 4 → 123 → 12 → 1
+            // 2) 无空格时：逐步去掉尾部字符
             if (filteredResults.length === 0) {
-              const parts = rawQuery.trim().split(/\s+/);
-              for (let len = parts.length - 1; len >= 1; len--) {
+              const searchTerms: string[] = [];
+              const trimmed = rawQuery.trim();
+
+              // 按空格分词渐进
+              const parts = trimmed.split(/\s+/);
+              if (parts.length > 1) {
+                for (let len = parts.length - 1; len >= 1; len--) {
+                  searchTerms.push(parts.slice(0, len).join('').replace(/\s+/g, ''));
+                }
+              }
+
+              // 无空格或空格渐进无效时，按字符级逐步去掉尾部
+              // "第四季丧失篇" → "第四季丧失" → "第四季丧" → "第四季" → ...
+              const noSpaces = trimmed.replace(/\s+/g, '');
+              if (noSpaces.length > 4) {
+                for (let len = noSpaces.length - 2; len >= Math.max(2, Math.floor(noSpaces.length * 0.4)); len -= 2) {
+                  const suffixRemoved = noSpaces.substring(0, len);
+                  if (!searchTerms.includes(suffixRemoved)) {
+                    searchTerms.push(suffixRemoved);
+                  }
+                }
+              }
+
+              for (const progressive of searchTerms) {
                 if (signal.aborted) break;
-                const progressive = parts.slice(0, len).join('').replace(/\s+/g, '');
                 try {
                   const { results: progResults } = await api.searchVideos(progressive);
                   filteredResults = progResults.filter(r => {

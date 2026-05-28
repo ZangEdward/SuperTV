@@ -331,11 +331,12 @@ export default function PlayScreen() {
     setFuzzyResults([]);
     api.searchVideos(searchTitle).then(res => {
       if (res?.results) {
-        // 去除当前正在找的剧名本身
+        // 去除精确匹配本身，保留关联结果（标题包含搜索词或被搜索词包含）
         const filtered = res.results.filter(r => {
           const rTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
           const qTitle = (searchTitle || "").replace(/\s+/g, '').toLowerCase();
-          return rTitle !== qTitle && !rTitle.includes(qTitle);
+          // 排除完全匹配，保留包含关系的近似结果
+          return rTitle !== qTitle && (rTitle.includes(qTitle) || qTitle.includes(rTitle));
         });
         setFuzzyResults(filtered.slice(0, 20));
       }
