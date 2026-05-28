@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect, useImperativeHandle, forwardRef } from "react";
 import { View, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, BackHandler } from "react-native";
+import { ArrowUpToLine } from "lucide-react-native";
 import { ThemedText } from "@/components/ThemedText";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { getCommonResponsiveStyles } from "@/utils/ResponsiveStyles";
@@ -221,7 +222,7 @@ const CustomScrollView = forwardRef<any, CustomScrollViewProps>(({
           onPress={scrollToTop}
           activeOpacity={0.8}
         >
-          <ThemedText>⬆️</ThemedText>
+          <ArrowUpToLine size={20} color="#fff" />
         </TouchableOpacity>
       )}
     </View>

@@ -351,10 +351,8 @@ const useSearchStore = create<SearchState>((set, get) => ({
       }
 
       // ============ Phase 3: 多策略搜索变体 ============
-      // 借鉴 LunaTV 做法：生成多种搜索变体依次尝试（数字归一化、标点变体、关键词组合等）
       if (get().results.length === 0 && !signal.aborted) {
         const searchVariants = generateSearchVariants(rawTerm);
-        // 跳过第一个（已用完整词搜过）
         for (const variant of searchVariants.slice(1)) {
           if (signal.aborted) break;
           logger.info(`[SEARCH] Variant: "${variant}"`);
@@ -365,6 +363,28 @@ const useSearchStore = create<SearchState>((set, get) => ({
             logger.info(`[SEARCH] Variant "${variant}" found results`);
             break;
           }
+        }
+      }
+
+      // ============ Phase 4: 拼音查询直接搜索 ============
+      // 如果查询是全字母（拼音），直接用原文搜全网，客户端做文字匹配
+      if (get().results.length === 0 && !signal.aborted) {
+        const clean = rawTerm.replace(/\s+/g, '').toLowerCase();
+        if (/^[a-z]{2,}$/.test(clean)) {
+          logger.info(`[PINYIN] Fallback search with "${clean}"`);
+          try {
+            const { results: allRes } = await api.searchVideos(clean);
+            if (allRes.length > 0) {
+              const matched = allRes.filter(r =>
+                (r.title || '').replace(/\s+/g, '').toLowerCase().includes(clean)
+              );
+              if (matched.length > 0) {
+                processAndAddResults(matched);
+                await new Promise(r => setTimeout(r, 100));
+                flushBatch();
+              }
+            }
+          } catch { /* ignore */ }
         }
       }
 

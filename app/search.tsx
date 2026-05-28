@@ -5,6 +5,7 @@ import { ThemedText } from "@/components/ThemedText";
 import VideoCard from "@/components/VideoCard";
 import SearchSuggestions from "@/components/SearchSuggestions";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
+import TVSearchView from "@/components/TVSearchView";
 import { api, SearchResult } from "@/services/api";
 import { Search, QrCode, History, FolderSearch, ArrowDown10, ArrowUp10, ArrowDownUp, X } from "lucide-react-native";
 import { StyledButton } from "@/components/StyledButton";
@@ -367,13 +368,13 @@ export default function SearchScreen() {
     </>
   );
 
+  if (deviceType === 'tv') return <TVSearchView />;
+
   const content = (
     <ThemedView style={[commonStyles.container, dynamicStyles.container]}>
       {renderSearchContent()}
     </ThemedView>
   );
-
-  if (deviceType === 'tv') return content;
 
   const goHome = useCallback(() => {
     router.replace('/');

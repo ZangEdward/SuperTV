@@ -22,6 +22,7 @@ import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { Colors } from "@/constants/Colors";
 import Logger from '@/utils/Logger';
 import MobileTabContainer from "@/components/navigation/MobileTabContainer";
+import FloatingCastButton from "@/components/FloatingCastButton";
 import { NativeModules } from 'react-native'; // 引入原生模块
 
 const logger = Logger.withTag('RootLayout');
@@ -275,6 +276,7 @@ export default function RootLayout() {
                 <Stack.Screen name="favorites" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="+not-found" />
               </Stack>
+              <FloatingCastButton />
             </MobileTabContainer>
           </View>
           <Toast />

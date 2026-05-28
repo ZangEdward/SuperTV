@@ -17,6 +17,23 @@ interface SuggestionItem {
   score?: number;
 }
 
+/** atianqi 拼音联想 API（与 TV 搜索共用） */
+async function fetchPinyinSuggestions(key: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    const json = await res.json();
+    const groupData = json?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
+    return groupData.map((g: any) =>
+      g?.dtReportInfo?.reportData?.keyword_txt || ''
+    ).filter(Boolean).slice(0, 15);
+  } catch {
+    return [];
+  }
+}
+
 export default function SearchSuggestions({
   query,
   isVisible,
@@ -25,23 +42,61 @@ export default function SearchSuggestions({
   maxHeight = 250,
 }: SearchSuggestionsProps) {
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [trending, setTrending] = useState<string[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 挂载时缓存一批默认建议作为匹配池
+  useEffect(() => {
+    api.getSearchSuggestions('').then(res => {
+      if (Array.isArray(res)) setTrending(res.map(r => typeof r === 'string' ? r : r.text));
+    }).catch(() => {});
+  }, []);
 
   const fetchSuggestions = useCallback(async (q: string) => {
     try {
+      // 1. 先尝试后台搜索建议
       const result = await api.getSearchSuggestions(q);
-      if (Array.isArray(result)) {
-        const normalized = result.map(item =>
+      if (Array.isArray(result) && result.length > 0) {
+        setSuggestions(result.map(item =>
           typeof item === 'string' ? { text: item } : item
-        );
-        setSuggestions(normalized);
-      } else {
-        setSuggestions([]);
+        ));
+        return;
       }
-    } catch {
-      setSuggestions([]);
+    } catch { /* fall through */ }
+
+    const qLower = q.toLowerCase();
+
+    // 2. if 输入像拼音 → atianqi API 联想（"gqwy" → "怪奇物语"）
+    const isAlpha = /^[a-z]{2,}$/i.test(qLower.replace(/\s+/g, ''));
+    let pinyinHits: string[] = [];
+    if (isAlpha) {
+      pinyinHits = await fetchPinyinSuggestions(q);
     }
-  }, []);
+
+    // 3. 在默认建议池里按文字匹配
+    const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+
+    // 4. 在 SearchDetailPool 里按文字匹配
+    const poolHits: string[] = [];
+    try {
+      const { SearchDetailPool } = require('@/stores/searchStore');
+      const seen = new Set<string>();
+      SearchDetailPool.forEach((val: any) => {
+        const title = (val?.title || '').trim();
+        if (!title || seen.has(title)) return;
+        seen.add(title);
+        if (title.toLowerCase().includes(qLower)) poolHits.push(title);
+      });
+    } catch { /* ignore */ }
+
+    // 5. 合并去重（拼音联想 > 建议池 > 历史池）
+    const merged: SuggestionItem[] = [];
+    const added = new Set<string>();
+    for (const t of [...pinyinHits, ...trendingHits, ...poolHits]) {
+      if (!added.has(t)) { added.add(t); merged.push({ text: t }); }
+    }
+    setSuggestions(merged.slice(0, 12));
+  }, [trending]);
 
   useEffect(() => {
     if (!query.trim() || !isVisible || query.trim().length < 2) {
