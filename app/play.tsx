@@ -133,7 +133,7 @@ export default function PlayScreen() {
 
   const episodes = useMemo(() => {
     if (!detail || !Array.isArray(detail.episodes)) return [];
-    const list = detail.episodes.map((raw, i) => ({ ...parseEpisode(raw, i), index: i }));
+    const list = detail.episodes.map((raw, i) => ({ ...parseEpisode(raw, i, detail?.episodes_titles?.[i]), index: i }));
     return isReverse ? [...list].reverse() : list;
   }, [detail, isReverse]);
 
