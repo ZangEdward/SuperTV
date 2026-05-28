@@ -118,29 +118,37 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
   setIsFullscreen: (full) => set({ isFullscreen: full }),
 
   setCastingDevice: (device) => {
-    const prevTimer = get()._castSyncTimer;
-    if (prevTimer) clearInterval(prevTimer);
+    try {
+      const prevTimer = get()._castSyncTimer;
+      if (prevTimer) clearInterval(prevTimer);
 
-    if (device) {
-      set({ castingDevice: device, isCasting: true });
-      // 启动同步定时器，缩短为 2 秒，增强同步感
-      const timer = setInterval(() => {
-        get().syncCastProgress();
-      }, 2000);
-      set({ _castSyncTimer: timer });
-      // 立即触发一次同步
-      get().syncCastProgress();
+      if (device) {
+        set({ castingDevice: device, isCasting: true });
+        // 启动同步定时器，缩短为 2 秒，增强同步感
+        const timer = setInterval(() => {
+          get().syncCastProgress();
+        }, 2000);
+        set({ _castSyncTimer: timer });
+        // 立即触发一次同步
+        try { get().syncCastProgress(); } catch (e) {}
 
-      // 启动前台通知
-      const detail = useDetailStore.getState().detail;
-      const episodes = get().episodes;
-      const episodeIndex = get().currentEpisodeIndex;
-      const currentEpisode = episodes[episodeIndex];
-      const title = detail?.title || "正在投屏";
-      const episodeLabel = currentEpisode?.title || (episodeIndex >= 0 ? `第 ${episodeIndex + 1} 集` : "");
-      castNotificationService.start(title, episodeLabel, device.name);
-    } else {
-      set({ castingDevice: null, isCasting: false, _castSyncTimer: undefined });
+        // 启动前台通知（安全包裹，防止原生模块未链接导致闪退）
+        try {
+          const detail = useDetailStore.getState().detail;
+          const episodes = get().episodes || [];
+          const episodeIndex = get().currentEpisodeIndex;
+          const currentEpisode = episodes[episodeIndex];
+          const title = detail?.title || "正在投屏";
+          const episodeLabel = currentEpisode?.title || (episodeIndex >= 0 ? `第 ${episodeIndex + 1} 集` : "");
+          castNotificationService.start(title, episodeLabel, device.name);
+        } catch (notificationError) {
+          logger.warn('[Cast] Notification start failed (non-fatal):', notificationError);
+        }
+      } else {
+        set({ castingDevice: null, isCasting: false, _castSyncTimer: undefined });
+      }
+    } catch (error) {
+      logger.error('[Cast] setCastingDevice error:', error);
     }
   },
 
