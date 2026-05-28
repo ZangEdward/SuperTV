@@ -1,13 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, Alert, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Delete, ChevronLeft, History, ArrowRight } from "lucide-react-native";
+import { Search, Delete, ChevronLeft, History, ArrowRight, QrCode } from "lucide-react-native";
 import { ThemedView } from "@/components/ThemedView";
 import VideoCard from "@/components/VideoCard";
 import { api, SearchResult } from "@/services/api";
 import { Colors } from "@/constants/Colors";
 import VideoLoadingAnimation from "@/components/VideoLoadingAnimation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { RemoteControlModal } from "@/components/RemoteControlModal";
+import { useRemoteControlStore } from "@/stores/remoteControlStore";
 import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('TVSearchView');
@@ -29,11 +31,12 @@ async function fetchPinyinSuggestions(key: string): Promise<string[]> {
 const ALPHA_KEYS = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
                     'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
 const ALPHA_ROWS = [
-  ALPHA_KEYS.slice(0, 6),
-  ALPHA_KEYS.slice(6, 12),
-  ALPHA_KEYS.slice(12, 18),
-  ALPHA_KEYS.slice(18, 24),
-  [...ALPHA_KEYS.slice(24), '退格'],
+  ALPHA_KEYS.slice(0, 5),
+  ALPHA_KEYS.slice(5, 10),
+  ALPHA_KEYS.slice(10, 15),
+  ALPHA_KEYS.slice(15, 20),
+  ALPHA_KEYS.slice(20, 25),
+  [...ALPHA_KEYS.slice(25), '退格'],
 ];
 
 export default function TVSearchView() {
@@ -46,6 +49,7 @@ export default function TVSearchView() {
   const [history, setHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const { showModal: showRemoteModal } = useRemoteControlStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -56,8 +60,21 @@ export default function TVSearchView() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
     debounceRef.current = setTimeout(async () => {
-      const apiSug = await fetchPinyinSuggestions(query);
-      setSuggestions(apiSug);
+      let results: string[] = [];
+      // 1. 尝试 atianqi 拼音联想 API
+      try {
+        results = await fetchPinyinSuggestions(query);
+      } catch (e) { /* ignore */ }
+      // 2. 如果无结果，用本应用搜索建议 API
+      if (results.length === 0) {
+        try {
+          const backendSug = await api.getSearchSuggestions(query);
+          if (Array.isArray(backendSug)) {
+            results = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
+          }
+        } catch (e) { /* ignore */ }
+      }
+      if (results.length > 0) setSuggestions(results);
     }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
@@ -82,11 +99,11 @@ export default function TVSearchView() {
 
   const onKeyPress = useCallback((key: string) => {
     if (key === '退格') setQuery(p => p.slice(0, -1));
-    else if (key === '搜索' || key === '确认') doSearch();
-    else if (key === '远程') { /* 远程搜索预留 */ }
+    else if (key === '搜索') doSearch();
+    else if (key === '远程') showRemoteModal('search');
     else if (key === '清空') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
     else setQuery(p => p + key.toLowerCase());
-  }, [doSearch]);
+  }, [doSearch, showRemoteModal]);
 
   const onWordPress = useCallback((word: string) => {
     setQuery(word); doSearch(word);
@@ -156,7 +173,7 @@ export default function TVSearchView() {
                       onFocus={() => setFocusedKey(key)}
                       onBlur={() => setFocusedKey(null)}
                     >
-                      {isBack ? <Delete size={16} color="#ff6b6b" /> : <Text style={styles.kbKeyText}>{key}</Text>}
+                      {isBack ? <Text style={[styles.kbKeyText, { color: '#ff6b6b' }]}>退格</Text> : <Text style={styles.kbKeyText}>{key}</Text>}
                     </Pressable>
                   );
                 })}
@@ -226,6 +243,7 @@ export default function TVSearchView() {
           ) : null}
         </View>
       </View>
+      <RemoteControlModal />
     </ThemedView>
   );
 }
@@ -245,7 +263,7 @@ const styles = StyleSheet.create({
   funcBtn: { flex: 1, height: 36, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 4 },
   funcText: { color: '#ccc', fontSize: 12 },
   kbArea: { flex: 1 },
-  kbRow: { flexDirection: 'row', gap: 3, marginBottom: 3 },
+  kbRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
   kbKey: { flex: 1, height: 34, borderRadius: 6, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#3a3a3e' },
   kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
   kbKeyFocused: { borderColor: Colors.dark.primary, borderWidth: 2, backgroundColor: '#0a2a0a' },
