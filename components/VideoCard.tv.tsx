@@ -79,19 +79,26 @@ const VideoCard = forwardRef<View, VideoCardProps>(
         longPressTriggered.current = false;
         return;
       }
-      // 跳转到播放页，播放页会自动回退到其他有效源的同进度集
-      const epIdx = episodeIndex !== undefined ? episodeIndex - 1 : 0;
-      router.push({
-        pathname: "/play",
-        params: {
-          source,
-          id,
-          episodeIndex: Math.max(0, epIdx).toString(),
-          title,
-          position: (playTime * 1000).toString(),
-          q: title,
-        },
-      });
+      // 有播放进度(最近播放)→播放页；其他→详情页
+      if (progress !== undefined && progress > 0) {
+        const epIdx = episodeIndex !== undefined ? episodeIndex - 1 : 0;
+        router.push({
+          pathname: "/play",
+          params: {
+            source,
+            id,
+            episodeIndex: Math.max(0, epIdx).toString(),
+            title,
+            position: (playTime * 1000).toString(),
+            q: title,
+          },
+        });
+      } else {
+        router.push({
+          pathname: "/detail",
+          params: { q: title, source, id },
+        });
+      }
     };
 
     const handleLongPress = () => {

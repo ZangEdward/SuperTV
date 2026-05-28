@@ -14,9 +14,11 @@ import { ThemedView } from "@/components/ThemedView";
 import usePlayerStore, { selectCurrentEpisode } from "@/stores/playerStore";
 import useDetailStore from "@/stores/detailStore";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
-import { ArrowLeft, Play, Pause, SkipBack, SkipForward, Zap } from "lucide-react-native";
+import { LogOut, Play, Pause, SkipBack, SkipForward, Zap, ChevronDown, Tv } from "lucide-react-native";
 import { SpeedTestService } from "@/services/speedTestService";
+import { dlnaService, DLNADevice } from "@/services/dlnaService";
 import { parseEpisode } from "@/utils/episode";
+import Toast from "react-native-toast-message";
 import { StatusBar } from "expo-status-bar";
 
 const formatTime = (milliseconds: number) => {
@@ -51,6 +53,7 @@ export default function CastControlScreen() {
   const [barWidth, setBarWidth] = useState(0);
   const [localSeeking, setLocalSeeking] = useState(false);
   const [localSeekRatio, setLocalSeekRatio] = useState(0);
+  const [showDeviceList, setShowDeviceList] = useState(false);
 
   const status = usePlayerStore(state => state.status);
   const currentEpisodeIndex = usePlayerStore(state => state.currentEpisodeIndex);
@@ -109,13 +112,21 @@ export default function CastControlScreen() {
     } catch (e) {
       // ignore
     }
-    // stopCast 会重置投屏状态，导航回上个页面
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/");
-    }
-  }, [stopCast, router]);
+    // 退出投屏后回到播放页，从当前进度继续播放
+    const pos = status?.isLoaded ? status.positionMillis : 0;
+    const epIdx = currentEpisodeIndex >= 0 ? currentEpisodeIndex : 0;
+    router.replace({
+      pathname: "/play",
+      params: {
+        source: detail?.source || '',
+        id: detail?.id?.toString() || '',
+        episodeIndex: epIdx.toString(),
+        title: detail?.title || videoTitle,
+        position: pos.toString(),
+        q: detail?.title || videoTitle,
+      },
+    });
+  }, [stopCast, router, status, currentEpisodeIndex, detail, videoTitle]);
 
   const handlePrevEpisode = useCallback(() => {
     if (hasPrevEpisode) {
@@ -215,34 +226,35 @@ export default function CastControlScreen() {
     <ThemedView style={styles.container}>
       <StatusBar style="light" animated={true} />
 
-      {/* 顶部栏：标题 + 退出投屏 */}
+      {/* 顶部栏：关机图标 + 标题(居中) + 收起↑ */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
-        <TouchableOpacity onPress={handleExitCast} style={styles.backBtn}>
-          <ArrowLeft size={22} color="white" />
+        <TouchableOpacity onPress={handleExitCast} style={styles.iconBtn}>
+          <LogOut size={20} color="#ff4444" />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {videoTitle || "投屏播放"}
           </Text>
-          {currentEpisode && (
-            <Text style={styles.episodeTitle} numberOfLines={1}>
-              {currentEpisode.title}
-            </Text>
-          )}
         </View>
-        <TouchableOpacity onPress={handleExitCast} style={styles.exitCastBtn}>
-          <Text style={styles.exitCastText}>退出投屏</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+          <ChevronDown size={22} color="white" />
         </TouchableOpacity>
       </View>
 
-      {/* 投屏设备信息 */}
+      {/* 投屏设备信息（可点击更换设备） */}
       {castingDevice && (
-        <View style={styles.castInfoBar}>
+        <TouchableOpacity
+          style={styles.castInfoBar}
+          onPress={() => setShowDeviceList(true)}
+          activeOpacity={0.7}
+        >
           <View style={styles.castInfoDot} />
           <Text style={styles.castInfoText}>
-            正在投屏至：{castingDevice.name}
+            正在投屏到 {castingDevice.name}
           </Text>
-        </View>
+          <Text style={styles.changeDeviceText}> 更换投屏设备</Text>
+          <Tv size={14} color="#00bb5e" style={{ marginLeft: 6 }} />
+        </TouchableOpacity>
       )}
 
       {/* 主控制区域 */}
@@ -326,15 +338,15 @@ export default function CastControlScreen() {
 
         {activeTab === 'episodes' && (
           <ScrollView style={styles.listScroll} showsVerticalScrollIndicator={false}>
-            <View style={styles.episodeGrid}>
-              <TouchableOpacity
-                style={styles.reverseBtn}
-                onPress={() => setIsReverse(prev => !prev)}
-              >
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeaderText}>当前正在播放</Text>
+              <TouchableOpacity onPress={() => setIsReverse(prev => !prev)}>
                 <Text style={styles.reverseBtnText}>
                   {isReverse ? '正序' : '倒序'}
                 </Text>
               </TouchableOpacity>
+            </View>
+            <View style={styles.episodeGrid}>
               {sortedEpisodeList.map((ep) => (
                 <TouchableOpacity
                   key={ep.index}
@@ -422,7 +434,96 @@ export default function CastControlScreen() {
           </ScrollView>
         )}
       </View>
+
+      {/* 更换投屏设备弹窗 */}
+      {showDeviceList && (
+        <View style={styles.deviceOverlay}>
+          <TouchableOpacity
+            style={styles.deviceOverlayBg}
+            onPress={() => setShowDeviceList(false)}
+          />
+          <View style={styles.devicePanel}>
+            <Text style={styles.devicePanelTitle}>选择投屏设备</Text>
+            <DeviceSelector
+              onSelect={() => setShowDeviceList(false)}
+              onClose={() => setShowDeviceList(false)}
+            />
+          </View>
+        </View>
+      )}
     </ThemedView>
+  );
+}
+
+/** 内联设备选择器（复用 CastModal 逻辑） */
+function DeviceSelector({ onSelect, onClose }: { onSelect: () => void; onClose: () => void }) {
+  const [devices, setDevices] = useState<DLNADevice[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimerRef = useRef<any>(null);
+  const { episodes, currentEpisodeIndex, pause, setCastingDevice, castingDevice, stopCast } = usePlayerStore();
+
+  const startSearch = useCallback(async () => {
+    setDevices([]);
+    dlnaService.receivedKeys.clear();
+    dlnaService.clearDevices?.();
+    setIsSearching(true);
+    dlnaService.searchDevices((found) => setDevices([...found]));
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setIsSearching(false);
+      dlnaService.stopSearch();
+    }, 15000);
+  }, []);
+
+  useEffect(() => {
+    startSearch();
+    return () => {
+      dlnaService.stopSearch();
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [startSearch]);
+
+  const handleCast = async (device: DLNADevice) => {
+    try {
+      await dlnaService.castVideo(device, episodes[currentEpisodeIndex]?.url || '', episodes[currentEpisodeIndex]?.title || '');
+      setCastingDevice(device);
+      onSelect();
+      Toast.show({ type: 'success', text1: '已更换投屏设备', text2: `正在使用 ${device.name}` });
+    } catch {
+      Toast.show({ type: 'error', text1: '投屏失败', text2: '请重试' });
+    }
+  };
+
+  return (
+    <View>
+      {castingDevice && (
+        <TouchableOpacity style={styles.deviceConnectedRow} onPress={async () => {
+          await stopCast();
+          setCastingDevice(null);
+          startSearch();
+        }}>
+          <Text style={{ color: '#ff4444', fontSize: 13 }}>断开当前连接：{castingDevice.name}</Text>
+        </TouchableOpacity>
+      )}
+      {isSearching && devices.length === 0 && (
+        <View style={styles.deviceLoadingRow}>
+          <ActivityIndicator size="small" color="#00bb5e" />
+          <Text style={{ color: '#888', marginLeft: 8, fontSize: 13 }}>正在搜索设备...</Text>
+        </View>
+      )}
+      {devices.map((d) => (
+        <TouchableOpacity key={d.id} style={styles.deviceRow} onPress={() => handleCast(d)}>
+          <Tv size={20} color="#00bb5e" />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={{ color: '#fff', fontSize: 14 }}>{d.name}</Text>
+            <Text style={{ color: '#666', fontSize: 11 }}>{d.host}</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+      <TouchableOpacity style={styles.deviceCloseRow} onPress={onClose}>
+        <Text style={{ color: '#888', fontSize: 13 }}>取消</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -438,39 +539,23 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: "#151718",
   },
-  backBtn: {
-    padding: 4,
-    marginRight: 8,
+  iconBtn: {
+    padding: 8,
   },
   headerTitleContainer: {
     flex: 1,
+    alignItems: "center",
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "bold",
-    color: "#00bb5e",
-  },
-  episodeTitle: {
-    fontSize: 12,
-    color: "#888",
-    marginTop: 2,
-  },
-  exitCastBtn: {
-    backgroundColor: "#ff4444",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
-  },
-  exitCastText: {
-    color: "white",
-    fontSize: 13,
-    fontWeight: "700",
+    color: "#fff",
   },
   castInfoBar: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 10,
     backgroundColor: "#1a2a1a",
   },
   castInfoDot: {
@@ -481,8 +566,14 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   castInfoText: {
-    color: "#aaa",
+    color: "#ccc",
+    fontSize: 13,
+  },
+  changeDeviceText: {
+    color: "#00bb5e",
     fontSize: 12,
+    textDecorationLine: "underline",
+    marginLeft: 4,
   },
   controlSection: {
     flex: 1,
@@ -714,5 +805,63 @@ const styles = StyleSheet.create({
     color: "#555",
     marginTop: 2,
     textAlign: "center",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  sectionHeaderText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  // 更换设备弹窗
+  deviceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+  },
+  deviceOverlayBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  devicePanel: {
+    backgroundColor: "#1c1c1e",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    maxHeight: "60%",
+  },
+  devicePanelTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
+  deviceConnectedRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2a2a",
+    marginBottom: 8,
+  },
+  deviceLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 20,
+    justifyContent: "center",
+  },
+  deviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2a2a",
+  },
+  deviceCloseRow: {
+    alignItems: "center",
+    paddingVertical: 14,
+    marginTop: 8,
   },
 });

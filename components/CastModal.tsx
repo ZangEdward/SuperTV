@@ -171,33 +171,30 @@ export const CastModal: React.FC = () => {
 
   return (
     <Modal visible={showCastModal} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalContainer}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={styles.modalBg} onPress={onClose} />
         <View style={styles.modalContent}>
 
-          {/* 标题 + 刷新按钮 */}
-          <View style={styles.header}>
+          {/* 标题行 + 刷新 */}
+          <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>选择投屏设备</Text>
-            <TouchableOpacity onPress={startSearch} disabled={isSearching}>
-              <RefreshCw size={20} color={isSearching ? "#666" : "white"} />
+            <TouchableOpacity onPress={startSearch} disabled={isSearching} style={styles.refreshBtn}>
+              <RefreshCw size={18} color={isSearching ? "#555" : "#00bb5e"} />
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.tipText}>
-            请确认电视和手机在同一 WiFi 网络下，且电视已开启 DLNA/投屏功能
-          </Text>
+          <Text style={styles.tipText}>请确保手机和电视在同一 WiFi 网络</Text>
 
-          {/* ⭐ 已投屏状态 */}
+          {/* 已连接状态 */}
           {castingDevice && (
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ color: '#0f0', marginBottom: 10 }}>
-                当前已连接：{castingDevice.name}
-              </Text>
-
-              <StyledButton
-                text="断开投屏"
-                onPress={handleStopCast}
-                style={{ backgroundColor: '#aa0000' }}
-              />
+            <View style={styles.connectedSection}>
+              <View style={styles.connectedRow}>
+                <Tv size={18} color="#00bb5e" />
+                <Text style={styles.connectedText}>{castingDevice.name}</Text>
+              </View>
+              <TouchableOpacity style={styles.disconnectBtn} onPress={handleStopCast}>
+                <Text style={styles.disconnectText}>断开连接</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -209,11 +206,13 @@ export const CastModal: React.FC = () => {
             </View>
           )}
 
-          {/* 搜索结束但无设备 */}
+          {/* 无设备 */}
           {!isSearching && devices.length === 0 && !castingDevice && (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>未找到可用设备</Text>
-              <StyledButton text="重新搜索" onPress={startSearch} style={{ marginTop: 20 }} />
+              <TouchableOpacity style={styles.retryBtn} onPress={startSearch}>
+                <Text style={styles.retryBtnText}>重新搜索</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -221,9 +220,12 @@ export const CastModal: React.FC = () => {
           <FlatList
             data={devices}
             keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.deviceList}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.deviceItem} onPress={() => onCast(item)}>
-                <Tv color="#00bb5e" size={24} />
+                <View style={styles.deviceIconWrap}>
+                  <Tv color="#00bb5e" size={22} />
+                </View>
                 <View style={styles.deviceInfo}>
                   <Text style={styles.deviceName}>{item.name}</Text>
                   <Text style={styles.deviceHost}>{item.host}</Text>
@@ -232,7 +234,9 @@ export const CastModal: React.FC = () => {
             )}
           />
 
-          <StyledButton text="取消" onPress={onClose} variant="ghost" style={styles.closeButton} />
+          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <Text style={styles.cancelText}>取消</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -240,9 +244,133 @@ export const CastModal: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalContent: {
+    backgroundColor: "#1c1c1e",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: "75%",
+  },
+  modalHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  refreshBtn: {
+    padding: 6,
+  },
+  tipText: {
+    color: "#666",
+    fontSize: 12,
+    marginBottom: 16,
+  },
+  connectedSection: {
+    backgroundColor: "#0a2a0a",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  connectedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  connectedText: {
+    color: "#00bb5e",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  disconnectBtn: {
+    backgroundColor: "#aa0000",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  disconnectText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  loadingContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  loadingText: {
+    color: "#888",
+    fontSize: 14,
+    marginTop: 12,
+  },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: "#2a2a2a",
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  retryBtnText: {
+    color: "#00bb5e",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  deviceList: {
+    paddingBottom: 8,
+  },
+  deviceItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2a2a",
+  },
+  deviceIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#0a2a0a",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  deviceInfo: {
+    flex: 1,
+  },
+  deviceName: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  deviceHost: {
+    color: "#555",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  cancelBtn: {
+    alignItems: "center",
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  cancelText: {
+    color: "#888",
+    fontSize: 14,
+  },
     justifyContent: "flex-end",
     backgroundColor: "transparent",
   },
