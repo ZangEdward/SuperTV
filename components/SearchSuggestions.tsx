@@ -29,8 +29,6 @@ export default function SearchSuggestions({
 
   const fetchSuggestions = useCallback(async (q: string) => {
     try {
-      // 假设 api.getSearchSuggestions 返回 string[] 或者 SuggestionItem[]
-      // 这里统一处理为 SuggestionItem[] 以避免在渲染时将对象传给 Text
       const result = await api.getSearchSuggestions(q);
       if (Array.isArray(result)) {
         const normalized = result.map(item =>
@@ -76,7 +74,9 @@ export default function SearchSuggestions({
               onSelect(suggestion.text);
             }}
           >
-            <Search size={14} color="#888" style={{ marginRight: 10 }} />
+            <View style={styles.iconWrapper}>
+                <Search size={14} color="#00bb5e" />
+            </View>
             <Text numberOfLines={1} style={styles.text}>
               {suggestion.text}
             </Text>
@@ -94,23 +94,34 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    backgroundColor: "#1a1a2e",
-    borderRadius: 8,
+    backgroundColor: "#151718",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#333",
+    borderColor: "#222",
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#222",
+    borderBottomColor: "#1f1f1f",
+  },
+  iconWrapper: {
+    marginRight: 12,
+    padding: 6,
+    backgroundColor: 'rgba(0, 187, 94, 0.1)',
+    borderRadius: 6,
   },
   text: {
-    color: "#ccc",
-    fontSize: 14,
+    color: "#e1e1e1",
+    fontSize: 15,
     flex: 1,
   },
 });

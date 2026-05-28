@@ -154,11 +154,24 @@ export default function CastControlScreen() {
   const formatPosition = formatTime(positionMillis);
 
   const videoTitle = detail?.title || "";
+
+  // 确保集数数据可用
   const episodeList = React.useMemo(() => {
-    if (!episodes || episodes.length === 0) return [];
-    const list = episodes.map((ep, i) => ({ ...ep, index: i }));
-    return isReverse ? [...list].reverse() : list;
-  }, [episodes, isReverse]);
+    // 优先从 store 获取
+    const storeEpisodes = usePlayerStore.getState().episodes;
+    if (storeEpisodes && storeEpisodes.length > 0) {
+      return storeEpisodes.map((ep, i) => ({ ...ep, index: i }));
+    }
+    // 回退到 detail 中的数据
+    if (detail?.episodes && Array.isArray(detail.episodes)) {
+      return detail.episodes.map((raw, i) => ({ ...parseEpisode(raw, i), index: i }));
+    }
+    return [];
+  }, [episodes, detail, isReverse]);
+
+  const sortedEpisodeList = React.useMemo(() => {
+    return isReverse ? [...episodeList].reverse() : episodeList;
+  }, [episodeList, isReverse]);
 
   // 点击播放集数
   const handleEpisodePress = useCallback(
@@ -321,7 +334,7 @@ export default function CastControlScreen() {
                   {isReverse ? '正序' : '倒序'}
                 </Text>
               </TouchableOpacity>
-              {episodeList.map((ep) => (
+              {sortedEpisodeList.map((ep) => (
                 <TouchableOpacity
                   key={ep.index}
                   style={[

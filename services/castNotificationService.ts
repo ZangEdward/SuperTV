@@ -100,18 +100,22 @@ class CastNotificationService {
    */
   private startHeartbeat() {
     this.stopHeartbeat();
-    this.heartbeatTimer = setInterval(() => {
+    this.heartbeatTimer = setInterval(async () => {
       if (!this.isActive || !CastNotificationModule) return;
 
-      // 这里的重新调用会由 CastForegroundService 的 onStartCommand 处理，
-      // 如果通知被移除，会通过更新或重启服务机制重新创建通知
-      CastNotificationModule.updateCastNotification(
-        this.currentTitle,
-        this.currentEpisode,
-        this.currentDeviceName
-      ).catch(() => {
-        // 心跳失败不报错
-      });
+      try {
+        await CastNotificationModule.updateCastNotification(
+          this.currentTitle,
+          this.currentEpisode,
+          this.currentDeviceName
+        );
+      } catch (e) {
+        CastNotificationModule.startCastNotification(
+          this.currentTitle,
+          this.currentEpisode,
+          this.currentDeviceName
+        ).catch(() => {});
+      }
     }, this.HEARTBEAT_INTERVAL);
   }
 

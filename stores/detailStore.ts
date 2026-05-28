@@ -164,16 +164,31 @@ const useDetailStore = create<DetailState>((set, get) => ({
       const getCoreKey = (t: string) => (t || "").trim().replace(/\[.*?\]|【.*?】/g, '').replace(/\s+/g, '').toLowerCase();
       const currentCore = getCoreKey(q);
 
-      // [资料源宽容匹配]：如果是资料源进入，匹配度可以放得更开，强制无视空格
+      // [渐进式搜索] 核心逻辑：从尾部空格开始，逐级截断进行匹配
+      const getProgressiveSearchTitles = (title: string): string[] => {
+        const results: string[] = [title];
+        let current = title;
+        // 查找最后一个空格的位置
+        while (current.includes(' ')) {
+           const lastSpaceIndex = current.lastIndexOf(' ');
+           if (lastSpaceIndex === -1) break;
+           current = current.substring(0, lastSpaceIndex).trim();
+           results.push(current);
+        }
+        return results;
+      };
+
+      const searchVariants = getProgressiveSearchTitles(q);
+
+      // [资料源宽容匹配]：匹配度可以放得更开，强制无视空格
       const strictlyMatchedResults = results.filter(r => {
           const targetTitle = (r.title || "").replace(/\s+/g, '').toLowerCase();
           const targetCore = getCoreKey(r.title);
-          const searchCore = q.replace(/\s+/g, '').toLowerCase();
 
-          // 匹配条件：只要标题包含核心词，或者核心词包含标题
-          return targetCore.includes(currentCore) ||
-                 currentCore.includes(targetCore) ||
-                 targetTitle.includes(searchCore);
+          return searchVariants.some(variant => {
+             const variantCore = getCoreKey(variant);
+             return targetCore.includes(variantCore) || variantCore.includes(targetCore);
+          }) || targetTitle.includes(q.replace(/\s+/g, '').toLowerCase());
       });
 
       if (strictlyMatchedResults.length === 0) {
