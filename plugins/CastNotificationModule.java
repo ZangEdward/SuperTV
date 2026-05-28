@@ -78,4 +78,23 @@ public class CastNotificationModule extends ReactContextBaseJavaModule {
         }
         promise.resolve(true);
     }
+
+    @ReactMethod
+    public void consumeNotificationNavigation(Promise promise) {
+        try {
+            Intent launchIntent = getReactApplicationContext().getCurrentActivity() != null
+                ? getReactApplicationContext().getCurrentActivity().getIntent()
+                : null;
+            if (launchIntent != null && launchIntent.hasExtra("navigateTo")) {
+                String navTarget = launchIntent.getStringExtra("navigateTo");
+                // 消费掉，防止重复导航
+                launchIntent.removeExtra("navigateTo");
+                promise.resolve(navTarget);
+            } else {
+                promise.resolve("");
+            }
+        } catch (Exception e) {
+            promise.resolve("");
+        }
+    }
 }

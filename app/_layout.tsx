@@ -5,8 +5,8 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useState } from "react";
-import { Platform, View, StyleSheet, useColorScheme, PermissionsAndroid } from "react-native";
+import { useEffect, useState, useRef } from "react";
+import { Platform, View, StyleSheet, useColorScheme, PermissionsAndroid, AppState } from "react-native";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -198,6 +198,36 @@ export default function RootLayout() {
       stopServer();
     }
   }, [remoteInputEnabled, startServer, stopServer, responsiveConfig.deviceType]);
+
+  // 点击投屏通知 → 跳转投屏控制页
+  useEffect(() => {
+    const CastNotificationModule = (NativeModules as any).CastNotificationModule;
+    if (!CastNotificationModule) return;
+
+    const checkNavigation = async () => {
+      try {
+        const navTarget = await CastNotificationModule.consumeNotificationNavigation();
+        if (navTarget === 'cast-control') {
+          const { router } = await import('expo-router');
+          router.replace('/cast-control');
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    // 初始检查
+    checkNavigation();
+
+    // 前台切换时检查
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        checkNavigation();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   if (!loaded || !appIsReady) {
     return <View style={{ flex: 1, backgroundColor: DARK_BG }} />;

@@ -247,7 +247,15 @@ const usePlayerStore = create<PlayerState>((set, get) => ({
     const perfStart = performance.now();
     logger.info(`[PERF] PlayerStore.loadVideo START - source: ${source}, id: ${id}, title: ${title}`);
 
-    let detail = useDetailStore.getState().detail;
+    // [关键修复] 如果切换了视频（title 不同），先清除 detailStore 缓存防串
+    const existingDetail = useDetailStore.getState().detail;
+    const isDifferentVideo = existingDetail && existingDetail.title && title && existingDetail.title !== title;
+    if (isDifferentVideo) {
+      logger.info(`[CLEANUP] Switching from "${existingDetail.title}" to "${title}", clearing stale detail`);
+      useDetailStore.setState({ detail: null, searchResults: [], sources: [] });
+    }
+
+    let detail = isDifferentVideo ? null : existingDetail;
     let episodes: string[] = [];
 
     if (fileUri) {

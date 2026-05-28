@@ -10,9 +10,9 @@ import Logger from '@/utils/Logger';
 
 const logger = Logger.withTag('CastModal');
 
-/** 请求 DLNA 搜索所需的权限 */
-async function requestDlnaPermissions() {
-  if (Platform.OS !== 'android') return true;
+/** 请求 DLNA 搜索所需的权限，返回 'granted' | 'denied' | 'unavailable' */
+async function requestDlnaPermissions(): Promise<'granted' | 'denied' | 'unavailable'> {
+  if (Platform.OS !== 'android') return 'granted';
 
   try {
     const apiLevel = Platform.Version as number;
@@ -24,21 +24,25 @@ async function requestDlnaPermissions() {
         PERM_NEARBY as any,
         PERM_LOCATION,
       ]);
-      return (
-        granted[PERM_NEARBY] === PermissionsAndroid.RESULTS.GRANTED ||
-        granted[PERM_LOCATION] === PermissionsAndroid.RESULTS.GRANTED
-      );
+      const nearby = granted[PERM_NEARBY];
+      const location = granted[PERM_LOCATION];
+      if (nearby === PermissionsAndroid.RESULTS.GRANTED || location === PermissionsAndroid.RESULTS.GRANTED) {
+        return 'granted';
+      }
+      // 用户点了"不再询问"则返回 denied，否则返回 denied 但可再次请求
+      return nearby === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN || location === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+        ? 'denied' : 'denied';
     }
 
     if (apiLevel >= 29) {
       const granted = await PermissionsAndroid.request(PERM_LOCATION);
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      return granted === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied';
     }
 
-    return true;
+    return 'granted';
   } catch (err) {
     logger.warn('[Cast] Permission request error:', err);
-    return false;
+    return 'unavailable';
   }
 }
 
@@ -58,16 +62,21 @@ export const CastModal: React.FC = () => {
   const { showCastModal, setShowCastModal, episodes, currentEpisodeIndex, pause, setCastingDevice, castingDevice, stopCast } = usePlayerStore();
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const searchTimerRef = useRef<any>(null);
+  const mountedRef = useRef(false);
 
   /** 开始搜索 */
   const startSearch = useCallback(async () => {
     setDevices([]);
+    setPermissionDenied(false);
     dlnaService.receivedKeys.clear();
     dlnaService.clearDevices?.();
 
     const hasPermission = await requestDlnaPermissions();
-    if (!hasPermission) {
+    if (hasPermission !== 'granted') {
+      setPermissionDenied(true);
+      setIsSearching(false);
       Toast.show({
         type: 'error',
         text1: '权限不足',
@@ -172,7 +181,7 @@ export const CastModal: React.FC = () => {
   return (
     <Modal visible={showCastModal} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
-        <TouchableOpacity style={styles.modalBg} onPress={onClose} />
+        <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={onClose} />
         <View style={styles.modalContent}>
 
           {/* 标题行 + 刷新 */}
@@ -198,8 +207,18 @@ export const CastModal: React.FC = () => {
             </View>
           )}
 
+          {/* 权限被拒 */}
+          {permissionDenied && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.permissionDeniedText}>未授予附近设备权限</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={startSearch}>
+                <Text style={styles.retryBtnText}>重新申请权限</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* 搜索中 */}
-          {isSearching && devices.length === 0 && (
+          {!permissionDenied && isSearching && devices.length === 0 && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#00bb5e" />
               <Text style={styles.loadingText}>正在搜索设备...</Text>
@@ -207,7 +226,7 @@ export const CastModal: React.FC = () => {
           )}
 
           {/* 无设备 */}
-          {!isSearching && devices.length === 0 && !castingDevice && (
+          {!permissionDenied && !isSearching && devices.length === 0 && !castingDevice && (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>未找到可用设备</Text>
               <TouchableOpacity style={styles.retryBtn} onPress={startSearch}>
@@ -317,6 +336,12 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 14,
     marginTop: 12,
+  },
+  permissionDeniedText: {
+    color: "#ff6b6b",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 8,
   },
   retryBtn: {
     marginTop: 16,

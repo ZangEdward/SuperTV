@@ -252,7 +252,7 @@ export default function CastControlScreen() {
           <Text style={styles.castInfoText}>
             正在投屏到 {castingDevice.name}
           </Text>
-          <Text style={styles.changeDeviceText}> 更换投屏设备</Text>
+          <Text style={styles.changeDeviceText}> 更换</Text>
           <Tv size={14} color="#00bb5e" style={{ marginLeft: 6 }} />
         </TouchableOpacity>
       )}
@@ -459,25 +459,43 @@ export default function CastControlScreen() {
 function DeviceSelector({ onSelect, onClose }: { onSelect: () => void; onClose: () => void }) {
   const [devices, setDevices] = useState<DLNADevice[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [permDenied, setPermDenied] = useState(false);
   const searchTimerRef = useRef<any>(null);
+  const mountedRef = useRef(true);
   const { episodes, currentEpisodeIndex, pause, setCastingDevice, castingDevice, stopCast } = usePlayerStore();
 
   const startSearch = useCallback(async () => {
     setDevices([]);
+    setPermDenied(false);
     dlnaService.receivedKeys.clear();
     dlnaService.clearDevices?.();
+
+    const permResult = await requestDlnaPermissions();
+    if (!mountedRef.current) return;
+    if (permResult !== 'granted') {
+      setPermDenied(true);
+      setIsSearching(false);
+      return;
+    }
+
     setIsSearching(true);
-    dlnaService.searchDevices((found) => setDevices([...found]));
+    dlnaService.searchDevices((found) => {
+      if (mountedRef.current) setDevices([...found]);
+    });
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
-      setIsSearching(false);
-      dlnaService.stopSearch();
+      if (mountedRef.current) {
+        setIsSearching(false);
+        dlnaService.stopSearch();
+      }
     }, 15000);
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     startSearch();
     return () => {
+      mountedRef.current = false;
       dlnaService.stopSearch();
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
@@ -486,6 +504,7 @@ function DeviceSelector({ onSelect, onClose }: { onSelect: () => void; onClose: 
   const handleCast = async (device: DLNADevice) => {
     try {
       await dlnaService.castVideo(device, episodes[currentEpisodeIndex]?.url || '', episodes[currentEpisodeIndex]?.title || '');
+      if (!mountedRef.current) return;
       setCastingDevice(device);
       onSelect();
       Toast.show({ type: 'success', text1: '已更换投屏设备', text2: `正在使用 ${device.name}` });
@@ -496,6 +515,14 @@ function DeviceSelector({ onSelect, onClose }: { onSelect: () => void; onClose: 
 
   return (
     <View>
+      {permDenied && (
+        <View style={styles.deviceLoadingRow}>
+          <Text style={{ color: '#ff6b6b', fontSize: 13, textAlign: 'center' }}>未获取附近设备权限</Text>
+          <TouchableOpacity style={{ marginTop: 12 }} onPress={startSearch}>
+            <Text style={{ color: '#00bb5e', fontSize: 13, textAlign: 'center' }}>重新申请权限</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {castingDevice && (
         <TouchableOpacity style={styles.deviceConnectedRow} onPress={async () => {
           await stopCast();
