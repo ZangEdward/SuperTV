@@ -192,7 +192,7 @@ export default function TVSearchView() {
               <Text style={styles.funcText}>清空</Text>
             </Pressable>
           </View>
-          <View style={styles.kbArea}>
+          <View style={styles.kbArea} onStartShouldSetResponder={() => true}>
             {ALPHA_ROWS.map((row, ri) => (
               <View key={ri} style={styles.kbRow}>
                 {row.map((key) => {
@@ -201,9 +201,16 @@ export default function TVSearchView() {
                   return (
                     <Pressable
                       key={key}
+                      focusable={true}
                       style={[styles.kbKey, isBack && styles.kbBackKey, isFocused && styles.kbKeyFocused]}
-                      onPress={() => onKeyPress(key)}
-                      onFocus={() => setFocusedKey(key)}
+                      onPress={() => {
+                        logger.info(`[TVSearch] 键盘按键点击事件触发: ${key}`);
+                        onKeyPress(key);
+                      }}
+                      onFocus={() => {
+                        logger.info(`[TVSearch] 焦点切换到: ${key}`);
+                        setFocusedKey(key);
+                      }}
                       onBlur={() => setFocusedKey(null)}
                     >
                       {isBack ? <Text style={[styles.kbKeyText, { color: '#ff6b6b' }]}>退格</Text> : <Text style={styles.kbKeyText}>{key}</Text>}
