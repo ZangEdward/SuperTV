@@ -209,15 +209,11 @@ export default function SearchScreen() {
   const renderHistory = () => (
     <View style={dynamicStyles.historyContainer}>
       <View style={dynamicStyles.sectionHeader}>
+        {/* 标题 */}
         <View style={dynamicStyles.sectionTitleRow}>
           <History size={18} color="#ccc" style={{ marginRight: 8 }} />
           <ThemedText style={dynamicStyles.sectionTitle}>搜索历史</ThemedText>
         </View>
-        {history.length > 0 && (
-          <TouchableOpacity onPress={clearHistory} style={dynamicStyles.clearBtn}>
-            <ThemedText style={dynamicStyles.clearText}>清空</ThemedText>
-          </TouchableOpacity>
-        )}
       </View>
       {history.length === 0 ? (
         <View style={dynamicStyles.emptyHistory}>
@@ -226,13 +222,6 @@ export default function SearchScreen() {
         </View>
       ) : (
         <View style={dynamicStyles.historyList}>
-          {/* 清空历史按钮 — 放在第一个历史搜索位置 */}
-          <TouchableOpacity
-            style={dynamicStyles.clearHistoryPill}
-            onPress={clearHistory}
-          >
-            <ThemedText style={dynamicStyles.clearHistoryText}>清空历史搜索</ThemedText>
-          </TouchableOpacity>
           {history.map((item, idx) => (
             <View key={idx} style={dynamicStyles.historyPillWrapper}>
               <TouchableOpacity
