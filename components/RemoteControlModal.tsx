@@ -9,6 +9,20 @@ import { StyledButton } from "./StyledButton";
 export const RemoteControlModal: React.FC = () => {
   const { isModalVisible, hideModal, serverUrl, error } = useRemoteControlStore();
 
+  React.useEffect(() => {
+    const handleBack = () => {
+      if (isModalVisible) {
+        hideModal();
+        return true;
+      }
+      return false;
+    };
+
+    // 简单模拟对 Android 返回键的监听 (如果应用层面有处理，优先使用应用的处理)
+    // 实际上 React Native Modal 本身支持 onRequestClose
+    return undefined;
+  }, [isModalVisible, hideModal]);
+
   return (
     <Modal animationType="fade" transparent={true} visible={isModalVisible} onRequestClose={hideModal}>
       <View style={styles.modalContainer}>

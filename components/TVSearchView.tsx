@@ -63,39 +63,49 @@ export default function TVSearchView() {
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
   }, []);
 
-  // 输入时实时联想（优先热词匹配，50ms 极速响应）
+  // 输入时实时联想（TVBoxOS 逻辑：只要输入拼音，立即联想，不设长度限制）
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.length < 2) { setSuggestions([]); return; }
+
+    // 逻辑修正：如果 query 为空，则展示热词推荐
+    if (!query) {
+      setSuggestions([]);
+      return;
+    }
+
     debounceRef.current = setTimeout(async () => {
       const q = query.trim();
-      if (q.length < 2) { setSuggestions([]); return; }
 
-      // 1. 先在热词池中按文字匹配
-      const qLower = q.toLowerCase();
-      const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
-
-      // 2. 拼音联想 (gqwy -> 怪奇物语)
+      // 1. 尝试云端拼音联想（核心逻辑：TVBoxOS 允许单字母触发）
       let pinyinHits: string[] = [];
-      if (/^[a-zA-Z]{2,}$/.test(q)) {
-        try { pinyinHits = await fetchPinyinSuggestions(q); } catch { /* ignore */ }
+      try {
+        pinyinHits = await fetchPinyinSuggestions(q);
+      } catch (e) {
+        logger.error('Pinyin API Error', e);
       }
 
-      // 3. 搜索建议 API (仅在无拼音结果时才调用)
+      // 2. 只有在没有拼音结果时，才使用本地热词进行兜底匹配
+      const qLower = q.toLowerCase();
+      const trendingHits = pinyinHits.length === 0
+        ? trending.filter(t => t.toLowerCase().includes(qLower))
+        : [];
+
+      // 3. 搜索建议 API (进一步兜底)
       let backendHits: string[] = [];
-      if (pinyinHits.length === 0) {
+      if (pinyinHits.length === 0 && trendingHits.length === 0) {
         try {
           const backendSug = await api.getSearchSuggestions(q);
           if (Array.isArray(backendSug)) {
             backendHits = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) { logger.error('Backend Suggestion Error', e); }
       }
 
-      // 4. 合并去重（热词优先）
-      const merged = new Set<string>([...trendingHits, ...pinyinHits, ...backendHits]);
+      // 4. 合并去重并展示
+      const merged = new Set<string>([...pinyinHits, ...trendingHits, ...backendHits]);
       setSuggestions(Array.from(merged).slice(0, 15));
-    }, 200);
+    }, 150); // 调快响应速度
+
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, trending]);
 
@@ -127,7 +137,11 @@ export default function TVSearchView() {
     else if (key === '搜索') doSearch();
     else if (key === '远程') showRemoteModal('search');
     else if (key === '清空') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
-    else setQuery(p => p + key.toLowerCase());
+    else {
+      // 这里的逻辑：在 TV 场景中，只要输入了一个字母，我们立刻更新状态
+      // 由于 useEffect 已经监听了 query，它会自动触发联想逻辑
+      setQuery(p => (p + key).toLowerCase());
+    }
   }, [doSearch, showRemoteModal]);
 
   const onWordPress = useCallback((word: string) => {
