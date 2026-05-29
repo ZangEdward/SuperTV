@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, Alert, Platform } from "react-native";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from "react-native";
 import { useRouter } from "expo-router";
-import { Search, Delete, ChevronLeft, History, ArrowRight, QrCode } from "lucide-react-native";
+import { Search, Delete, History, ArrowRight, QrCode, X } from "lucide-react-native";
 import { ThemedView } from "@/components/ThemedView";
 import VideoCard from "@/components/VideoCard";
 import { api, SearchResult } from "@/services/api";
@@ -58,15 +58,21 @@ async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   }
 }
 
-const ALPHA_KEYS = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
-                    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
-const ALPHA_ROWS = [
-  ALPHA_KEYS.slice(0, 5),
-  ALPHA_KEYS.slice(5, 10),
-  ALPHA_KEYS.slice(10, 15),
-  ALPHA_KEYS.slice(15, 20),
-  ALPHA_KEYS.slice(20, 25),
-  [...ALPHA_KEYS.slice(25), '退格'],
+const KEYS = [
+  'A','B','C','D','E','F',
+  'G','H','I','J','K','L',
+  'M','N','O','P','Q','R',
+  'S','T','U','V','W','X',
+  'Y','Z','0','1','2','3',
+  '4','5','6','7','8','9',
+];
+const KEY_ROWS = [
+  KEYS.slice(0, 6),
+  KEYS.slice(6, 12),
+  KEYS.slice(12, 18),
+  KEYS.slice(18, 24),
+  KEYS.slice(24, 30),
+  KEYS.slice(30, 36),
 ];
 
 export default function TVSearchView() {
@@ -80,6 +86,7 @@ export default function TVSearchView() {
   const [showHistory, setShowHistory] = useState(false);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [trending, setTrending] = useState<string[]>([]);
+  const [useAggregatedView, setUseAggregatedView] = useState(true);
   const { showModal: showRemoteModal } = useRemoteControlStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -155,6 +162,37 @@ export default function TVSearchView() {
     setLoading(false);
   }, [query, saveHistory]);
 
+  const aggregatedResults = useMemo(() => {
+    if (!useAggregatedView) return results;
+    const groups = new Map<string, SearchResult & { sourceCount: number; sources: string[] }>();
+    results.forEach(r => {
+      const titleClean = r.title
+        .replace(/\[.*?\]|【.*?】|高清版|蓝光版/g, '')
+        .replace(/\s+/g, '')
+        .trim()
+        .toLowerCase();
+      if (!groups.has(titleClean)) {
+        groups.set(titleClean, { ...r, sourceCount: 1, sources: [r.source] });
+      } else {
+        const existing = groups.get(titleClean)!;
+        if (!existing.sources.includes(r.source)) {
+          existing.sources.push(r.source);
+        }
+        existing.sourceCount = existing.sources.length;
+        if ((r.episodes?.length || 0) > (existing.episodes?.length || 0)) {
+          const sources = existing.sources;
+          Object.assign(existing, r);
+          existing.sources = sources;
+          existing.sourceCount = sources.length;
+        }
+        if (r.year && r.year !== 'unknown' && (!existing.year || existing.year === 'unknown')) {
+          existing.year = r.year;
+        }
+      }
+    });
+    return Array.from(groups.values());
+  }, [results, useAggregatedView]);
+
   const onKeyPress = useCallback((key: string) => {
     logger.info(`[TVSearch] Key pressed: ${key}`);
     if (key === '退格') {
@@ -199,57 +237,60 @@ export default function TVSearchView() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}><ChevronLeft size={26} color="#fff" /></TouchableOpacity>
-        <Text style={styles.topTitle}>搜索</Text>
-        <TouchableOpacity onPress={clearHistory} style={styles.topBtn}>
-          {history.length > 0 && <Delete size={18} color="#555" />}
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.body}>
         <View style={styles.leftPane}>
-          <View style={[styles.inputBox, focusedKey === '__input' && styles.inputBoxFocused]}>
-            <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>{query || '输入拼音首字母'}</Text>
+          <View style={styles.inputRow}>
+            <View style={[styles.inputBox, focusedKey === '__input' && styles.inputBoxFocused]}>
+              <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>{query || '输入拼音首字母'}</Text>
+            </View>
+            {query.length > 0 && (
+              <TouchableOpacity
+                style={[styles.clearInputBtn, focusedKey === '__clearInput' && styles.kbKeyFocused]}
+                onPress={() => { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }}
+                onFocus={() => setFocusedKey('__clearInput')}
+                onBlur={() => setFocusedKey(null)}
+                activeOpacity={0.6}
+              >
+                <X size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
           <View style={styles.funcRow}>
-            <Pressable
+            <TouchableOpacity
               style={[styles.funcBtn, focusedKey === '__search' && styles.kbKeyFocused]}
               onPress={() => doSearch()}
               onFocus={() => setFocusedKey('__search')}
               onBlur={() => setFocusedKey(null)}
+              activeOpacity={0.6}
             >
               <Search size={18} color="#fff" />
               <Text style={styles.funcText}>搜索</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.funcBtn, focusedKey === '__clear' && styles.kbKeyFocused]}
-              onPress={() => { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }}
-              onFocus={() => setFocusedKey('__clear')}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.funcBtn, focusedKey === '__backspace' && styles.kbKeyFocused]}
+              onPress={() => onKeyPress('退格')}
+              onFocus={() => setFocusedKey('__backspace')}
               onBlur={() => setFocusedKey(null)}
+              activeOpacity={0.6}
             >
-              <Delete size={18} color="#888" />
-              <Text style={styles.funcText}>清空</Text>
-            </Pressable>
+              <Delete size={18} color="#ff6b6b" />
+              <Text style={[styles.funcText, { color: '#ff6b6b' }]}>退格</Text>
+            </TouchableOpacity>
           </View>
           {/* 键盘区域：使用强制 focusable 原生属性，并添加透明层调试 */}
           <View
             style={styles.kbArea}
             focusable={false}
           >
-            {ALPHA_ROWS.map((row, ri) => (
+            {KEY_ROWS.map((row, ri) => (
               <View key={ri} style={styles.kbRow}>
-                {row.map((key) => {
-                  const isBack = key === '退格';
-                  const isFocused = focusedKey === key;
-                  return (
-                    <Pressable
+                {row.map((key) => (
+                  <TouchableOpacity
                       key={key}
-                      focusable={true}
+                      activeOpacity={0.6}
                       style={[
                         styles.kbKey,
-                        isBack && styles.kbBackKey,
-                        isFocused && styles.kbKeyFocused
+                        focusedKey === key && styles.kbKeyFocused
                       ]}
                       onFocus={() => {
                         console.log(`[DEBUG_TV] Focus on: ${key}`);
@@ -261,64 +302,85 @@ export default function TVSearchView() {
                         onKeyPress(key);
                       }}
                     >
-                      {isBack ? (
-                        <Text style={[styles.kbKeyText, { color: '#ff6b6b' }]}>退格</Text>
-                      ) : (
-                        <Text style={styles.kbKeyText}>{key}</Text>
-                      )}
-                    </Pressable>
-                  );
-                })}
+                      <Text style={styles.kbKeyText}>{key}</Text>
+                    </TouchableOpacity>
+                ))}
               </View>
             ))}
           </View>
-          <Pressable
+          <TouchableOpacity
             style={[styles.remoteBtn, focusedKey === '__remote' && styles.kbKeyFocused]}
             onPress={() => onKeyPress('远程')}
             onFocus={() => setFocusedKey('__remote')}
             onBlur={() => setFocusedKey(null)}
+            activeOpacity={0.6}
           >
             <Text style={styles.remoteText}>远程输入</Text>
-          </Pressable>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.midPane}>
           <View style={styles.wordHeader}>
             <Text style={styles.wordLabel}>{wordLabel}</Text>
-            <Pressable
+            <TouchableOpacity
               style={[styles.switchBtn, focusedKey === '__switch' && styles.kbKeyFocused]}
               onPress={() => setShowHistory(!showHistory)}
               onFocus={() => setFocusedKey('__switch')}
               onBlur={() => setFocusedKey(null)}
+              activeOpacity={0.6}
             >
               <ArrowRight size={12} color="#888" />
               <Text style={styles.switchText}>{showHistory ? '联想' : '历史'}</Text>
-            </Pressable>
+            </TouchableOpacity>
           </View>
           <ScrollView style={styles.wordList}>
             {currentWords.map((w, i) => (
-              <Pressable
+              <TouchableOpacity
                 key={`${w}-${i}`}
+                activeOpacity={0.6}
                 style={[styles.wordItem, focusedKey === `__word_${i}` && styles.wordItemFocused]}
                 onPress={() => onWordPress(w)}
                 onFocus={() => setFocusedKey(`__word_${i}`)}
                 onBlur={() => setFocusedKey(null)}
               >
                 <Text style={styles.wordText} numberOfLines={1}>{w}</Text>
-              </Pressable>
+              </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
         <View style={styles.rightPane}>
+          {results.length > 0 && (
+            <View style={styles.aggToggleRow}>
+              <Text style={styles.aggLabel}>聚合</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setUseAggregatedView(!useAggregatedView)}
+                style={[styles.aggSwitchTrack, useAggregatedView && { backgroundColor: '#00bb5e' }]}
+              >
+                <View style={[styles.aggSwitchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
+              </TouchableOpacity>
+            </View>
+          )}
           {loading ? (
             <View style={styles.centerRow}><VideoLoadingAnimation showProgressBar={false} /></View>
-          ) : results.length > 0 ? (
+          ) : aggregatedResults.length > 0 ? (
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.resultsGrid}>
-                {results.map((item, idx) => (
+                {aggregatedResults.map((item, idx) => (
                   <View key={`${item.source}-${item.id}-${idx}`} style={styles.cardWrap}>
-                    <VideoCard id={item.id.toString()} source={item.source} title={item.title} poster={item.poster} year={item.year} sourceName={item.source_name} totalEpisodes={item.episodes?.length} api={api} from="search" />
+                    <VideoCard
+                      id={item.id.toString()}
+                      source={item.source}
+                      title={item.title}
+                      poster={item.poster}
+                      year={item.year}
+                      sourceName={item.source_name}
+                      totalEpisodes={item.episodes?.length}
+                      sourceCount={(item as any).sourceCount}
+                      api={api}
+                      from="search"
+                    />
                   </View>
                 ))}
               </View>
@@ -333,23 +395,21 @@ export default function TVSearchView() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
-  topBtn: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center' },
-  topTitle: { flex: 1, textAlign: 'center', fontSize: 24, fontWeight: '700', color: '#fff' },
-  body: { flex: 1, flexDirection: 'row' },
-  leftPane: { width: '25%', paddingHorizontal: 12, paddingTop: 8 },
-  midPane: { width: '25%', paddingHorizontal: 10, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
-  rightPane: { flex: 1, paddingHorizontal: 12, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
-  inputBox: { height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', marginBottom: 8, borderWidth: 2, borderColor: '#333' },
+  body: { flex: 1, flexDirection: 'row', paddingTop: 12 },
+  leftPane: { width: '30%', paddingHorizontal: 10, paddingTop: 8 },
+  midPane: { width: '22%', paddingHorizontal: 8, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  rightPane: { flex: 1, paddingHorizontal: 10, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  inputBox: { flex: 1, height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', borderWidth: 2, borderColor: '#333' },
   inputBoxFocused: { borderColor: '#00bb5e', borderWidth: 3, backgroundColor: '#0a2a0a', elevation: 12, zIndex: 999 },
   inputText: { color: '#888', fontSize: 18 },
-  funcRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  funcBtn: { flex: 1, height: 48, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
-  funcText: { color: '#fff', fontSize: 16 },
-  kbArea: { flex: 1 },
-  kbRow: { flexDirection: 'row', gap: 5, marginBottom: 5 },
-  kbKey: { flex: 1, height: 48, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
-  kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
+  funcRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  clearInputBtn: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
+  funcBtn: { flex: 1, height: 54, borderRadius: 12, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  funcText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  kbArea: { flex: 1, justifyContent: 'center' },
+  kbRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  kbKey: { flex: 1, height: 52, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
   kbKeyFocused: {
     backgroundColor: '#48484a',
     borderColor: '#00bb5e',
@@ -362,7 +422,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
+  remoteBtn: { height: 52, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
   remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },
   wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 },
   wordLabel: { color: '#aaa', fontSize: 16, fontWeight: '600' },
@@ -372,6 +432,10 @@ const styles = StyleSheet.create({
   wordItem: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   wordItemFocused: { backgroundColor: '#48484a', borderLeftWidth: 6, borderLeftColor: '#00bb5e', borderWidth: 1, borderColor: '#00bb5e', elevation: 12, zIndex: 999 },
   wordText: { color: '#ddd', fontSize: 16 },
+  aggToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 8 },
+  aggLabel: { color: '#aaa', fontSize: 14, fontWeight: '500' },
+  aggSwitchTrack: { width: 32, height: 18, backgroundColor: '#3a3a3c', borderRadius: 9, padding: 2 },
+  aggSwitchThumb: { width: 14, height: 14, backgroundColor: 'white', borderRadius: 7 },
   emptyHint: { color: '#555', fontSize: 14, marginTop: 30, textAlign: 'center' },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap' },

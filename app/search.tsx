@@ -226,6 +226,13 @@ export default function SearchScreen() {
         </View>
       ) : (
         <View style={dynamicStyles.historyList}>
+          {/* 清空历史按钮 — 放在第一个历史搜索位置 */}
+          <TouchableOpacity
+            style={dynamicStyles.clearHistoryPill}
+            onPress={clearHistory}
+          >
+            <ThemedText style={dynamicStyles.clearHistoryText}>清空历史搜索</ThemedText>
+          </TouchableOpacity>
           {history.map((item, idx) => (
             <View key={idx} style={dynamicStyles.historyPillWrapper}>
               <TouchableOpacity
@@ -434,6 +441,17 @@ const createResponsiveStyles = (deviceType: string, spacing: number) => {
     historyPill: { marginRight: 4 },
     historyText: { fontSize: 14, color: '#ffffff' },
     historyDelete: { padding: 2 },
+    clearHistoryPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#2a1a1a',
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: '#c0392b',
+    },
+    clearHistoryText: { fontSize: 14, color: '#e74c3c', fontWeight: '600' },
     resultsTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: spacing + 10, paddingVertical: 10 },
     resultsTitle: { fontSize: 18, fontWeight: '600', color: 'white' },
     progressText: { fontSize: 14, color: '#7f8c8d', marginLeft: 8 },
