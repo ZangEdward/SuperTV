@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { Search, Delete, History, ArrowRight, QrCode, X, Trash2 } from "lucide-react-native";
 import { ThemedView } from "@/components/ThemedView";
@@ -16,32 +16,50 @@ const logger = Logger.withTag('TVSearchView');
 const HISTORY_KEY = "tv_search_history";
 const MAX_HISTORY = 15;
 
-// 统一聚焦样式
-const FOCUSED_STYLE = {
-  borderColor: Colors.dark.primary,
-  borderWidth: 2,
-  backgroundColor: '#1a3a1a', // 稍微带点绿色的背景
-  elevation: 8,
-};
-
 async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   try {
     const url = `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+      },
+    });
     if (!res.ok) return [];
     const result = await res.json();
-    return (result?.data?.search_data?.vecGroupData?.[0]?.group_data || [])
-      .map((g: any) => g?.dtReportInfo?.reportData?.keyword_txt?.trim())
-      .filter(Boolean).slice(0, 15);
-  } catch (e) { return []; }
+    const hots: string[] = [];
+    const groupDataArr = result?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
+    for (const groupData of groupDataArr) {
+      const keywordTxt = groupData?.dtReportInfo?.reportData?.keyword_txt;
+      if (keywordTxt) {
+        hots.push(String(keywordTxt).trim());
+      }
+    }
+    return hots.slice(0, 15);
+  } catch (e: any) {
+    return [];
+  }
 }
 
-const KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
-const KEY_ROWS = [KEYS.slice(0, 6), KEYS.slice(6, 12), KEYS.slice(12, 18), KEYS.slice(18, 24), KEYS.slice(24, 30), KEYS.slice(30, 36)];
+const KEYS = [
+  'A','B','C','D','E','F',
+  'G','H','I','J','K','L',
+  'M','N','O','P','Q','R',
+  'S','T','U','V','W','X',
+  'Y','Z','0','1','2','3',
+  '4','5','6','7','8','9',
+];
+const KEY_ROWS = [
+  KEYS.slice(0, 6),
+  KEYS.slice(6, 12),
+  KEYS.slice(12, 18),
+  KEYS.slice(18, 24),
+  KEYS.slice(24, 30),
+  KEYS.slice(30, 36),
+];
 
 export default function TVSearchView() {
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,13 +71,58 @@ export default function TVSearchView() {
   const [trending, setTrending] = useState<string[]>([]);
   const [useAggregatedView, setUseAggregatedView] = useState(true);
   const { showModal: showRemoteModal } = useRemoteControlStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
     api.getSearchSuggestions('').then(res => {
-      if (Array.isArray(res)) setTrending(res.map((r: any) => typeof r === 'string' ? r : r.text || '').filter(Boolean));
-    });
+      if (Array.isArray(res)) {
+        setTrending(res.map((r: any) => typeof r === 'string' ? r : r.text || '').filter(Boolean));
+      }
+    }).catch(() => {});
+    AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
+    setFocusedKey('__input');
   }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 2) { setSuggestions([]); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      const q = query.trim();
+      let allHits: string[] = [];
+
+      const qLower = q.toLowerCase();
+      const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+      allHits.push(...trendingHits);
+
+      try {
+        const apiHits = await fetchPinyinSuggestions(q);
+        if (apiHits.length > 0) {
+          for (const h of apiHits) {
+            if (!allHits.includes(h)) allHits.push(h);
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      if (allHits.length < 5) {
+        try {
+          const backendSug = await api.getSearchSuggestions(q);
+          if (Array.isArray(backendSug)) {
+            for (const item of backendSug) {
+              const text = typeof item === 'string' ? item : (item.text || '');
+              if (text && !allHits.includes(text)) allHits.push(text);
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (allHits.length > 0) {
+        setSuggestions(allHits.slice(0, 15));
+      }
+    }, 50);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, trending]);
 
   const saveHistory = useCallback(async (term: string) => {
     const updated = [term, ...history.filter(h => h !== term)].slice(0, MAX_HISTORY);
@@ -70,7 +133,7 @@ export default function TVSearchView() {
   const doSearch = useCallback(async (term?: string) => {
     const text = (term || query).trim();
     if (!text) return;
-    setLoading(true); setSearched(true);
+    setLoading(true); setSearched(true); setSuggestions([]);
     saveHistory(text);
     try {
       const { results: res } = await api.searchVideos(text);
@@ -79,95 +142,229 @@ export default function TVSearchView() {
     setLoading(false);
   }, [query, saveHistory]);
 
-  const clearHistory = async () => {
-    setHistory([]);
-    await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify([]));
+  const onWordPress = useCallback((word: string) => {
+    setQuery(word); doSearch(word);
+  }, [doSearch]);
+
+  const clearHistory = () => {
+    Alert.alert("清空搜索历史", "确定要清空吗？", [
+      { text: "取消", style: "cancel" },
+      { text: "清空", style: "destructive", onPress: async () => {
+        setHistory([]); await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify([]));
+      }}
+    ]);
   };
 
   const onKeyPress = (key: string) => {
-    if (key === '退格') setQuery(p => p.slice(0, -1));
-    else if (key === '搜索') doSearch();
-    else if (key === '远程') showRemoteModal('search');
-    else setQuery(p => (p + key).toLowerCase());
+    if (key === '退格') setQuery(prev => prev.slice(0, -1));
+    else if (key === '远程') showRemoteModal();
+    else if (key !== '搜索') setQuery(prev => (prev + key).slice(0, 20));
   };
 
   const currentWords = showHistory ? history : (suggestions.length > 0 ? suggestions : trending);
+  const wordLabel = showHistory ? '搜索历史' : (suggestions.length > 0 ? '拼音联想' : '搜索建议');
+
+  const aggregatedResults = useMemo(() => {
+    if (!useAggregatedView) return results;
+    return results; // TODO: Implement aggregation logic
+  }, [results, useAggregatedView]);
 
   return (
     <ThemedView style={styles.container}>
       <View style={styles.body}>
-        {!isMobile && (
-          <View style={styles.leftPane}>
-            <View style={styles.inputRow}>
-              <View style={[styles.inputBox, focusedKey === '__input' && FOCUSED_STYLE]}><Text style={styles.inputText}>{query || '输入内容'}</Text></View>
+        <View style={styles.leftPane}>
+          <View style={styles.inputRow}>
+            <View style={[styles.inputBox, focusedKey === '__input' && styles.focused]}>
+              <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>{query || '输入拼音首字母'}</Text>
             </View>
-            <View style={styles.kbArea}>
-              {KEY_ROWS.map((row, ri) => (
-                <View key={ri} style={styles.kbRow}>
-                  {row.map((key) => (
-                    <TouchableOpacity key={key} style={[styles.kbKey, focusedKey === key && FOCUSED_STYLE]} onFocus={() => setFocusedKey(key)} onPress={() => onKeyPress(key)}><Text style={styles.kbKeyText}>{key}</Text></TouchableOpacity>
-                  ))}
-                </View>
-              ))}
-            </View>
+            {query.length > 0 && (
+              <TouchableOpacity
+                style={[styles.clearInputBtn, focusedKey === '__clearInput' && styles.focused]}
+                onPress={() => { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }}
+                onFocus={() => setFocusedKey('__clearInput')}
+                onBlur={() => setFocusedKey(null)}
+                activeOpacity={0.6}
+              >
+                <X size={20} color="#fff" />
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+          <View style={styles.funcRow}>
+            <TouchableOpacity
+              style={[styles.funcBtn, focusedKey === '__search' && styles.focused]}
+              onPress={() => doSearch()}
+              onFocus={() => setFocusedKey('__search')}
+              onBlur={() => setFocusedKey(null)}
+              activeOpacity={0.6}
+            >
+              <Search size={18} color="#fff" />
+              <Text style={styles.funcText}>搜索</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.funcBtn, focusedKey === '__backspace' && styles.focused]}
+              onPress={() => onKeyPress('退格')}
+              onFocus={() => setFocusedKey('__backspace')}
+              onBlur={() => setFocusedKey(null)}
+              activeOpacity={0.6}
+            >
+              <Delete size={18} color="#ff6b6b" />
+              <Text style={[styles.funcText, { color: '#ff6b6b' }]}>退格</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.kbArea}>
+            {KEY_ROWS.map((row, ri) => (
+              <View key={ri} style={styles.kbRow}>
+                {row.map((key) => (
+                  <TouchableOpacity
+                      key={key}
+                      activeOpacity={0.6}
+                      style={[
+                        styles.kbKey,
+                        focusedKey === key && styles.focused
+                      ]}
+                      onFocus={() => setFocusedKey(key)}
+                      onBlur={() => setFocusedKey(null)}
+                      onPress={() => onKeyPress(key)}
+                    >
+                      <Text style={styles.kbKeyText}>{key}</Text>
+                    </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[styles.remoteBtn, focusedKey === '__remote' && styles.focused]}
+            onPress={() => onKeyPress('远程')}
+            onFocus={() => setFocusedKey('__remote')}
+            onBlur={() => setFocusedKey(null)}
+            activeOpacity={0.6}
+          >
+            <Text style={styles.remoteText}>远程输入</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.midPane}>
           <View style={styles.wordHeader}>
-            <Text style={styles.wordLabel}>{showHistory ? '历史记录' : '搜索建议'}</Text>
-            <TouchableOpacity onPress={() => setShowHistory(!showHistory)}><Text style={styles.switchText}>{showHistory ? '查看联想' : '查看历史'}</Text></TouchableOpacity>
-            {showHistory && history.length > 0 && (
-              <TouchableOpacity onPress={clearHistory} style={styles.clearHistBtn}><Trash2 size={16} color="#ff6b6b" /></TouchableOpacity>
-            )}
+            <Text style={styles.wordLabel}>{wordLabel}</Text>
+            <View style={{ flexDirection: 'row', gap: 4, marginLeft: 'auto' }}>
+                {showHistory && (
+                  <TouchableOpacity
+                    style={[styles.smallBtn, focusedKey === '__clearHistory' && styles.focused]}
+                    onPress={clearHistory}
+                    onFocus={() => setFocusedKey('__clearHistory')}
+                    onBlur={() => setFocusedKey(null)}
+                    activeOpacity={0.6}
+                  >
+                    <Trash2 size={14} color="#ff6b6b" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.switchBtn, focusedKey === '__switch' && styles.focused]}
+                  onPress={() => setShowHistory(!showHistory)}
+                  onFocus={() => setFocusedKey('__switch')}
+                  onBlur={() => setFocusedKey(null)}
+                  activeOpacity={0.6}
+                >
+                  <ArrowRight size={12} color="#888" />
+                  <Text style={styles.switchText}>{showHistory ? '联想' : '历史'}</Text>
+                </TouchableOpacity>
+            </View>
           </View>
-          <ScrollView>
+          <ScrollView style={styles.wordList}>
             {currentWords.map((w, i) => (
-              <TouchableOpacity key={i} style={[styles.wordItem, focusedKey === `word_${i}` && FOCUSED_STYLE]} onFocus={() => setFocusedKey(`word_${i}`)} onPress={() => doSearch(w)}>
-                <Text style={styles.wordText}>{w}</Text>
+              <TouchableOpacity
+                key={`${w}-${i}`}
+                activeOpacity={0.6}
+                style={[styles.wordItem, focusedKey === `__word_${i}` && styles.focused]}
+                onPress={() => onWordPress(w)}
+                onFocus={() => setFocusedKey(`__word_${i}`)}
+                onBlur={() => setFocusedKey(null)}
+              >
+                <Text style={styles.wordText} numberOfLines={1}>{w}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
 
         <View style={styles.rightPane}>
-          {aggregatedResults.length > 0 && (
+          {results.length > 0 && (
+            <View style={styles.aggToggleRow}>
+              <Text style={styles.aggLabel}>聚合</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setUseAggregatedView(!useAggregatedView)}
+                style={[styles.aggSwitchTrack, useAggregatedView && { backgroundColor: '#00bb5e' }]}
+              >
+                <View style={[styles.aggSwitchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {loading ? (
+            <View style={styles.centerRow}><VideoLoadingAnimation showProgressBar={false} /></View>
+          ) : aggregatedResults.length > 0 ? (
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.resultsGrid}>
                 {aggregatedResults.map((item, idx) => (
-                  <View key={idx} style={styles.cardWrap}>
-                    <VideoCard {...item} id={item.id.toString()} api={api} from="search" />
+                  <View key={`${item.source}-${item.id}-${idx}`} style={styles.cardWrap}>
+                    <VideoCard
+                      id={item.id.toString()}
+                      source={item.source}
+                      title={item.title}
+                      poster={item.poster}
+                      year={item.year}
+                      sourceName={item.source_name}
+                      totalEpisodes={item.episodes?.length}
+                      sourceCount={(item as any).sourceCount}
+                      api={api}
+                      from="search"
+                      compact={true}
+                    />
                   </View>
                 ))}
               </View>
             </ScrollView>
-          )}
+          ) : searched ? <Text style={styles.emptyText}>未找到 "{query}" 相关内容</Text> : null}
         </View>
       </View>
+      <RemoteControlModal />
     </ThemedView>
   );
 }
 
-const aggregatedResults = [] as any[]; // Simplified for brevity
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  body: { flex: 1, flexDirection: 'row', padding: 20 },
-  leftPane: { width: '30%', paddingRight: 20 },
-  midPane: { width: '25%', paddingRight: 20 },
-  rightPane: { flex: 1 },
-  inputBox: { height: 60, backgroundColor: '#1c1c1e', borderRadius: 12, justifyContent: 'center', padding: 15, borderWidth: 1, borderColor: '#333' },
-  inputText: { color: '#fff', fontSize: 20 },
-  kbArea: { marginTop: 20 },
+  body: { flex: 1, flexDirection: 'row', paddingTop: 12 },
+  leftPane: { width: '30%', paddingHorizontal: 10, paddingTop: 8 },
+  midPane: { width: '22%', paddingHorizontal: 8, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  rightPane: { flex: 1, paddingHorizontal: 10, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  inputBox: { flex: 1, height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', borderWidth: 2, borderColor: '#333' },
+  focused: { borderColor: '#00bb5e', borderWidth: 3, backgroundColor: '#0a2a0a', elevation: 12, zIndex: 999, shadowColor: '#00bb5e', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 10 },
+  inputText: { color: '#888', fontSize: 18 },
+  funcRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  clearInputBtn: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
+  funcBtn: { flex: 1, height: 54, borderRadius: 12, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  funcText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  kbArea: { flex: 1, justifyContent: 'center' },
   kbRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
-  kbKey: { flex: 1, height: 50, backgroundColor: '#2a2a2e', borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
-  kbKeyText: { color: '#fff', fontSize: 18 },
-  wordItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#333', borderRadius: 8 },
+  kbKey: { flex: 1, height: 52, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
+  kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  remoteBtn: { height: 52, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
+  remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },
+  wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 },
+  wordLabel: { color: '#aaa', fontSize: 16, fontWeight: '600' },
+  smallBtn: { padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
+  switchBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
+  switchText: { color: '#888', fontSize: 14 },
+  wordList: { flex: 1 },
+  wordItem: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   wordText: { color: '#ddd', fontSize: 16 },
+  aggToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 8 },
+  aggLabel: { color: '#aaa', fontSize: 14, fontWeight: '500' },
+  aggSwitchTrack: { width: 32, height: 18, backgroundColor: '#3a3a3c', borderRadius: 9, padding: 2 },
+  aggSwitchThumb: { width: 14, height: 14, backgroundColor: 'white', borderRadius: 7 },
+  centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cardWrap: { width: '33.3%', padding: 5 },
-  wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 },
-  wordLabel: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  switchText: { color: Colors.dark.primary, fontSize: 14 },
-  clearHistBtn: { padding: 5 }
+  cardWrap: { width: '33.333%', padding: 4 },
+  emptyText: { color: '#888', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });
