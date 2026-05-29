@@ -192,38 +192,41 @@ export default function TVSearchView() {
               <Text style={styles.funcText}>清空</Text>
             </Pressable>
           </View>
-          <View style={styles.kbArea}>
+          {/* 键盘区域：使用强制 focusable 原生属性，并添加透明层调试 */}
+          <View
+            style={styles.kbArea}
+            focusable={false}
+          >
             {ALPHA_ROWS.map((row, ri) => (
               <View key={ri} style={styles.kbRow}>
                 {row.map((key) => {
                   const isBack = key === '退格';
                   const isFocused = focusedKey === key;
                   return (
-                    <TouchableOpacity
+                    <Pressable
                       key={key}
-                      accessible={true}
                       focusable={true}
-                      onFocus={() => {
-                        logger.info(`[TVSearch] 焦点切换到: ${key}`);
-                        setFocusedKey(key);
-                      }}
-                      onBlur={() => setFocusedKey(null)}
-                      onPress={() => {
-                        logger.info(`[TVSearch] 键盘按键点击事件触发: ${key}`);
-                        onKeyPress(key);
-                      }}
                       style={[
                         styles.kbKey,
                         isBack && styles.kbBackKey,
                         isFocused && styles.kbKeyFocused
                       ]}
+                      onFocus={() => {
+                        console.log(`[DEBUG_TV] Focus on: ${key}`);
+                        setFocusedKey(key);
+                      }}
+                      onBlur={() => setFocusedKey(null)}
+                      onPress={() => {
+                        console.log(`[DEBUG_TV] Press: ${key}`);
+                        onKeyPress(key);
+                      }}
                     >
                       {isBack ? (
                         <Text style={[styles.kbKeyText, { color: '#ff6b6b' }]}>退格</Text>
                       ) : (
                         <Text style={styles.kbKeyText}>{key}</Text>
                       )}
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </View>
