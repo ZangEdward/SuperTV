@@ -23,8 +23,10 @@ async function fetchPinyinSuggestions(key: string): Promise<string[]> {
       { signal: AbortSignal.timeout(4000) }
     );
     const json = await res.json();
-    const groupData = json?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
-    return groupData.map((g: any) => g?.dtReportInfo?.reportData?.keyword_txt || '').filter(Boolean).slice(0, 15);
+    const data = json?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
+    return data.map((g: any) =>
+      g?.dtReportInfo?.reportData?.keyword_txt || g?.keyword_txt || g?.text || ''
+    ).filter(Boolean).slice(0, 15);
   } catch { return []; }
 }
 
@@ -53,7 +55,6 @@ export default function TVSearchView() {
   const { showModal: showRemoteModal } = useRemoteControlStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 挂载时加载搜索建议池（类似 TVBoxOS 的热词）
   useEffect(() => {
     api.getSearchSuggestions('').then(res => {
       if (Array.isArray(res)) {
@@ -63,7 +64,6 @@ export default function TVSearchView() {
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
   }, []);
 
-  // 极致性能：输入时实时联想（TVBoxOS 逻辑：并行请求，先到先得）
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query) {
@@ -73,17 +73,16 @@ export default function TVSearchView() {
 
     debounceRef.current = setTimeout(async () => {
       const q = query.trim();
-
-      // 并行请求：云端拼音联想 + API兜底
       const [pinyinHits, backendHits] = await Promise.all([
         fetchPinyinSuggestions(q).catch(() => []),
         api.getSearchSuggestions(q).catch(() => [])
       ]);
 
-      // 合并策略：强制拼音结果优先
-      const merged = new Set<string>([...pinyinHits, ...backendHits]);
+      const normalizedBackend = Array.isArray(backendHits)
+        ? backendHits.map((r: any) => typeof r === 'string' ? r : (r?.text || r?.keyword_txt || ''))
+        : [];
 
-      // 如果云端没有结果，兜底本地热词匹配
+      const merged = new Set<string>([...pinyinHits, ...normalizedBackend]);
       if (merged.size === 0) {
         const qLower = q.toLowerCase();
         trending.filter(t => t.toLowerCase().includes(qLower)).forEach(t => merged.add(t));
@@ -95,7 +94,6 @@ export default function TVSearchView() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, trending]);
 
-  // 页面挂载时默认焦点在输入框
   useEffect(() => {
     setFocusedKey('__input');
   }, []);
@@ -124,8 +122,6 @@ export default function TVSearchView() {
     else if (key === '远程') showRemoteModal('search');
     else if (key === '清空') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
     else {
-      // 这里的逻辑：在 TV 场景中，只要输入了一个字母，我们立刻更新状态
-      // 由于 useEffect 已经监听了 query，它会自动触发联想逻辑
       setQuery(p => (p + key).toLowerCase());
     }
   }, [doSearch, showRemoteModal]);
@@ -157,12 +153,9 @@ export default function TVSearchView() {
       </View>
 
       <View style={styles.body}>
-        {/* 左栏：键盘 (25%) */}
         <View style={styles.leftPane}>
           <View style={[styles.inputBox, focusedKey === '__input' && styles.inputBoxFocused]}>
-            <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>
-              {query || '输入拼音首字母'}
-            </Text>
+            <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>{query || '输入拼音首字母'}</Text>
           </View>
           <View style={styles.funcRow}>
             <Pressable
@@ -215,7 +208,6 @@ export default function TVSearchView() {
           </Pressable>
         </View>
 
-        {/* 中栏：联想/历史 (25%) */}
         <View style={styles.midPane}>
           <View style={styles.wordHeader}>
             <Text style={styles.wordLabel}>{wordLabel}</Text>
@@ -241,31 +233,23 @@ export default function TVSearchView() {
                 <Text style={styles.wordText} numberOfLines={1}>{w}</Text>
               </Pressable>
             ))}
-            {!searched && currentWords.length === 0 && query.length < 2 && (
-              <Text style={styles.emptyHint}>输入拼音首字母获取联想</Text>
-            )}
           </ScrollView>
         </View>
 
-        {/* 右栏：搜索结果 (50%) */}
         <View style={styles.rightPane}>
           {loading ? (
             <View style={styles.centerRow}><VideoLoadingAnimation showProgressBar={false} /></View>
-          ) : searched && results.length === 0 ? (
-            <Text style={styles.emptyText}>未找到 "{query}" 相关内容</Text>
           ) : results.length > 0 ? (
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.resultsGrid}>
                 {results.map((item, idx) => (
                   <View key={`${item.source}-${item.id}-${idx}`} style={styles.cardWrap}>
-                    <VideoCard id={item.id.toString()} source={item.source} title={item.title}
-                      poster={item.poster} year={item.year} sourceName={item.source_name}
-                      totalEpisodes={item.episodes?.length} api={api} from="search" />
+                    <VideoCard id={item.id.toString()} source={item.source} title={item.title} poster={item.poster} year={item.year} sourceName={item.source_name} totalEpisodes={item.episodes?.length} api={api} from="search" />
                   </View>
                 ))}
               </View>
             </ScrollView>
-          ) : null}
+          ) : searched ? <Text style={styles.emptyText}>未找到 "{query}" 相关内容</Text> : null}
         </View>
       </View>
       <RemoteControlModal />
@@ -282,7 +266,8 @@ const styles = StyleSheet.create({
   leftPane: { width: '25%', paddingHorizontal: 12, paddingTop: 8 },
   midPane: { width: '25%', paddingHorizontal: 10, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
   rightPane: { flex: 1, paddingHorizontal: 12, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
-  inputBox: { height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: '#333' },
+  inputBox: { height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', marginBottom: 8, borderWidth: 2, borderColor: '#333' },
+  inputBoxFocused: { borderColor: '#00bb5e', borderWidth: 3, backgroundColor: '#0a2a0a', elevation: 12, zIndex: 999 },
   inputText: { color: '#888', fontSize: 18 },
   funcRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   funcBtn: { flex: 1, height: 48, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
@@ -291,30 +276,18 @@ const styles = StyleSheet.create({
   kbRow: { flexDirection: 'row', gap: 5, marginBottom: 5 },
   kbKey: { flex: 1, height: 48, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
   kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
-  inputBoxFocused: {
-    borderColor: Colors.dark.primary,
-    borderWidth: 3,
-    backgroundColor: '#0a2a0a',
-    elevation: 10,
-  },
   kbKeyFocused: {
+    backgroundColor: '#48484a',
     borderColor: '#00bb5e',
     borderWidth: 3,
-    backgroundColor: '#0a2a0a',
+    elevation: 12,
+    zIndex: 999,
     shadowColor: '#00bb5e',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 15,
-    elevation: 12,
+    shadowRadius: 10,
   },
   kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  wordItemFocused: {
-    backgroundColor: '#0a2a0a',
-    borderLeftWidth: 6,
-    borderLeftColor: '#00bb5e',
-    borderWidth: 1,
-    borderColor: '#00bb5e',
-  },
   remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
   remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },
   wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 },
@@ -323,7 +296,7 @@ const styles = StyleSheet.create({
   switchText: { color: '#888', fontSize: 14 },
   wordList: { flex: 1 },
   wordItem: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  wordItemFocused: { backgroundColor: '#0a2a0a', borderLeftWidth: 4, borderLeftColor: Colors.dark.primary },
+  wordItemFocused: { backgroundColor: '#48484a', borderLeftWidth: 6, borderLeftColor: '#00bb5e', borderWidth: 1, borderColor: '#00bb5e', elevation: 12, zIndex: 999 },
   wordText: { color: '#ddd', fontSize: 16 },
   emptyHint: { color: '#555', fontSize: 14, marginTop: 30, textAlign: 'center' },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
