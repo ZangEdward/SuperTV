@@ -74,25 +74,23 @@ export default function TVSearchView() {
     debounceRef.current = setTimeout(async () => {
       const q = query.trim();
 
-      // 本地热词预加载匹配（同步执行，保证即时性）
-      const qLower = q.toLowerCase();
-      const localMatches = trending.filter(t => t.toLowerCase().includes(qLower));
-
-      // 并行请求网络接口
-      const netTasks = [
+      // 并行请求：云端拼音联想 + API兜底
+      const [pinyinHits, backendHits] = await Promise.all([
         fetchPinyinSuggestions(q).catch(() => []),
         api.getSearchSuggestions(q).catch(() => [])
-      ];
+      ]);
 
-      const [pinyinHits, backendHits] = await Promise.all(netTasks);
+      // 合并策略：强制拼音结果优先
+      const merged = new Set<string>([...pinyinHits, ...backendHits]);
 
-      // 合并结果：本地热词匹配 > 云端拼音 > 后端建议
-      // 使用 Set 去重
-      const merged = new Set<string>([...localMatches, ...pinyinHits, ...backendHits]);
+      // 如果云端没有结果，兜底本地热词匹配
+      if (merged.size === 0) {
+        const qLower = q.toLowerCase();
+        trending.filter(t => t.toLowerCase().includes(qLower)).forEach(t => merged.add(t));
+      }
 
-      // 截取前 15 个展示
       setSuggestions(Array.from(merged).slice(0, 15));
-    }, 80); // 防抖降至 80ms
+    }, 50);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, trending]);
@@ -300,16 +298,23 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   kbKeyFocused: {
-    borderColor: Colors.dark.primary,
+    borderColor: '#00bb5e',
     borderWidth: 3,
     backgroundColor: '#0a2a0a',
-    shadowColor: Colors.dark.primary,
+    shadowColor: '#00bb5e',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 10
+    shadowOpacity: 1,
+    shadowRadius: 15,
+    elevation: 12,
   },
   kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  wordItemFocused: {
+    backgroundColor: '#0a2a0a',
+    borderLeftWidth: 6,
+    borderLeftColor: '#00bb5e',
+    borderWidth: 1,
+    borderColor: '#00bb5e',
+  },
   remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
   remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },
   wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 },
