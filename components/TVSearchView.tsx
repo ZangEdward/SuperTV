@@ -70,17 +70,17 @@ export default function TVSearchView() {
   const [showHistory, setShowHistory] = useState(false);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [trending, setTrending] = useState<string[]>([]);
-  const [useAggregatedView, setUseAggregatedView] = useState(true);
+  const [searchPhase, setSearchPhase] = useState<'idle' | 'fuzzy' | 'exact'>('idle');
   const { showModal: showRemoteModal } = useRemoteControlStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (useRemoteControlStore.getState().targetPage === 'search') {
-      const msg = useRemoteControlStore.getState().lastMessage;
-      if (msg) {
+    const msg = useRemoteControlStore.getState().lastMessage;
+    if (msg) {
         const cleanMsg = msg.split('_')[0];
-        setQuery(prev => (prev + cleanMsg).slice(0, 20));
-      }
+        setQuery(cleanMsg);
+        doSearch(cleanMsg);
+        useRemoteControlStore.getState().clearMessage();
     }
   }, [useRemoteControlStore.getState().lastMessage]);
 
@@ -156,10 +156,18 @@ export default function TVSearchView() {
     if (!text) return;
     setLoading(true); setSearched(true); setSuggestions([]);
     saveHistory(text);
+
+    setSearchPhase('exact');
     try {
       const { results: res } = await api.searchVideos(text);
       setResults(res || []);
-    } catch { setResults([]); }
+      setSearchPhase('idle');
+    } catch {
+      setResults([]);
+      setSearchPhase('fuzzy');
+      // 可以添加模糊搜索逻辑
+      setSearchPhase('idle');
+    }
     setLoading(false);
   }, [query, saveHistory]);
 
@@ -367,10 +375,10 @@ const styles = StyleSheet.create({
   switchBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
   switchText: { color: '#888', fontSize: 14 },
   wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  wordButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#2a2a2e', borderWidth: 2, borderColor: '#3a3a3e', width: '48%', height: 60, justifyContent: 'center' },
-  wordButtonText: { color: '#ddd', fontSize: 13, textAlign: 'center' },
+  wordButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#2a2a2e', borderWidth: 2, borderColor: '#3a3a3e', width: '100%', height: 50, justifyContent: 'center' },
+  wordButtonText: { color: '#ddd', fontSize: 16, textAlign: 'center' },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
-  cardWrap: { width: '25%', padding: 4, alignItems: 'center' },
+  cardWrap: { width: '33.33%', padding: 4, alignItems: 'center' },
   emptyText: { color: '#888', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });

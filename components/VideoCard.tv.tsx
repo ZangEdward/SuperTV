@@ -239,7 +239,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
                 第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
               </Text>
             )}
-            <ThemedText numberOfLines={2} style={styles.titleText}>{title}</ThemedText>
+            <ThemedText numberOfLines={2} style={[styles.titleText, { fontSize: 13 }]}>{title}</ThemedText>
           </View>
         </Pressable>
       </Animated.View>
