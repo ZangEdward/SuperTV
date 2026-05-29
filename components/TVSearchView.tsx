@@ -91,7 +91,8 @@ export default function TVSearchView() {
       }
     }).catch(() => {});
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
-    setFocusedKey('__input');
+    // 确保初始聚焦在输入框
+    setTimeout(() => setFocusedKey('__input'), 200);
   }, []);
 
   useEffect(() => {
@@ -99,11 +100,30 @@ export default function TVSearchView() {
   }, [results]);
 
   const loadMore = () => {
-    if (displayResults.length < results.length) {
-      setDisplayResults(results.slice(0, displayResults.length + 20));
+    if (displayResults.length < processedResults.length) {
+      setDisplayResults(processedResults.slice(0, displayResults.length + 20));
     }
   };
 
+  const processedResults = useMemo(() => {
+    const map = new Map<string, SearchResult>();
+    results.forEach(item => {
+      const key = item.title.replace(/\s+/g, '');
+      if (!map.has(key)) {
+        map.set(key, item);
+      } else {
+        const existing = map.get(key)!;
+        if ((item.episodes?.length || 0) > (existing.episodes?.length || 0)) {
+          map.set(key, item);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [results]);
+
+  useEffect(() => {
+    setDisplayResults(processedResults.slice(0, 20));
+  }, [processedResults]);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
@@ -295,14 +315,22 @@ export default function TVSearchView() {
             </View>
           </View>
           <View style={styles.wordGrid}>
-            {currentWords.slice(0, 10).map((w, i) => (
+            {currentWords
+              .map(w => w.replace(/\s+/g, ''))
+              .filter((w, i, self) => self.indexOf(w) === i)
+              .slice(0, 9)
+              .map((w, i) => (
               <TouchableOpacity
                 key={`${w}-${i}`}
                 activeOpacity={0.6}
-                style={[styles.wordButton, focusedKey === `__word_${i}` && styles.focused]}
-                onPress={() => onWordPress(w)}
+                style={[
+                    styles.wordButton,
+                    focusedKey === `__word_${i}` && styles.focused,
+                    { width: '48%' }
+                ]}
                 onFocus={() => setFocusedKey(`__word_${i}`)}
                 onBlur={() => setFocusedKey(null)}
+                onPress={() => onWordPress(w)}
               >
                 <Text style={styles.wordButtonText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{w}</Text>
               </TouchableOpacity>

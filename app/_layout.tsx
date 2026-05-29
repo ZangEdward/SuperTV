@@ -1,6 +1,7 @@
 import { UPDATE_CONFIG } from "../constants/UpdateConfig";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
+import { BackHandler, ToastAndroid } from "react-native";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -73,6 +74,22 @@ const CustomDarkTheme = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  // 硬件返回键处理: 首页双击退出
+  useEffect(() => {
+    let lastBackPressTime = 0;
+    const onBackPress = () => {
+      const currentTime = Date.now();
+      if (currentTime - lastBackPressTime < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPressTime = currentTime;
+      ToastAndroid.show('再按一次退出软件', ToastAndroid.SHORT);
+      return true;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, []);
   const colorScheme = useColorScheme();
   const theme = (colorScheme === "dark" ? CustomDarkTheme : DefaultTheme) ?? DefaultTheme;
 
@@ -208,12 +225,17 @@ export default function RootLayout() {
     const checkNavigation = async () => {
       try {
         const navTarget = await CastNotificationModule.consumeNotificationNavigation();
+        logger.info('[Cast] consumeNotificationNavigation result:', navTarget);
         if (navTarget === 'cast-control') {
           const { router } = await import('expo-router');
-          router.replace('/cast-control');
+          // 延迟执行以确保 Navigation 容器已经挂载到屏幕上
+          setTimeout(() => {
+            logger.info('[Cast] Navigating to cast-control');
+            router.replace('/cast-control' as any);
+          }, 500);
         }
       } catch (e) {
-        // ignore
+        logger.error('[Cast] Navigation failed', e);
       }
     };
 
