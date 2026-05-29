@@ -116,12 +116,28 @@ export default function TVSearchView() {
   }, [query, saveHistory]);
 
   const onKeyPress = useCallback((key: string) => {
-    if (key === '退格') setQuery(p => p.slice(0, -1));
-    else if (key === '搜索') doSearch();
-    else if (key === '远程') showRemoteModal('search');
-    else if (key === '清空') { setQuery(''); setResults([]); setSearched(false); setSuggestions([]); }
-    else {
-      setQuery(p => (p + key).toLowerCase());
+    logger.info(`[TVSearch] Key pressed: ${key}`);
+    if (key === '退格') {
+      setQuery(p => {
+        const next = p.slice(0, -1);
+        logger.info(`[TVSearch] Query update: "${next}"`);
+        return next;
+      });
+    } else if (key === '搜索') {
+      doSearch();
+    } else if (key === '远程') {
+      showRemoteModal('search');
+    } else if (key === '清空') {
+      setQuery('');
+      setResults([]);
+      setSearched(false);
+      setSuggestions([]);
+    } else {
+      setQuery(p => {
+        const next = (p + key).toLowerCase();
+        logger.info(`[TVSearch] Query update: "${next}"`);
+        return next;
+      });
     }
   }, [doSearch, showRemoteModal]);
 
