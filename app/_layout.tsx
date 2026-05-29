@@ -74,22 +74,6 @@ const CustomDarkTheme = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  // 硬件返回键处理: 首页双击退出
-  useEffect(() => {
-    let lastBackPressTime = 0;
-    const onBackPress = () => {
-      const currentTime = Date.now();
-      if (currentTime - lastBackPressTime < 2000) {
-        BackHandler.exitApp();
-        return true;
-      }
-      lastBackPressTime = currentTime;
-      ToastAndroid.show('再按一次退出软件', ToastAndroid.SHORT);
-      return true;
-    };
-    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => subscription.remove();
-  }, []);
   const colorScheme = useColorScheme();
   const theme = (colorScheme === "dark" ? CustomDarkTheme : DefaultTheme) ?? DefaultTheme;
 

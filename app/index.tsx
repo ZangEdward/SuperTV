@@ -64,46 +64,39 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-    const handleBackPress = () => {
-      if (deviceType === 'tv') {
-        // 如果当前不在顶部导航/分类区域，则按返回键回到顶部并聚焦分类
-        if (selectedCategory && selectedCategory.tags && selectedTagRef.current) {
-          scrollRef.current?.scrollToTop?.();
-          selectedTagRef.current.focus();
-          return true;
-        } else if (selectedCategoryRef.current) {
-          scrollRef.current?.scrollToTop?.();
-          selectedCategoryRef.current.focus();
+      const handleBackPress = () => {
+        if (deviceType === 'tv') {
+          if (selectedCategory && selectedCategory.tags && selectedTagRef.current) {
+            scrollRef.current?.scrollToTop?.();
+            selectedTagRef.current.focus();
+            return true;
+          } else if (selectedCategoryRef.current) {
+            scrollRef.current?.scrollToTop?.();
+            selectedCategoryRef.current.focus();
+            return true;
+          }
+        }
+
+        const now = Date.now();
+        if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
+          backPressTimeRef.current = now;
+          ToastAndroid.show("再按一次退出软件", ToastAndroid.SHORT);
           return true;
         }
-      }
 
-      const now = Date.now();
-
-      // 如果还没按过返回键，或距离上次超过2秒
-      if (!backPressTimeRef.current || now - backPressTimeRef.current > 2000) {
-        backPressTimeRef.current = now;
-        ToastAndroid.show("再按一次返回键退出", ToastAndroid.SHORT);
-        return true; // 拦截返回事件，不退出
-      }
-
-      // 两次返回键间隔小于2秒，退出应用
-      BackHandler.exitApp();
-      return true;
-    };
-
-    // 仅限 Android 平台启用此功能
-    if (Platform.OS === "android") {
-      const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
-
-      // 返回首页时重置状态
-      return () => {
-        backHandler.remove();
-        backPressTimeRef.current = null;
+        BackHandler.exitApp();
+        return true;
       };
-    }
-  }, [])
-);
+
+      if (Platform.OS === "android") {
+        const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBackPress);
+        return () => {
+          backHandler.remove();
+          backPressTimeRef.current = null;
+        };
+      }
+    }, [deviceType, selectedCategory])
+  );
 
   // 统一的数据获取逻辑
   useEffect(() => {

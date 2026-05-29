@@ -325,14 +325,13 @@ export default function TVSearchView() {
                 activeOpacity={0.6}
                 style={[
                     styles.wordButton,
-                    focusedKey === `__word_${i}` && styles.focused,
-                    { width: '48%' }
+                    focusedKey === `__word_${i}` && styles.focused
                 ]}
                 onFocus={() => setFocusedKey(`__word_${i}`)}
                 onBlur={() => setFocusedKey(null)}
                 onPress={() => onWordPress(w)}
               >
-                <Text style={styles.wordButtonText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{w}</Text>
+                <Text style={styles.wordButtonText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{w}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -364,6 +363,8 @@ export default function TVSearchView() {
                       sourceCount={(item as any).sourceCount}
                       api={api}
                       from="search"
+                      style={{ width: 120, height: 180 }}
+                      containerStyle={{ width: 120, height: 180 }}
                     />
                   </View>
                 ))}
@@ -403,8 +404,8 @@ const styles = StyleSheet.create({
   switchBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
   switchText: { color: '#888', fontSize: 14 },
   wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  wordButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#2a2a2e', borderWidth: 2, borderColor: '#3a3a3e', width: '100%', height: 50, justifyContent: 'center' },
-  wordButtonText: { color: '#ddd', fontSize: 16, textAlign: 'center' },
+  wordButton: { paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8, backgroundColor: '#2a2a2e', borderWidth: 2, borderColor: '#3a3a3e', width: '100%', alignItems: 'center' },
+  wordButtonText: { color: '#ddd', fontSize: 16 },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
   cardWrap: { width: '33.33%', padding: 4, alignItems: 'center' },
