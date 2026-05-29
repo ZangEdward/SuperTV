@@ -62,6 +62,7 @@ export default function TVSearchView() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [displayResults, setDisplayResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -74,6 +75,16 @@ export default function TVSearchView() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (useRemoteControlStore.getState().targetPage === 'search') {
+      const msg = useRemoteControlStore.getState().lastMessage;
+      if (msg) {
+        const cleanMsg = msg.split('_')[0];
+        setQuery(prev => (prev + cleanMsg).slice(0, 20));
+      }
+    }
+  }, [useRemoteControlStore.getState().lastMessage]);
+
+  useEffect(() => {
     api.getSearchSuggestions('').then(res => {
       if (Array.isArray(res)) {
         setTrending(res.map((r: any) => typeof r === 'string' ? r : r.text || '').filter(Boolean));
@@ -82,6 +93,16 @@ export default function TVSearchView() {
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
     setFocusedKey('__input');
   }, []);
+
+  useEffect(() => {
+    setDisplayResults(results.slice(0, 20));
+  }, [results]);
+
+  const loadMore = () => {
+    if (displayResults.length < results.length) {
+      setDisplayResults(results.slice(0, displayResults.length + 20));
+    }
+  };
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -163,11 +184,6 @@ export default function TVSearchView() {
 
   const currentWords = showHistory ? history : (suggestions.length > 0 ? suggestions : trending);
   const wordLabel = showHistory ? '搜索历史' : (suggestions.length > 0 ? '拼音联想' : '搜索建议');
-
-  const aggregatedResults = useMemo(() => {
-    if (!useAggregatedView) return results;
-    return results; // TODO: Implement aggregation logic
-  }, [results, useAggregatedView]);
 
   return (
     <ThemedView style={styles.container}>
@@ -270,41 +286,36 @@ export default function TVSearchView() {
                 </TouchableOpacity>
             </View>
           </View>
-          <ScrollView style={styles.wordList}>
-            {currentWords.map((w, i) => (
+          <View style={styles.wordGrid}>
+            {currentWords.slice(0, 10).map((w, i) => (
               <TouchableOpacity
                 key={`${w}-${i}`}
                 activeOpacity={0.6}
-                style={[styles.wordItem, focusedKey === `__word_${i}` && styles.focused]}
+                style={[styles.wordButton, focusedKey === `__word_${i}` && styles.focused]}
                 onPress={() => onWordPress(w)}
                 onFocus={() => setFocusedKey(`__word_${i}`)}
                 onBlur={() => setFocusedKey(null)}
               >
-                <Text style={styles.wordText} numberOfLines={1}>{w}</Text>
+                <Text style={styles.wordButtonText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8}>{w}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
         <View style={styles.rightPane}>
-          {results.length > 0 && (
-            <View style={styles.aggToggleRow}>
-              <Text style={styles.aggLabel}>聚合</Text>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setUseAggregatedView(!useAggregatedView)}
-                style={[styles.aggSwitchTrack, useAggregatedView && { backgroundColor: '#00bb5e' }]}
-              >
-                <View style={[styles.aggSwitchThumb, useAggregatedView && { transform: [{ translateX: 14 }] }]} />
-              </TouchableOpacity>
-            </View>
-          )}
           {loading ? (
             <View style={styles.centerRow}><VideoLoadingAnimation showProgressBar={false} /></View>
-          ) : aggregatedResults.length > 0 ? (
-            <ScrollView showsVerticalScrollIndicator={false}>
+          ) : displayResults.length > 0 ? (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              onScroll={({nativeEvent}) => {
+                const isCloseToBottom = nativeEvent.layoutMeasurement.height + nativeEvent.contentOffset.y >= nativeEvent.contentSize.height - 100;
+                if (isCloseToBottom) loadMore();
+              }}
+              scrollEventThrottle={400}
+            >
               <View style={styles.resultsGrid}>
-                {aggregatedResults.map((item, idx) => (
+                {displayResults.map((item, idx) => (
                   <View key={`${item.source}-${item.id}-${idx}`} style={styles.cardWrap}>
                     <VideoCard
                       id={item.id.toString()}
@@ -317,7 +328,6 @@ export default function TVSearchView() {
                       sourceCount={(item as any).sourceCount}
                       api={api}
                       from="search"
-                      compact={true}
                     />
                   </View>
                 ))}
@@ -356,15 +366,11 @@ const styles = StyleSheet.create({
   smallBtn: { padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
   switchBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 8, borderRadius: 8, backgroundColor: '#2a2a2e' },
   switchText: { color: '#888', fontSize: 14 },
-  wordList: { flex: 1 },
-  wordItem: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  wordText: { color: '#ddd', fontSize: 16 },
-  aggToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 8 },
-  aggLabel: { color: '#aaa', fontSize: 14, fontWeight: '500' },
-  aggSwitchTrack: { width: 32, height: 18, backgroundColor: '#3a3a3c', borderRadius: 9, padding: 2 },
-  aggSwitchThumb: { width: 14, height: 14, backgroundColor: 'white', borderRadius: 7 },
+  wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  wordButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, backgroundColor: '#2a2a2e', borderWidth: 2, borderColor: '#3a3a3e', width: '48%', height: 60, justifyContent: 'center' },
+  wordButtonText: { color: '#ddd', fontSize: 13, textAlign: 'center' },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  resultsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cardWrap: { width: '33.333%', padding: 4 },
+  resultsGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
+  cardWrap: { width: '25%', padding: 4, alignItems: 'center' },
   emptyText: { color: '#888', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });

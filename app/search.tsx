@@ -226,13 +226,6 @@ export default function SearchScreen() {
         </View>
       ) : (
         <View style={dynamicStyles.historyList}>
-          {/* 清空历史按钮 — 放在第一个历史搜索位置 */}
-          <TouchableOpacity
-            style={dynamicStyles.clearHistoryPill}
-            onPress={clearHistory}
-          >
-            <ThemedText style={dynamicStyles.clearHistoryText}>清空历史搜索</ThemedText>
-          </TouchableOpacity>
           {history.map((item, idx) => (
             <View key={idx} style={dynamicStyles.historyPillWrapper}>
               <TouchableOpacity

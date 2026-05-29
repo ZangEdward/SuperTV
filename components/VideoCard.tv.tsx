@@ -239,7 +239,7 @@ const VideoCard = forwardRef<View, VideoCardProps>(
                 第{episodeIndex}集 已观看 {Math.round((progress || 0) * 100)}%
               </Text>
             )}
-            <ThemedText numberOfLines={1} style={styles.titleText}>{title}</ThemedText>
+            <ThemedText numberOfLines={2} style={styles.titleText}>{title}</ThemedText>
           </View>
         </Pressable>
       </Animated.View>
@@ -251,8 +251,8 @@ VideoCard.displayName = "VideoCard";
 
 export default VideoCard;
 
-const CARD_WIDTH = 160;
-const CARD_HEIGHT = 240;
+const CARD_WIDTH = 120;
+const CARD_HEIGHT = 180;
 
 const styles = StyleSheet.create({
   wrapper: {
