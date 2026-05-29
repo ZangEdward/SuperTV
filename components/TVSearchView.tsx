@@ -49,35 +49,49 @@ export default function TVSearchView() {
   const [history, setHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [trending, setTrending] = useState<string[]>([]);
   const { showModal: showRemoteModal } = useRemoteControlStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 挂载时加载搜索建议池（类似 TVBoxOS 的热词）
   useEffect(() => {
+    api.getSearchSuggestions('').then(res => {
+      if (Array.isArray(res)) {
+        setTrending(res.map((r: any) => typeof r === 'string' ? r : r.text || '').filter(Boolean));
+      }
+    }).catch(() => {});
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
   }, []);
 
+  // 输入时实时联想（优先热词匹配，50ms 极速响应）
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
     debounceRef.current = setTimeout(async () => {
-      let results: string[] = [];
-      // 1. 尝试 atianqi 拼音联想 API
-      try {
-        results = await fetchPinyinSuggestions(query);
-      } catch (e) { /* ignore */ }
-      // 2. 如果无结果，用本应用搜索建议 API
-      if (results.length === 0) {
+      const q = query.toLowerCase();
+      // 1. 先在热词池中按文字匹配（最快）
+      const trendingHits = trending.filter(t => t.toLowerCase().includes(q));
+      // 2. atianqi 拼音联想（服务端将 "gqwy" 转为 "怪奇物语"）
+      let apiResults: string[] = [];
+      try { apiResults = await fetchPinyinSuggestions(query); } catch (e) { /* ignore */ }
+      // 3. 本应用搜索建议 API
+      if (apiResults.length === 0) {
         try {
           const backendSug = await api.getSearchSuggestions(query);
           if (Array.isArray(backendSug)) {
-            results = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
+            apiResults = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
           }
         } catch (e) { /* ignore */ }
       }
-      if (results.length > 0) setSuggestions(results);
-    }, 200);
+      // 4. 合并去重（热词优先）
+      const merged = [...trendingHits];
+      for (const t of apiResults) {
+        if (!merged.includes(t)) merged.push(t);
+      }
+      if (merged.length > 0) setSuggestions(merged.slice(0, 15));
+    }, 50);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
+  }, [query, trending]);
 
   const saveHistory = useCallback(async (term: string) => {
     const updated = [term, ...history.filter(h => h !== term)].slice(0, MAX_HISTORY);
@@ -118,8 +132,8 @@ export default function TVSearchView() {
     ]);
   };
 
-  const currentWords = showHistory ? history : suggestions;
-  const wordLabel = showHistory ? '搜索历史' : (query.length >= 2 ? '拼音联想' : '搜索建议');
+  const currentWords = showHistory ? history : (suggestions.length > 0 ? suggestions : trending);
+  const wordLabel = showHistory ? '搜索历史' : (suggestions.length > 0 ? '拼音联想' : (query.length >= 2 ? '搜索中...' : '搜索建议'));
 
   return (
     <ThemedView style={styles.container}>
@@ -250,37 +264,37 @@ export default function TVSearchView() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  topBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  topTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: '#fff' },
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
+  topBtn: { width: 56, height: 56, justifyContent: 'center', alignItems: 'center' },
+  topTitle: { flex: 1, textAlign: 'center', fontSize: 24, fontWeight: '700', color: '#fff' },
   body: { flex: 1, flexDirection: 'row' },
-  leftPane: { width: '25%', paddingHorizontal: 8, paddingTop: 4 },
-  midPane: { width: '25%', paddingHorizontal: 6, paddingTop: 4, borderLeftWidth: 1, borderLeftColor: '#222' },
-  rightPane: { flex: 1, paddingHorizontal: 8, paddingTop: 4, borderLeftWidth: 1, borderLeftColor: '#222' },
-  inputBox: { height: 40, backgroundColor: '#1c1c1e', borderRadius: 8, paddingHorizontal: 10, justifyContent: 'center', marginBottom: 6, borderWidth: 1, borderColor: '#333' },
-  inputText: { color: '#666', fontSize: 13 },
-  funcRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
-  funcBtn: { flex: 1, height: 36, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 4 },
-  funcText: { color: '#ccc', fontSize: 12 },
+  leftPane: { width: '25%', paddingHorizontal: 12, paddingTop: 8 },
+  midPane: { width: '25%', paddingHorizontal: 10, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  rightPane: { flex: 1, paddingHorizontal: 12, paddingTop: 8, borderLeftWidth: 1, borderLeftColor: '#222' },
+  inputBox: { height: 52, backgroundColor: '#1c1c1e', borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center', marginBottom: 8, borderWidth: 1, borderColor: '#333' },
+  inputText: { color: '#888', fontSize: 18 },
+  funcRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  funcBtn: { flex: 1, height: 48, borderRadius: 10, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  funcText: { color: '#fff', fontSize: 16 },
   kbArea: { flex: 1 },
-  kbRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
-  kbKey: { flex: 1, height: 34, borderRadius: 6, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#3a3a3e' },
+  kbRow: { flexDirection: 'row', gap: 5, marginBottom: 5 },
+  kbKey: { flex: 1, height: 48, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
   kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
-  kbKeyFocused: { borderColor: Colors.dark.primary, borderWidth: 2, backgroundColor: '#0a2a0a' },
-  kbKeyText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  remoteBtn: { height: 36, borderRadius: 8, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 4, borderWidth: 1, borderColor: '#2a4a2a' },
-  remoteText: { color: '#00bb5e', fontSize: 13, fontWeight: '600' },
-  wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 4 },
-  wordLabel: { color: '#aaa', fontSize: 12, fontWeight: '600' },
-  switchBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', gap: 2 },
-  switchText: { color: '#666', fontSize: 11 },
+  kbKeyFocused: { borderColor: Colors.dark.primary, borderWidth: 3, backgroundColor: '#0a2a0a' },
+  kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
+  remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },
+  wordHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 6 },
+  wordLabel: { color: '#aaa', fontSize: 16, fontWeight: '600' },
+  switchBtn: { flexDirection: 'row', alignItems: 'center', marginLeft: 'auto', gap: 4, padding: 4 },
+  switchText: { color: '#888', fontSize: 14 },
   wordList: { flex: 1 },
-  wordItem: { paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  wordItemFocused: { backgroundColor: '#0a2a0a', borderLeftWidth: 3, borderLeftColor: Colors.dark.primary },
-  wordText: { color: '#ccc', fontSize: 13 },
-  emptyHint: { color: '#555', fontSize: 12, marginTop: 20, textAlign: 'center' },
+  wordItem: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  wordItemFocused: { backgroundColor: '#0a2a0a', borderLeftWidth: 4, borderLeftColor: Colors.dark.primary },
+  wordText: { color: '#ddd', fontSize: 16 },
+  emptyHint: { color: '#555', fontSize: 14, marginTop: 30, textAlign: 'center' },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cardWrap: { width: '33.333%', padding: 4 },
-  emptyText: { color: '#666', fontSize: 14, textAlign: 'center', marginTop: 30 },
+  cardWrap: { width: '33.333%', padding: 6 },
+  emptyText: { color: '#888', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });

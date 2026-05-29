@@ -54,31 +54,26 @@ export default function SearchSuggestions({
 
   const fetchSuggestions = useCallback(async (q: string) => {
     const qLower = q.toLowerCase();
-    const isAlpha = /^[a-z]{2,}$/i.test(qLower.replace(/\s+/g, ''));
 
-    // 1. 拼音输入 → 优先 atianqi API（"gqwy" → "怪奇物语"）
+    // 1. 先在热词池中文字匹配（最快）
+    const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+
+    // 2. atianqi 拼音联想（服务端将 "gqwy" 转为 "怪奇物语"）
     let pinyinHits: string[] = [];
-    if (isAlpha) {
-      pinyinHits = await fetchPinyinSuggestions(q);
-      if (pinyinHits.length > 0) {
-        setSuggestions(pinyinHits.map(t => ({ text: t, type: 'pinyin' })));
-        return;
-      }
+    if (/^[a-z]{2,}$/i.test(qLower.replace(/\s+/g, ''))) {
+      try { pinyinHits = await fetchPinyinSuggestions(q); } catch { /* ignore */ }
     }
 
-    // 2. 非拼音或拼音API无结果 → 后台搜索建议
-    try {
-      const result = await api.getSearchSuggestions(q);
-      if (Array.isArray(result) && result.length > 0) {
-        setSuggestions(result.map(item =>
-          typeof item === 'string' ? { text: item } : item
-        ));
-        return;
-      }
-    } catch { /* fall through */ }
-
-    // 3. 默认建议池文字匹配
-    const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+    // 3. 后台搜索建议
+    let backendHits: string[] = [];
+    if (pinyinHits.length === 0) {
+      try {
+        const result = await api.getSearchSuggestions(q);
+        if (Array.isArray(result) && result.length > 0) {
+          backendHits = result.map(item => typeof item === 'string' ? item : item.text || '');
+        }
+      } catch { /* ignore */ }
+    }
 
     // 4. SearchDetailPool 文字匹配
     const poolHits: string[] = [];
@@ -93,10 +88,10 @@ export default function SearchSuggestions({
       });
     } catch { /* ignore */ }
 
-    // 5. 合并去重
+    // 5. 合并去重（热词优先）
     const merged: SuggestionItem[] = [];
     const added = new Set<string>();
-    for (const t of [...trendingHits, ...poolHits]) {
+    for (const t of [...trendingHits, ...pinyinHits, ...backendHits, ...poolHits]) {
       if (!added.has(t)) { added.add(t); merged.push({ text: t }); }
     }
     setSuggestions(merged.slice(0, 12));
@@ -110,7 +105,7 @@ export default function SearchSuggestions({
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       fetchSuggestions(query);
-    }, 300);
+    }, 200);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
