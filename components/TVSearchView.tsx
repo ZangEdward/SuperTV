@@ -68,30 +68,41 @@ export default function TVSearchView() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (query.length < 2) { setSuggestions([]); return; }
     debounceRef.current = setTimeout(async () => {
-      const q = query.toLowerCase();
-      // 1. 先在热词池中按文字匹配（最快）
-      const trendingHits = trending.filter(t => t.toLowerCase().includes(q));
-      // 2. atianqi 拼音联想（服务端将 "gqwy" 转为 "怪奇物语"）
-      let apiResults: string[] = [];
-      try { apiResults = await fetchPinyinSuggestions(query); } catch (e) { /* ignore */ }
-      // 3. 本应用搜索建议 API
-      if (apiResults.length === 0) {
+      const q = query.trim();
+      if (q.length < 2) { setSuggestions([]); return; }
+
+      // 1. 先在热词池中按文字匹配
+      const qLower = q.toLowerCase();
+      const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+
+      // 2. 拼音联想 (gqwy -> 怪奇物语)
+      let pinyinHits: string[] = [];
+      if (/^[a-zA-Z]{2,}$/.test(q)) {
+        try { pinyinHits = await fetchPinyinSuggestions(q); } catch { /* ignore */ }
+      }
+
+      // 3. 搜索建议 API (仅在无拼音结果时才调用)
+      let backendHits: string[] = [];
+      if (pinyinHits.length === 0) {
         try {
-          const backendSug = await api.getSearchSuggestions(query);
+          const backendSug = await api.getSearchSuggestions(q);
           if (Array.isArray(backendSug)) {
-            apiResults = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
+            backendHits = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
           }
         } catch (e) { /* ignore */ }
       }
+
       // 4. 合并去重（热词优先）
-      const merged = [...trendingHits];
-      for (const t of apiResults) {
-        if (!merged.includes(t)) merged.push(t);
-      }
-      if (merged.length > 0) setSuggestions(merged.slice(0, 15));
-    }, 50);
+      const merged = new Set<string>([...trendingHits, ...pinyinHits, ...backendHits]);
+      setSuggestions(Array.from(merged).slice(0, 15));
+    }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, trending]);
+
+  // 页面挂载时默认焦点在输入框
+  useEffect(() => {
+    setFocusedKey('__input');
+  }, []);
 
   const saveHistory = useCallback(async (term: string) => {
     const updated = [term, ...history.filter(h => h !== term)].slice(0, MAX_HISTORY);
@@ -148,7 +159,7 @@ export default function TVSearchView() {
       <View style={styles.body}>
         {/* 左栏：键盘 (25%) */}
         <View style={styles.leftPane}>
-          <View style={styles.inputBox}>
+          <View style={[styles.inputBox, focusedKey === '__input' && styles.kbKeyFocused]}>
             <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>
               {query || '输入拼音首字母'}
             </Text>
@@ -280,7 +291,16 @@ const styles = StyleSheet.create({
   kbRow: { flexDirection: 'row', gap: 5, marginBottom: 5 },
   kbKey: { flex: 1, height: 48, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
   kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
-  kbKeyFocused: { borderColor: Colors.dark.primary, borderWidth: 3, backgroundColor: '#0a2a0a' },
+  kbKeyFocused: {
+    borderColor: Colors.dark.primary,
+    borderWidth: 3,
+    backgroundColor: '#0a2a0a',
+    shadowColor: Colors.dark.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    elevation: 10 // Android 重点：提升层级
+  },
   kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
   remoteText: { color: '#00bb5e', fontSize: 16, fontWeight: '600' },

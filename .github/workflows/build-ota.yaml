@@ -132,33 +132,36 @@ jobs:
           echo "{ \"apksize\": ${APK_SIZE} }" > sync-repo/log/vision/apksize.json
 
       # -------------------------------
-      # 强更新：如果 OTA 仓库有同版本 Release，也同样执行全面删除
+      # 智能更新：仅删除冲突的同名文件（Asset），而不删除整个 Release
       # -------------------------------
-      - name: Force delete old Release if conflicts (OTA repo)
+      - name: Handle asset conflict (OTA repo)
         run: |
           VERSION="${{ env.VERSION }}"
           REPO="${{ secrets.SYNC_REPO }}"
+          FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
 
-          # 1. 获取现有 Release ID
-          RELEASE_ID=$(curl -s \
+          # 1. 获取 Release 信息
+          RELEASE_INFO=$(curl -s \
             -H "Authorization: token ${{ secrets.PAT }}" \
-            https://api.github.com/repos/$REPO/releases/tags/v$VERSION \
-            | jq -r '.id')
-
-          # 2. 如果存在，直接毁灭整个 Release
-          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
-            echo "发现 OTA 仓库版本冲突！正在彻底删除原有 v$VERSION Release (ID: $RELEASE_ID)..."
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/releases/$RELEASE_ID
+            https://api.github.com/repos/$REPO/releases/tags/v$VERSION)
           
-            # 3. 强行把对应的远程 Git Tag 也清理掉
-            echo "正在清理远程 OTA Tag: v$VERSION"
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.PAT }}" \
-              https://api.github.com/repos/$REPO/git/refs/tags/v$VERSION
+          RELEASE_ID=$(echo $RELEASE_INFO | jq -r '.id')
+
+          # 2. 如果 Release 存在，检查是否已存在同名资产
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            ASSET_ID=$(echo $RELEASE_INFO | jq -r ".assets[] | select(.name==\"$FILE_NAME\") | .id")
+
+            # 3. 仅删除冲突的 Asset，保留整个 Release 和其他历史记录
+            if [ -n "$ASSET_ID" ]; then
+              echo "⚠️ 发现同名文件 $FILE_NAME 冲突！正在删除旧资产 (ID: $ASSET_ID)..."
+              curl -X DELETE \
+                -H "Authorization: token ${{ secrets.PAT }}" \
+                https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+            else
+              echo "✅ 未发现同名资产，无需删除。"
+            fi
           else
-            echo "OTA 仓库未发现冲突版本，正常推进。"
+            echo "ℹ️ 版本 v$VERSION 的 Release 尚不存在，将由下一步自动创建。"
           fi
 
       - name: Upload APK to log repo release
