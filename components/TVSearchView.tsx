@@ -16,7 +16,6 @@ const logger = Logger.withTag('TVSearchView');
 const HISTORY_KEY = "tv_search_history";
 const MAX_HISTORY = 15;
 
-// 彻底对齐 TVBoxOS 的联想逻辑
 async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   try {
     const res = await fetch(
@@ -25,8 +24,6 @@ async function fetchPinyinSuggestions(key: string): Promise<string[]> {
     );
     const result = await res.json();
     const hots: string[] = [];
-
-    // 严格按照 TVBoxOS Java 层的解析逻辑：遍历 group_data -> dtReportInfo -> keyword_txt
     const groupDataArr = result?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
     for (const groupData of groupDataArr) {
       const keywordTxt = groupData?.dtReportInfo?.reportData?.keyword_txt;
@@ -41,30 +38,53 @@ async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   }
 }
 
-// ... 保持 ALPHA_KEYS 和 ALPHA_ROWS 不变
+const ALPHA_KEYS = ['A','B','C','D','E','F','G','H','I','J','K','L','M',
+                    'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'];
+const ALPHA_ROWS = [
+  ALPHA_KEYS.slice(0, 5),
+  ALPHA_KEYS.slice(5, 10),
+  ALPHA_KEYS.slice(10, 15),
+  ALPHA_KEYS.slice(15, 20),
+  ALPHA_KEYS.slice(20, 25),
+  [...ALPHA_KEYS.slice(25), '退格'],
+];
 
-// 核心 Effect：移除复杂的防抖与合并，实现与 TVBox 一致的极速响应
-useEffect(() => {
-  if (!query) {
-    setSuggestions([]);
-    return;
-  }
-
-  // 取消之前的定时器，保证最新的输入优先
-  if (debounceRef.current) clearTimeout(debounceRef.current);
-
-  // 极短延迟，模拟原生 Java 层的快速响应
-  debounceRef.current = setTimeout(async () => {
-    const pinyinHits = await fetchPinyinSuggestions(query.trim());
-    setSuggestions(pinyinHits);
-  }, 50);
-
-  return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-}, [query]);
+export default function TVSearchView() {
+  const router = useRouter();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [history, setHistory] = useState<string[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  const [trending, setTrending] = useState<string[]>([]);
+  const { showModal: showRemoteModal } = useRemoteControlStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    api.getSearchSuggestions('').then(res => {
+      if (Array.isArray(res)) {
+        setTrending(res.map((r: any) => typeof r === 'string' ? r : r.text || '').filter(Boolean));
+      }
+    }).catch(() => {});
+    AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
     setFocusedKey('__input');
   }, []);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query) {
+      setSuggestions([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const pinyinHits = await fetchPinyinSuggestions(query.trim());
+      setSuggestions(pinyinHits);
+    }, 50);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
 
   const saveHistory = useCallback(async (term: string) => {
     const updated = [term, ...history.filter(h => h !== term)].slice(0, MAX_HISTORY);
@@ -108,7 +128,7 @@ useEffect(() => {
   };
 
   const currentWords = showHistory ? history : (suggestions.length > 0 ? suggestions : trending);
-  const wordLabel = showHistory ? '搜索历史' : (suggestions.length > 0 ? '拼音联想' : (query.length >= 2 ? '搜索中...' : '搜索建议'));
+  const wordLabel = showHistory ? '搜索历史' : (suggestions.length > 0 ? '拼音联想' : '搜索建议');
 
   return (
     <ThemedView style={styles.container}>
