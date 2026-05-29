@@ -63,11 +63,9 @@ export default function TVSearchView() {
     AsyncStorage.getItem(HISTORY_KEY).then(val => { if (val) setHistory(JSON.parse(val)); });
   }, []);
 
-  // 输入时实时联想（TVBoxOS 逻辑：只要输入拼音，立即联想，不设长度限制）
+  // 极致性能：输入时实时联想（TVBoxOS 逻辑：并行请求，先到先得）
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    // 逻辑修正：如果 query 为空，则展示热词推荐
     if (!query) {
       setSuggestions([]);
       return;
@@ -76,35 +74,25 @@ export default function TVSearchView() {
     debounceRef.current = setTimeout(async () => {
       const q = query.trim();
 
-      // 1. 尝试云端拼音联想（核心逻辑：TVBoxOS 允许单字母触发）
-      let pinyinHits: string[] = [];
-      try {
-        pinyinHits = await fetchPinyinSuggestions(q);
-      } catch (e) {
-        logger.error('Pinyin API Error', e);
-      }
-
-      // 2. 只有在没有拼音结果时，才使用本地热词进行兜底匹配
+      // 本地热词预加载匹配（同步执行，保证即时性）
       const qLower = q.toLowerCase();
-      const trendingHits = pinyinHits.length === 0
-        ? trending.filter(t => t.toLowerCase().includes(qLower))
-        : [];
+      const localMatches = trending.filter(t => t.toLowerCase().includes(qLower));
 
-      // 3. 搜索建议 API (进一步兜底)
-      let backendHits: string[] = [];
-      if (pinyinHits.length === 0 && trendingHits.length === 0) {
-        try {
-          const backendSug = await api.getSearchSuggestions(q);
-          if (Array.isArray(backendSug)) {
-            backendHits = backendSug.map((r: any) => typeof r === 'string' ? r : r.text || '');
-          }
-        } catch (e) { logger.error('Backend Suggestion Error', e); }
-      }
+      // 并行请求网络接口
+      const netTasks = [
+        fetchPinyinSuggestions(q).catch(() => []),
+        api.getSearchSuggestions(q).catch(() => [])
+      ];
 
-      // 4. 合并去重并展示
-      const merged = new Set<string>([...pinyinHits, ...trendingHits, ...backendHits]);
+      const [pinyinHits, backendHits] = await Promise.all(netTasks);
+
+      // 合并结果：本地热词匹配 > 云端拼音 > 后端建议
+      // 使用 Set 去重
+      const merged = new Set<string>([...localMatches, ...pinyinHits, ...backendHits]);
+
+      // 截取前 15 个展示
       setSuggestions(Array.from(merged).slice(0, 15));
-    }, 150); // 调快响应速度
+    }, 80); // 防抖降至 80ms
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, trending]);
@@ -173,7 +161,7 @@ export default function TVSearchView() {
       <View style={styles.body}>
         {/* 左栏：键盘 (25%) */}
         <View style={styles.leftPane}>
-          <View style={[styles.inputBox, focusedKey === '__input' && styles.kbKeyFocused]}>
+          <View style={[styles.inputBox, focusedKey === '__input' && styles.inputBoxFocused]}>
             <Text style={[styles.inputText, query ? { color: '#fff' } : null]}>
               {query || '输入拼音首字母'}
             </Text>
@@ -305,6 +293,12 @@ const styles = StyleSheet.create({
   kbRow: { flexDirection: 'row', gap: 5, marginBottom: 5 },
   kbKey: { flex: 1, height: 48, borderRadius: 8, backgroundColor: '#2a2a2e', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#3a3a3e' },
   kbBackKey: { backgroundColor: '#1e1e22', borderColor: '#4a2020' },
+  inputBoxFocused: {
+    borderColor: Colors.dark.primary,
+    borderWidth: 3,
+    backgroundColor: '#0a2a0a',
+    elevation: 10,
+  },
   kbKeyFocused: {
     borderColor: Colors.dark.primary,
     borderWidth: 3,
@@ -313,7 +307,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 10,
-    elevation: 10 // Android 重点：提升层级
+    elevation: 10
   },
   kbKeyText: { color: '#fff', fontSize: 20, fontWeight: '700' },
   remoteBtn: { height: 48, borderRadius: 10, backgroundColor: '#1a2a1a', justifyContent: 'center', alignItems: 'center', marginTop: 6, borderWidth: 2, borderColor: '#2a4a2a' },
