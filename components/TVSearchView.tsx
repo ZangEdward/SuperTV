@@ -75,14 +75,25 @@ export default function TVSearchView() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // 强制输出 query 状态，排查是否未捕获到变化
+    logger.info(`[TVSearch] Debounce query: "${query}"`);
+
     if (!query) {
       setSuggestions([]);
       return;
     }
+
     debounceRef.current = setTimeout(async () => {
-      const pinyinHits = await fetchPinyinSuggestions(query.trim());
+      const q = query.trim();
+      logger.info(`[TVSearch] Fetching suggestions for: "${q}"`);
+
+      const pinyinHits = await fetchPinyinSuggestions(q);
+      logger.info(`[TVSearch] Received ${pinyinHits.length} suggestions`);
+
       setSuggestions(pinyinHits);
     }, 50);
+
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
 
