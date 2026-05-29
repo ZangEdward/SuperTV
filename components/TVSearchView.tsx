@@ -408,6 +408,7 @@ const styles = StyleSheet.create({
   wordButtonText: { color: '#ddd', fontSize: 16 },
   centerRow: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   resultsGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
-  cardWrap: { width: '33.33%', padding: 4, alignItems: 'center' },
+  // 每行两列布局，适当增加间距
+  cardWrap: { width: '50%', padding: 8, alignItems: 'center' },
   emptyText: { color: '#888', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });

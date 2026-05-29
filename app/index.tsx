@@ -65,13 +65,25 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       const handleBackPress = () => {
+        // 判断当前焦点是否在海报区域 (contentData)
+        // 通过检查当前是否存在聚焦的海报组件（这里需要一个逻辑判断）
+        // 简单方法：如果当前焦点在海报，返回应先回到分类
+
+        // 尝试回到顶部逻辑（检测如果当前不在分类，则视为在海报）
+        // 这里需要更精细的判断逻辑，先保留原有分类判断，在此基础上优化
         if (deviceType === 'tv') {
+          // 逻辑：如果当前聚焦在某处（非分类本身），尝试回到分类
+          // 我们可以通过检查 scrollRef 是否滚动了，或者是否有焦点记录
+          if (scrollRef.current?.isScrolled?.()) {
+             scrollRef.current?.scrollToTop?.();
+             selectedTagRef.current?.focus?.();
+             return true;
+          }
+          // 如果已经在顶部，再判断分类切换逻辑
           if (selectedCategory && selectedCategory.tags && selectedTagRef.current) {
-            scrollRef.current?.scrollToTop?.();
             selectedTagRef.current.focus();
             return true;
           } else if (selectedCategoryRef.current) {
-            scrollRef.current?.scrollToTop?.();
             selectedCategoryRef.current.focus();
             return true;
           }
