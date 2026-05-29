@@ -20,16 +20,28 @@ interface SuggestionItem {
 /** atianqi 拼音联想 API（与 TV 搜索共用） */
 async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   try {
-    const res = await fetch(
-      `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`,
-      { signal: AbortSignal.timeout(4000) }
-    );
+    const url = `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`;
+    console.log('[ATIANQI_DEBUG] Fetching:', url);
+    let didTimeout = false;
+    const timer = setTimeout(() => { didTimeout = true; }, 5000);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+      },
+    });
+    clearTimeout(timer);
+    if (didTimeout) { console.log('[ATIANQI_DEBUG] Timeout'); return []; }
+    if (!res.ok) { console.log('[ATIANQI_DEBUG] HTTP', res.status); return []; }
     const json = await res.json();
+    console.log('[ATIANQI_DEBUG] Res keys:', Object.keys(json));
     const groupData = json?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
+    console.log('[ATIANQI_DEBUG] group_data:', groupData.length);
     return groupData.map((g: any) =>
       g?.dtReportInfo?.reportData?.keyword_txt || ''
     ).filter(Boolean).slice(0, 15);
-  } catch {
+  } catch (e: any) {
+    console.log('[ATIANQI_DEBUG] Error:', e?.message || e);
     return [];
   }
 }

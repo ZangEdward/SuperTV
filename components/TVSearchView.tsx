@@ -18,22 +18,42 @@ const MAX_HISTORY = 15;
 
 async function fetchPinyinSuggestions(key: string): Promise<string[]> {
   try {
-    const res = await fetch(
-      `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`,
-      { signal: AbortSignal.timeout(4000) }
-    );
+    const url = `https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${encodeURIComponent(key)}`;
+    console.log('[ATIANQI_DEBUG] Fetching:', url);
+    logger.info(`[PINYIN] Fetching: ${url}`);
+    // TVBoxOS 使用 OkHttp，默认带 User-Agent；React Native fetch 可能不带，手动加上
+    let didTimeout = false;
+    const timer = setTimeout(() => { didTimeout = true; }, 5000);
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+      },
+    });
+    clearTimeout(timer);
+    if (didTimeout) { console.log('[ATIANQI_DEBUG] Timeout'); return []; }
+    if (!res.ok) {
+      console.log('[ATIANQI_DEBUG] HTTP status:', res.status);
+      logger.warn(`[PINYIN] HTTP ${res.status}`);
+      return [];
+    }
     const result = await res.json();
+    console.log('[ATIANQI_DEBUG] Response keys:', Object.keys(result));
     const hots: string[] = [];
     const groupDataArr = result?.data?.search_data?.vecGroupData?.[0]?.group_data || [];
+    console.log('[ATIANQI_DEBUG] group_data count:', groupDataArr.length);
+    logger.info(`[PINYIN] Response group_data count: ${groupDataArr.length}`);
     for (const groupData of groupDataArr) {
       const keywordTxt = groupData?.dtReportInfo?.reportData?.keyword_txt;
       if (keywordTxt) {
         hots.push(String(keywordTxt).trim());
       }
     }
+    logger.info(`[PINYIN] Parsed ${hots.length} suggestions: ${hots.join(', ')}`);
     return hots.slice(0, 15);
-  } catch (e) {
-    logger.error('Pinyin API Error', e);
+  } catch (e: any) {
+    console.log('[ATIANQI_DEBUG] Error:', e?.message || e, e?.stack || '');
+    logger.warn(`[PINYIN] Error: ${e?.message || e}`);
     return [];
   }
 }
@@ -75,27 +95,47 @@ export default function TVSearchView() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    // 强制输出 query 状态，排查是否未捕获到变化
-    logger.info(`[TVSearch] Debounce query: "${query}"`);
-
-    if (!query) {
-      setSuggestions([]);
-      return;
-    }
+    if (query.length < 2) { setSuggestions([]); return; }
 
     debounceRef.current = setTimeout(async () => {
       const q = query.trim();
-      logger.info(`[TVSearch] Fetching suggestions for: "${q}"`);
+      let allHits: string[] = [];
 
-      const pinyinHits = await fetchPinyinSuggestions(q);
-      logger.info(`[TVSearch] Received ${pinyinHits.length} suggestions`);
+      // 1. 热词池文字匹配（立即、本地、无网络依赖）
+      const qLower = q.toLowerCase();
+      const trendingHits = trending.filter(t => t.toLowerCase().includes(qLower));
+      allHits.push(...trendingHits);
 
-      setSuggestions(pinyinHits);
+      // 2. atianqi 拼音联想 API
+      try {
+        const apiHits = await fetchPinyinSuggestions(q);
+        if (apiHits.length > 0) {
+          for (const h of apiHits) {
+            if (!allHits.includes(h)) allHits.push(h);
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      // 3. 本应用搜索建议 API 兜底
+      if (allHits.length < 5) {
+        try {
+          const backendSug = await api.getSearchSuggestions(q);
+          if (Array.isArray(backendSug)) {
+            for (const item of backendSug) {
+              const text = typeof item === 'string' ? item : (item.text || '');
+              if (text && !allHits.includes(text)) allHits.push(text);
+            }
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      if (allHits.length > 0) {
+        setSuggestions(allHits.slice(0, 15));
+      }
     }, 50);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query]);
+  }, [query, trending]);
 
   const saveHistory = useCallback(async (term: string) => {
     const updated = [term, ...history.filter(h => h !== term)].slice(0, MAX_HISTORY);
