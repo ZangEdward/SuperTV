@@ -43,6 +43,7 @@ jobs:
       - name: Get version
         id: get_version
         run: |
+          # 提取 versionName，若失败则使用时间戳作为版本
           VERSION=$(grep "versionName" android/app/build.gradle | head -1 | awk -F'"' '{print $2}')
           if [ -z "$VERSION" ]; then VERSION=$(date +%Y%m%d); fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -51,7 +52,15 @@ jobs:
       - name: Copy APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
+          # 动态搜索生成的 APK，解决路径层级问题
+          APK_PATH=$(find android/app/build/outputs/apk/ -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK not found in android/app/build/outputs/apk/"
+            find android/app/build/outputs/ -maxdepth 3
+            exit 1
+          fi
+          echo "Found APK: $APK_PATH"
+          cp "$APK_PATH" output/SuperTV-${{ env.VERSION }}.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -66,6 +75,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
@@ -91,6 +103,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.VERSION }}
         run: |
           FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
+          # 使用 GitHub CLI 进行发布
           gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "$NOTES"
 
       - name: Generate alien log
