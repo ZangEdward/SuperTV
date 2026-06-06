@@ -11,4 +11,7 @@
     <string name="menu_reflow">收藏</string>
     <string name="menu_slideshow">浏览</string>
     <string name="menu_settings">设置</string>
+
+    <string name="fab_content_description">发送邮件</string>
+    <string name="image_view_item_transform_content_description">图片</string>
 </resources>
