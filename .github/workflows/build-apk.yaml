@@ -14,7 +14,7 @@ on:
           - ota
           - build-only
       update_notes:
-        description: '请输入本次更新内容 (留空则从 README 自动获取)'
+        description: '请输入本次更新内容'
         required: false
 
 permissions:
@@ -23,8 +23,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      VERSION: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,39 +33,40 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Build APK
         run: |
           chmod +x gradlew
-          # 直接调用assembleRelease，确保编译所有Release产物
-          ./gradlew assembleRelease --no-daemon
+          # 强制打印详细日志，查看为何构建停止
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace --info
+        env:
+          ANDROID_HOME: ${{ steps.setup-android.outputs.android-sdk-path }}
 
-      - name: Get version
-        id: get_version
+      - name: List Build Outputs
         run: |
-          # 动态从 android/app/build.gradle 或 build.gradle.kts 获取 versionName
-          VERSION=$(grep -h "versionName" android/app/build.gradle* | head -1 | awk -F'"' '{print $2}')
-          if [ -z "$VERSION" ]; then VERSION=$(date +%Y%m%d); fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "--- Searching for APKs ---"
+          find . -name "*.apk"
+          echo "--- Searching for build directories ---"
+          find . -name "build" -type d
 
       - name: Copy APK
         run: |
           mkdir -p output
-          # 动态搜索生成的 Release APK，解决不同层级路径问题
-          APK_PATH=$(find android/app/build/outputs/apk/ -name "*-release.apk" | head -n 1)
+          APK_PATH=$(find . -name "*-release.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "::error::未找到 APK 文件！"
-            find android/app/build/outputs/apk/ -name "*.apk"
+            echo "::error::未找到 APK 文件！构建可能未成功生成产物。"
             exit 1
           fi
           echo "Found APK: $APK_PATH"
-          cp "$APK_PATH" output/SuperTV-${{ env.VERSION }}.apk
+          cp "$APK_PATH" output/SuperTV.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
-          path: output/SuperTV-${{ env.VERSION }}.apk
+          path: output/SuperTV.apk
 
   ota:
     needs: build
@@ -93,7 +92,7 @@ jobs:
             NOTES="$INPUT_NOTES"
           else
             NOTES=$(sed -n '/## 已完成的重构里程碑/,/##/p' README.md | sed '1d;$d' | head -n 10 | tr '\n' ' ')
-            if [ -z "$NOTES" ]; then NOTES="版本更新 ${{ env.VERSION }}"; fi
+            if [ -z "$NOTES" ]; then NOTES="版本更新 $(date +%Y%m%d)"; fi
           fi
           echo "NOTES=$NOTES" >> $GITHUB_ENV
 
@@ -101,10 +100,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
           REPO: ${{ secrets.SYNC_REPO }}
-          VERSION: ${{ needs.build.outputs.VERSION }}
         run: |
-          FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
-          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "${{ env.NOTES }}"
+          VERSION=$(date +%Y%m%d)
+          FILE_NAME="SuperTV.apk"
+          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "$NOTES"
 
       - name: Sync Log
         env:
@@ -113,10 +112,9 @@ jobs:
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
           mkdir -p sync-repo/log/vision
           echo "${{ env.NOTES }}" > sync-repo/log/vision/release_notes.txt
-          
           cd sync-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Update v${{ env.VERSION }}" || true
+          git commit -m "Update OTA logs" || true
           git push https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git
