@@ -14,9 +14,8 @@ on:
           - ota
           - build-only
       update_notes:
-        description: '请输入本次更新内容'
-        required: true
-        default: '常规更新与性能优化'
+        description: '请输入本次更新内容 (留空则从 README 自动获取)'
+        required: false
 
 permissions:
   contents: write
@@ -44,8 +43,7 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          # 假设通过读取 build.gradle 或 version.properties 获取版本
-          VERSION=$(grep "versionName" android/app/build.gradle | cut -d'"' -f2 | head -1)
+          VERSION=$(grep "versionName" android/app/build.gradle | head -1 | awk -F'"' '{print $2}')
           if [ -z "$VERSION" ]; then VERSION=$(date +%Y%m%d); fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
@@ -74,6 +72,18 @@ jobs:
         with:
           name: supertv-apk
 
+      - name: Get Update Notes
+        id: get_notes
+        run: |
+          INPUT_NOTES="${{ github.event.inputs.update_notes }}"
+          if [ -n "$INPUT_NOTES" ]; then
+            NOTES="$INPUT_NOTES"
+          else
+            # 自动读取 README.md 中 "## 已完成的重构里程碑" 段落摘要
+            NOTES=$(sed -n '/## 已完成的重构里程碑/,/##/p' README.md | sed '1d;$d' | head -n 10 | tr '\n' ' ')
+          fi
+          echo "NOTES=$NOTES" >> $GITHUB_ENV
+
       - name: Update metadata and Release
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
@@ -81,20 +91,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.VERSION }}
         run: |
           FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
-          
-          # 1. 删除旧的同名 Asset (防冲突)
-          RELEASE_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$REPO/releases/tags/v$VERSION)
-          RELEASE_ID=$(echo $RELEASE_INFO | jq -r '.id')
-          
-          if [ "$RELEASE_ID" != "null" ]; then
-            ASSET_ID=$(echo $RELEASE_INFO | jq -r ".assets[] | select(.name==\"$FILE_NAME\") | .id")
-            if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
-              curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
-            fi
-          fi
-
-          # 2. 上传新 APK
-          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "${{ github.event.inputs.update_notes }}"
+          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "$NOTES"
 
       - name: Generate alien log
         run: |
@@ -104,7 +101,7 @@ jobs:
           
           {
             echo "📅 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "📝 内容: ${{ github.event.inputs.update_notes }}"
+            echo "📝 内容: $NOTES"
             echo "---"
             echo "流数据:"
             echo "$RAW_RANDOM" | fold -w 100
