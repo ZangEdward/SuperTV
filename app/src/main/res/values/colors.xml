@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 主色调 - Material3 深色主题 -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,4 +8,19 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- SuperTV 自定义颜色 -->
+    <color name="background_dark">#FF0D0D1A</color>
+    <color name="surface_dark">#FF1A1A2E</color>
+    <color name="card_dark">#FF252540</color>
+    <color name="accent_purple">#FF6200EE</color>
+    <color name="accent_purple_dark">#FF3700B3</color>
+    <color name="accent_purple_light">#FFBB86FC</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFAAAAAA</color>
+    <color name="text_hint">#FF666666</color>
+    <color name="success_green">#FF4CAF50</color>
+    <color name="warning_orange">#FFFF9800</color>
+    <color name="error_red">#FFF44336</color>
+    <color name="cache_green">#FF1B5E20</color>
 </resources>

@@ -7,12 +7,21 @@ android {
     namespace = "com.supertv.app"
     compileSdk = 36
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(project.findProperty("MYAPP_UPLOAD_STORE_FILE") as? String ?: "release-key.jks")
+            storePassword = project.findProperty("MYAPP_UPLOAD_STORE_PASSWORD") as? String
+            keyAlias = project.findProperty("MYAPP_UPLOAD_KEY_ALIAS") as? String
+            keyPassword = project.findProperty("MYAPP_UPLOAD_KEY_PASSWORD") as? String
+        }
+    }
+
     defaultConfig {
         applicationId = "com.supertv.app"
-        minSdk = 24
+        minSdk = 24                     // Android 7.0，兼容老电视
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2                 // 递增，原为1
+        versionName = "6.0.0.0"         // 新版本号
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -24,6 +33,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

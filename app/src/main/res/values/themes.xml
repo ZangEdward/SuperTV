@@ -1,21 +1,38 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme using Material3 -->
+    <!-- Base application theme using Material3 - 深色主题 -->
     <style name="Theme.RESuperTV" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Primary brand colors -->
-        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimary">@color/accent_purple</item>
         <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryContainer">@color/purple_200</item>
+        <item name="colorPrimaryContainer">@color/accent_purple_light</item>
         <item name="colorOnPrimaryContainer">@color/black</item>
 
         <!-- Secondary brand colors -->
         <item name="colorSecondary">@color/teal_200</item>
         <item name="colorOnSecondary">@color/black</item>
 
-        <!-- Status bar color -->
-        <item name="android:statusBarColor">?attr/colorPrimary</item>
+        <!-- Background & Surface -->
+        <item name="android:colorBackground">@color/background_dark</item>
+        <item name="colorSurface">@color/surface_dark</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="colorOnBackground">@color/text_primary</item>
+
+        <!-- Status bar -->
+        <item name="android:statusBarColor">@color/background_dark</item>
+
+        <!-- Navigation bar -->
+        <item name="android:navigationBarColor">@color/background_dark</item>
 
         <!-- Button style with focus animation -->
         <item name="materialButtonStyle">@style/Widget.Material3.Button</item>
+
+        <!-- 夜间模式强制深色 -->
+        <item name="android:forceDarkAllowed" tools:targetApi="29">false</item>
+    </style>
+
+    <style name="Theme.RESuperTV.NoActionBar" parent="Theme.RESuperTV">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
     </style>
 
     <style name="Theme.RESuperTV.AppBarOverlay" parent="ThemeOverlay.Material3.Dark.ActionBar" />

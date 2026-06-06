@@ -11,8 +11,8 @@ on:
         default: 'ota'
         type: choice
         options:
-          - ota
-          - build-only
+          - ota          # 构建并推送到 OTA 仓库
+          - build-only   # 仅构建，不上传 OTA
 
 permissions:
   contents: write
@@ -35,38 +35,44 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Get version from build.gradle
+      - name: Get version from build.gradle.kts
         id: get_version
         run: |
-          # 从 app/build.gradle 中提取 versionName
-          VERSION_NAME=$(grep -oP 'versionName "\K[^"]+' android/app/build.gradle)
+          VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle.kts || grep -oP "versionName\s+'\K[^']+" app/build.gradle.kts)
+          if [ -z "$VERSION_NAME" ]; then
+            echo "❌ 无法从 build.gradle.kts 中提取 versionName"
+            exit 1
+          fi
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "✅ 版本号: $VERSION_NAME"
 
       - name: Decode Keystore
         run: |
-          mkdir -p android/app
-          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+          mkdir -p app
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > app/release-key.jks
+          echo "✅ 签名文件已写入 app/release-key.jks"
 
-      - name: Configure Signing
+      - name: Configure Signing in gradle.properties
         run: |
-          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
+          echo "✅ gradle.properties 已配置签名"
 
       - name: Build Release APK
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
       - name: Copy and Rename APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
+          cp app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
+          echo "✅ APK 已生成: output/SuperTV-${{ env.VERSION_NAME }}.apk"
 
-      - name: Upload APK artifact
+      - name: Upload APK artifact (for OTA)
         if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
@@ -90,10 +96,10 @@ jobs:
         run: |
           VERSION="${{ needs.build.outputs.VERSION_NAME }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          # 确保 APK 文件名正确（如果下载时名称丢失，重命名）
           if [ ! -f "SuperTV-$VERSION.apk" ]; then
-            mv *.apk SuperTV-$VERSION.apk
+            mv *.apk SuperTV-$VERSION.apk 2>/dev/null || true
           fi
+          echo "✅ 准备推送 OTA 版本: $VERSION"
 
       - name: Clone OTA repository
         run: |
@@ -101,16 +107,13 @@ jobs:
 
       - name: Update OTA files
         run: |
-          # 确保 log 目录存在
-          if [ -e "sync-repo/log" ] && [ ! -d "sync-repo/log" ]; then
-            rm -f sync-repo/log
-          fi
           mkdir -p sync-repo/log
           cp SuperTV-$VERSION.apk sync-repo/log/
           echo "$VERSION" > sync-repo/log/latest_version.txt
           cd sync-repo
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config.user.email "github-actions[bot]@users.noreply.github.com"
           git add log/
           git commit -m "Update OTA to version $VERSION" || exit 0
           git push
+          echo "✅ OTA 已推送到 ${{ secrets.SYNC_REPO }}"
