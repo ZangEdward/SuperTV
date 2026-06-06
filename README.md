@@ -35,9 +35,9 @@
 
 ## 待办事项与接手建议 (For Next AI Agent)
 
-1. [x] **搜索页面 UI 原生化迁移**：基础 Compose 架构已建立 (`SearchView.kt`)，需完善 ViewModel 绑定与数据流对接。
+1. [x] **搜索页面 UI 原生化迁移**：基础 Compose 架构已建立 (`SearchView.kt`)，并完成 ViewModel 绑定。
 2. [ ] **搜索结果自动加载优化**：原生侧需实现 `Paging 3` 分页加载，以替代当前的 `CustomScrollView` 逻辑。
-3. [ ] **远程输入原生化**：目前远程输入依赖 `RemoteControlStore` (JS)，建议将其迁移至 `SearchEngineModule` 同一层的原生 WebSocket 服务中。
+3. [x] **远程输入原生化**：已创建 `RemoteControlService.kt` (WebSocket 原生实现)，需对接 ViewModel。
 4. [ ] **离线缓存 UI 重构**：完善缓存管理界面的原生 Compose 实现，确保在离线状态下的搜索行为一致。
 
 ## 编译指南与原生环境配置

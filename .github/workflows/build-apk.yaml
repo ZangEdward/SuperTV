@@ -1,9 +1,18 @@
-name: Build and Deploy OTA
+name: Build and Deploy APK
 
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+    inputs:
+      job_type:
+        description: '选择构建类型 (build-only 或 ota)'
+        required: true
+        default: 'ota'
+        type: choice
+        options:
+          - ota
+          - build-only
 
 permissions:
   contents: write
@@ -11,9 +20,16 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -24,57 +40,90 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK
-        shell: bash
+      - name: Install dependencies
         run: |
-          echo "--- Current Directory ---"
-          ls -F
-          echo "--- Verify Gradle Wrapper ---"
-          ls -l gradlew
+          yarn config set network-timeout 300000
+          yarn install
+
+      - name: Clear Metro cache
+        run: rm -rf node_modules/.cache/metro
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Decode Keystore
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+
+      - name: Configure Signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+
+      - name: Build APK
+        run: |
+          cd android
           chmod +x gradlew
-          echo "--- Starting Gradle Build ---"
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace --info
-        env:
-          ANDROID_HOME: ${{ steps.setup-android.outputs.android-sdk-path }}
+          ./gradlew assembleRelease --no-daemon
 
       - name: Copy and Upload APK
         run: |
           mkdir -p output
-          APK_PATH=$(find . -name "*-release.apk" | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "::error::未找到 APK 文件！"
-            ls -R app/build/outputs/apk/
-            exit 1
-          fi
-          cp "$APK_PATH" output/SuperTV.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
 
-      - name: Upload APK artifact
+      - name: Upload APK artifact (for OTA job)
+        if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
-          path: output/SuperTV.apk
+          path: output/SuperTV-${{ env.VERSION }}.apk
 
   ota:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
           name: supertv-apk
 
-      - name: Release to OTA
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-          REPO: ${{ secrets.SYNC_REPO }}
+      - name: Set environment
         run: |
-          VERSION=$(date +%Y%m%d)
-          FILE_NAME="SuperTV.apk"
-          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "自动 OTA 构建 $(date +'%Y-%m-%d')"
+          VERSION="${{ needs.build.outputs.VERSION }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
+
+      - name: Clone log repository
+        run: |
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
+
+      - name: Update metadata files
+        run: |
+          if [ -e "sync-repo/log" ] && [ ! -d "sync-repo/log" ]; then
+            rm -f sync-repo/log
+          fi
+          if [ ! -d "sync-repo/log" ]; then
+            mkdir -p sync-repo/log
+          fi
+          cp SuperTV-$VERSION.apk sync-repo/log/
+          echo "$VERSION" > sync-repo/log/latest_version.txt
+          cd sync-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add log/
+          git commit -m "Update OTA to version $VERSION" || exit 0
+          git push

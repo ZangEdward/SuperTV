@@ -10,20 +10,19 @@ import androidx.compose.ui.unit.dp
 import com.supertv.app.SearchEngineModule
 
 @Composable
-fun SearchScreen(searchEngine: SearchEngineModule) {
+fun SearchScreen(viewModel: SearchViewModel) {
+    val suggestions by viewModel.suggestions.collectAsState()
     var query by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TextField(
             value = query,
             onValueChange = { 
                 query = it
-                // 这里调用原生并行搜索逻辑
-                // 在 Compose 中通常通过 ViewModel 绑定
+                viewModel.onQueryChanged(it)
             },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("输入拼音首字母搜索") }
+            label = { Text("输入搜索内容") }
         )
         
         LazyColumn {
