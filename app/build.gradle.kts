@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.supertv.app"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -20,7 +20,7 @@ android {
     defaultConfig {
         applicationId = "com.supertv.app"
         minSdk = 24                     // Android 7.0，兼容老电视
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 2                 // 递增，原为1
         versionName = "6.0.0.0"         // 新版本号
 
