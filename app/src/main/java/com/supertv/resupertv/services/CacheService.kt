@@ -243,7 +243,7 @@ class CacheService(private val context: Context) {
                     withContext(Dispatchers.IO) {
                         FileOutputStream(diskFile).use { scaled.compress(Bitmap.CompressFormat.WEBP, 85, it) }
                         // 保存元数据（过期时间）
-                        saveCacheItemMeta(File(thumbnailDir, "$key.meta"), CacheItem(true, ttl = TTL_THUMBNAIL))
+                        saveCacheItemToFile(File(thumbnailDir, "$key.meta"), CacheItem(true, ttl = TTL_THUMBNAIL))
                     }
 
                     memoryCache.put(key, scaled)
@@ -416,6 +416,8 @@ class CacheService(private val context: Context) {
         apiMemoryCache.clear()
         listOf(thumbnailDir, apiCacheDir).forEach { it.mkdirs() }
     }
+
+    fun clearCache() = clearAll()
 
     fun clearThumbnailCache() {
         thumbnailDir.listFiles()?.forEach { it.delete() }

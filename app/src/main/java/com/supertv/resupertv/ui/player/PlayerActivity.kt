@@ -207,7 +207,6 @@ fun PlayerScreen(
                             exoPlayer.playWhenReady = true
                             exoPlayer.addListener(object : Player.Listener {
                                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                                    isPlaying = isPlaying
                                 }
 
                                 override fun onPlayerError(error: PlaybackException) {
@@ -215,7 +214,6 @@ fun PlayerScreen(
                                 }
                             })
                         }
-                        this@PlayerActivity.player = player
                         useController = true
                         setShowNextButton(false)
                         setShowPreviousButton(false)

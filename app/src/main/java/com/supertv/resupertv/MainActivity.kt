@@ -2,8 +2,7 @@ package com.supertv.resupertv
 
 import android.os.Bundle
 import android.view.KeyEvent
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,7 +21,7 @@ import com.supertv.resupertv.databinding.ActivityMainBinding
  * 管理 Navigation Drawer + Bottom Navigation 的容器 Activity
  * 支持 TV 遥控器的双击返回退出功能
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private var lastBackPressTime = 0L
