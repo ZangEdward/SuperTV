@@ -4,18 +4,6 @@ on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
-    inputs:
-      job_type:
-        description: '选择构建类型 (build-only 或 ota)'
-        required: true
-        default: 'ota'
-        type: choice
-        options:
-          - ota
-          - build-only
-      update_notes:
-        description: '请输入本次更新内容'
-        required: false
 
 permissions:
   contents: write
@@ -37,29 +25,27 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Build APK
+        shell: bash
         run: |
+          echo "--- Current Directory ---"
+          ls -F
+          echo "--- Verify Gradle Wrapper ---"
+          ls -l gradlew
           chmod +x gradlew
-          # 强制打印详细日志，查看为何构建停止
+          echo "--- Starting Gradle Build ---"
           ./gradlew :app:assembleRelease --no-daemon --stacktrace --info
         env:
           ANDROID_HOME: ${{ steps.setup-android.outputs.android-sdk-path }}
 
-      - name: List Build Outputs
-        run: |
-          echo "--- Searching for APKs ---"
-          find . -name "*.apk"
-          echo "--- Searching for build directories ---"
-          find . -name "build" -type d
-
-      - name: Copy APK
+      - name: Copy and Upload APK
         run: |
           mkdir -p output
           APK_PATH=$(find . -name "*-release.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "::error::未找到 APK 文件！构建可能未成功生成产物。"
+            echo "::error::未找到 APK 文件！"
+            ls -R app/build/outputs/apk/
             exit 1
           fi
-          echo "Found APK: $APK_PATH"
           cp "$APK_PATH" output/SuperTV.apk
 
       - name: Upload APK artifact
@@ -71,7 +57,7 @@ jobs:
   ota:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,18 +70,6 @@ jobs:
         with:
           name: supertv-apk
 
-      - name: Get Update Notes
-        id: notes
-        run: |
-          INPUT_NOTES="${{ github.event.inputs.update_notes }}"
-          if [ -n "$INPUT_NOTES" ]; then
-            NOTES="$INPUT_NOTES"
-          else
-            NOTES=$(sed -n '/## 已完成的重构里程碑/,/##/p' README.md | sed '1d;$d' | head -n 10 | tr '\n' ' ')
-            if [ -z "$NOTES" ]; then NOTES="版本更新 $(date +%Y%m%d)"; fi
-          fi
-          echo "NOTES=$NOTES" >> $GITHUB_ENV
-
       - name: Release to OTA
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
@@ -103,18 +77,4 @@ jobs:
         run: |
           VERSION=$(date +%Y%m%d)
           FILE_NAME="SuperTV.apk"
-          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "$NOTES"
-
-      - name: Sync Log
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-        run: |
-          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
-          mkdir -p sync-repo/log/vision
-          echo "${{ env.NOTES }}" > sync-repo/log/vision/release_notes.txt
-          cd sync-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "Update OTA logs" || true
-          git push https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git
+          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "自动 OTA 构建 $(date +'%Y-%m-%d')"
