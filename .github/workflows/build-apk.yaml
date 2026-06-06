@@ -14,7 +14,7 @@ on:
           - ota
           - build-only
       update_notes:
-        description: '请输入本次更新内容 (留空则从 README 自动获取)'
+        description: '请输入本次更新内容 (留空则从 README 自动提取摘要)'
         required: false
 
 permissions:
@@ -35,89 +35,170 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # ---------- 签名准备 ----------
+      - name: Decode Keystore
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+
+      - name: Configure Signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
+
+      # ---------- 编译 ----------
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
+      # ---------- 版本号提取 ----------
       - name: Get version
         id: get_version
         run: |
-          # 提取 versionName，若失败则使用时间戳作为版本
-          VERSION=$(grep "versionName" android/app/build.gradle | head -1 | awk -F'"' '{print $2}')
+          # 优先从 build.gradle(.kts) 提取 versionName
+          if [ -f app/build.gradle.kts ]; then
+            VERSION=$(grep -m1 'versionName' app/build.gradle.kts | sed -n 's/.*versionName\s*=\s*"\([^"]*\)".*/\1/p')
+          elif [ -f app/build.gradle ]; then
+            VERSION=$(grep -m1 'versionName' app/build.gradle | sed -n 's/.*versionName\s\+"\([^"]*\)".*/\1/p')
+          elif [ -f android/app/build.gradle ]; then
+            VERSION=$(grep -m1 'versionName' android/app/build.gradle | sed -n 's/.*versionName\s\+"\([^"]*\)".*/\1/p')
+          fi
+          # 若仍为空，回退到时间戳
           if [ -z "$VERSION" ]; then VERSION=$(date +%Y%m%d); fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
+      # ---------- 打包 APK ----------
       - name: Copy APK
         run: |
           mkdir -p output
-          # 动态搜索生成的 APK，解决路径层级问题
-          APK_PATH=$(find android/app/build/outputs/apk/ -name "*.apk" | head -n 1)
+          APK_PATH=$(find . -path "*/build/outputs/apk/release/*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "Error: APK not found in android/app/build/outputs/apk/"
-            find android/app/build/outputs/ -maxdepth 3
+            echo "::error::未找到 APK 文件！"
+            find . -path "*/build/outputs/apk" -type d
             exit 1
           fi
           echo "Found APK: $APK_PATH"
           cp "$APK_PATH" output/SuperTV-${{ env.VERSION }}.apk
 
       - name: Upload APK artifact
+        if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
           path: output/SuperTV-${{ env.VERSION }}.apk
 
+  # =====================
+  # OTA 发布与日志同步
+  # =====================
   ota:
     needs: build
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
           name: supertv-apk
 
-      - name: Get Update Notes
-        id: get_notes
+      # 统一版本号环境
+      - name: Set version env
+        run: |
+          VERSION="${{ needs.build.outputs.VERSION }}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mv SuperTV-*.apk SuperTV-$VERSION.apk 2>/dev/null || true
+
+      # 获取更新日志（手动 > README 自动摘要）
+      - name: Prepare update notes
+        id: notes
         run: |
           INPUT_NOTES="${{ github.event.inputs.update_notes }}"
           if [ -n "$INPUT_NOTES" ]; then
             NOTES="$INPUT_NOTES"
           else
-            # 自动读取 README.md 中 "## 已完成的重构里程碑" 段落摘要
             NOTES=$(sed -n '/## 已完成的重构里程碑/,/##/p' README.md | sed '1d;$d' | head -n 10 | tr '\n' ' ')
+            if [ -z "$NOTES" ]; then NOTES="版本更新 ${{ env.VERSION }}"; fi
           fi
           echo "NOTES=$NOTES" >> $GITHUB_ENV
 
-      - name: Update metadata and Release
+      # ---------- 处理同名资产冲突，然后上传 APK 到 OTA 仓库 ----------
+      - name: Upload APK to OTA repo release (with conflict resolution)
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
           REPO: ${{ secrets.SYNC_REPO }}
-          VERSION: ${{ needs.build.outputs.VERSION }}
         run: |
           FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
-          # 使用 GitHub CLI 进行发布
-          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "$NOTES"
+          echo "📦 准备上传 $FILE_NAME 到 $REPO 的 Release v${{ env.VERSION }}"
+
+          # 如果 Release 已存在，先删除同名 Asset（避免冲突）
+          RELEASE_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO/releases/tags/v$VERSION")
+          RELEASE_ID=$(echo "$RELEASE_INFO" | jq -r '.id')
+
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            ASSET_ID=$(echo "$RELEASE_INFO" | jq -r ".assets[] | select(.name==\"$FILE_NAME\") | .id")
+            if [ -n "$ASSET_ID" ]; then
+              echo "⚠️ 删除同名旧资产 (ID: $ASSET_ID)"
+              curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+                "https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID"
+            fi
+          fi
+
+          # 使用 gh release 上传（自动创建 Release 若不存在，--clobber 确保覆盖）
+          gh release upload "v$VERSION" "$FILE_NAME" --repo "$REPO" --clobber || \
+          gh release create "v$VERSION" "$FILE_NAME" --repo "$REPO" --title "SuperTV v$VERSION" --notes "$NOTES"
+
+      # ---------- 同步 log 仓库（克隆 → 更新元数据 → 生成日志 → 推送）----------
+      - name: Clone log repository
+        run: |
+          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
+
+      - name: Update metadata files
+        run: |
+          cd sync-repo
+          # 确保目录结构
+          mkdir -p log/vision
+          # 复制构建配置文件（便于追踪）
+          if [ -f ../app/build.gradle.kts ]; then cp ../app/build.gradle.kts log/vision/build.gradle.kts; fi
+          if [ -f ../app/build.gradle ]; then cp ../app/build.gradle log/vision/build.gradle; fi
+          # 记录 APK 大小
+          APK_SIZE=$(stat -c%s "../SuperTV-${{ env.VERSION }}.apk")
+          echo "{ \"apksize\": ${APK_SIZE} }" > log/vision/apksize.json
+          # 记录更新日志
+          echo "${{ env.NOTES }}" > log/vision/release_notes.txt
 
       - name: Generate alien log
         run: |
           TIMESTAMP=$(date +%s)
-          LOGFILE="${TIMESTAMP}.log"
-          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
-          
+          LOGFILE="sync-repo/${TIMESTAMP}.log"
+          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000 | fold -w 100)
           {
-            echo "📅 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "📝 内容: $NOTES"
-            echo "---"
-            echo "流数据:"
-            echo "$RAW_RANDOM" | fold -w 100
-          } > ${LOGFILE}
-          
-          echo "Generated log: $LOGFILE"
+            echo "timestamp: ${TIMESTAMP}"
+            echo "sync_time: \"$(date '+%Y-%m-%d %H:%M:%S')\""
+            echo "version: \"${{ env.VERSION }}\""
+            echo "notes: \"${{ env.NOTES }}\""
+            echo "data_block:"
+            echo "  status: ok"
+            echo "  channel: release"
+            echo "stream: |"
+            echo "${RAW_RANDOM}" | sed 's/^  //'
+            echo "footer:"
+            echo "  note: generated-by-ci"
+          } > "${LOGFILE}"
+
+      - name: Commit and push to log repo
+        run: |
+          cd sync-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update v${{ env.VERSION }} - Sync metadata + log" || true
+          git pull origin main --rebase || git pull origin master --rebase
+          git push https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git
