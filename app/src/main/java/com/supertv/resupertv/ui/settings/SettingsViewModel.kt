@@ -51,10 +51,60 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _syncRepo = MutableStateFlow("")
     val syncRepo: StateFlow<String> = _syncRepo.asStateFlow()
 
+    // 登录状态
+    private val _isLoggedIn = MutableStateFlow(false)
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _loginMessage = MutableStateFlow("")
+    val loginMessage: StateFlow<String> = _loginMessage.asStateFlow()
+
+    private val _isLoggingIn = MutableStateFlow(false)
+    val isLoggingIn: StateFlow<Boolean> = _isLoggingIn.asStateFlow()
+
+    private val authRepo = com.supertv.resupertv.data.AuthRepository.getInstance(application)
+    private val syncService = com.supertv.resupertv.data.SyncService.getInstance(application)
+
     init {
         _apiNodes.value = appInitializer.initializeApiNodes()
         _syncRepo.value = appInitializer.getSyncRepo()
+        _isLoggedIn.value = authRepo.isLoggedIn()
         refreshCacheSize()
+    }
+
+    fun login(serverUrl: String, username: String, password: String) {
+        viewModelScope.launch {
+            _isLoggingIn.value = true
+            _loginMessage.value = ""
+            try {
+                val api = com.supertv.resupertv.data.RetrofitClient.getApiService()
+                val result = authRepo.login(api, serverUrl, username, password)
+                if (result.isSuccess) {
+                    _isLoggedIn.value = true
+                    _loginMessage.value = "登录成功"
+                    // 同步数据
+                    syncService.syncAll()
+                } else {
+                    _loginMessage.value = result.exceptionOrNull()?.message ?: "登录失败"
+                }
+            } catch (e: Exception) {
+                _loginMessage.value = "连接失败: ${e.localizedMessage}"
+            } finally {
+                _isLoggingIn.value = false
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                val api = com.supertv.resupertv.data.RetrofitClient.getApiService()
+                authRepo.logout(api)
+            } catch (_: Exception) {
+                authRepo.clearCredentials()
+            }
+            _isLoggedIn.value = false
+            _loginMessage.value = "已退出登录"
+        }
     }
 
     /**

@@ -97,7 +97,68 @@ interface ApiService {
     suspend fun parseVideo(
         @Query("url") url: String
     ): Response<ParseResult>
+
+    // ==================== 认证 ====================
+
+    @POST("api/v1/login")
+    suspend fun login(
+        @Query("username") username: String,
+        @Query("password") password: String
+    ): Response<LoginResponse>
+
+    @GET("api/v1/logout")
+    suspend fun logout(): Response<Map<String, Any>>
+
+    // ==================== 同步 ====================
+
+    @GET("api/v1/favorites")
+    suspend fun getFavorites(): Response<List<Favorite>>
+
+    @POST("api/v1/favorites/add")
+    suspend fun addFavorite(
+        @Query("source") source: String,
+        @Query("id") id: String,
+        @Query("data") data: String
+    ): Response<Map<String, Any>>
+
+    @POST("api/v1/favorites/remove")
+    suspend fun removeFavorite(
+        @Query("source") source: String,
+        @Query("id") id: String
+    ): Response<Map<String, Any>>
+
+    @GET("api/v1/playrecords")
+    suspend fun getPlayRecords(): Response<List<PlayRecord>>
+
+    @POST("api/v1/playrecords/save")
+    suspend fun savePlayRecord(
+        @Query("data") data: String
+    ): Response<Map<String, Any>>
+
+    @GET("api/v1/searchhistory")
+    suspend fun getSearchHistory(): Response<List<String>>
+
+    @POST("api/v1/searchhistory/add")
+    suspend fun addSearchHistory(
+        @Query("keyword") keyword: String
+    ): Response<Map<String, Any>>
+
+    @POST("api/v1/searchhistory/clear")
+    suspend fun clearSearchHistory(): Response<Map<String, Any>>
 }
+
+data class LoginResponse(
+    val success: Boolean = false,
+    val message: String = "",
+    val token: String = "",
+    val user: UserInfo? = null
+)
+
+data class UserInfo(
+    val username: String = "",
+    val nickname: String = "",
+    val avatar: String = ""
+)
 
 /**
  * 播放URL响应

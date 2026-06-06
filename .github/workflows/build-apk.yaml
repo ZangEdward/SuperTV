@@ -93,6 +93,22 @@ jobs:
           name: supertv-apk
           path: output/SuperTV-${{ env.VERSION_NAME }}.apk
 
+      - name: Create GitHub Release
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: "SuperTV v${{ env.VERSION_NAME }}"
+          body: |
+            ## SuperTV v${{ env.VERSION_NAME }}
+            
+            - 构建时间: ${{ github.event.repository.updated_at }}
+            - 提交: ${{ github.sha }}
+          files: output/SuperTV-${{ env.VERSION_NAME }}.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   ota:
     needs: build
     runs-on: ubuntu-latest

@@ -66,6 +66,11 @@ class Store(private val context: Context) {
         saveFavorites(list)
     }
 
+    /** 批量替换收藏（用于服务器同步） */
+    fun replaceFavorites(favorites: List<Favorite>) {
+        saveFavorites(favorites)
+    }
+
     fun isFavorite(title: String, sourceName: String): Boolean {
         return getFavorites().any { it.title == title && it.sourceName == sourceName }
     }
@@ -98,6 +103,11 @@ class Store(private val context: Context) {
         }
     }
 
+    /** 批量替换播放记录（用于服务器同步） */
+    fun replacePlayRecords(records: List<PlayRecord>) {
+        savePlayRecords(records)
+    }
+
     // ==================== 搜索历史 ====================
 
     fun getSearchHistory(): List<String> {
@@ -120,6 +130,11 @@ class Store(private val context: Context) {
 
     fun clearSearchHistory() {
         prefs.edit().remove(KEY_SEARCH_HISTORY).apply()
+    }
+
+    /** 批量替换搜索历史（用于服务器同步） */
+    fun replaceSearchHistory(history: List<String>) {
+        prefs.edit().putString(KEY_SEARCH_HISTORY, gson.toJson(history)).apply()
     }
 
     // ==================== 上次播放 ====================
