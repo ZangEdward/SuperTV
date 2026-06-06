@@ -66,6 +66,15 @@ jobs:
           echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
           echo "✅ gradle.properties 已配置签名"
 
+      - name: Validate Gradle wrapper
+        run: |
+          if [ ! -s "gradlew" ]; then
+            echo "❌ gradlew 是空文件，正在重新生成..."
+            gradle wrapper --gradle-version=8.11.1
+          fi
+          chmod +x gradlew
+          echo "✅ gradlew 有效 ($(wc -c < gradlew) bytes)"
+
       - name: Build Release APK
         run: |
           chmod +x gradlew
@@ -117,7 +126,7 @@ jobs:
           echo "$VERSION" > sync-repo/log/latest_version.txt
           cd sync-repo
           git config user.name "github-actions[bot]"
-          git config.user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add log/
           git commit -m "Update OTA to version $VERSION" || exit 0
           git push

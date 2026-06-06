@@ -171,16 +171,33 @@ AsyncImage(
 
 ## 🚀 编译指南
 
+### 本地构建
 ```bash
 ./gradlew assembleDebug    # 调试版
 ./gradlew assembleRelease  # 正式版
 ```
 
+### GitHub Actions 构建
+项目使用 `.github/workflows/build-apk.yaml` 自动构建：
+- **触发方式**：推送 `main`/`master` 分支 或 手动触发
+- **构建产物**：`output/SuperTV-{version}.apk`
+- **OTA 分发**：可选推送到同步仓库进行 OTA 更新
+- **签名配置**：通过 GitHub Secrets 注入（`SIGNING_KEY`, `KEY_ALIAS`, `KEY_PASSWORD`）
+
+### 构建配置修复记录
+| 问题 | 原因 | 修复 |
+| :--- | :--- | :--- |
+| `versionName` 提取失败 | Kotlin DSL 格式 `= "x.x"` 带等号 | 正则改为 `versionName\s*=\s*"\K[^"]+` |
+| `gradlew` 空文件 | wrapper 文件损坏 | 用临时工程重建 Gradle 8.11.1 wrapper |
+| Kotlin 插件冲突 | AGP 9.2.1 + Kotlin 2.2.10 不兼容 | 降级 AGP 8.7.3 + Kotlin 2.0.21 + Compose Compiler 2.0.21 |
+| `compileSdk 36` 不支持 | AGP 8.x 最高支持 35 | 改为 `compileSdk = 35` |
+| `git config` 语法错误 | YAML 中缺少空格 | `config.user.email` → `config user.email` |
+
 ## 🛠 技术栈
 
 | 技术 | 用途 |
 | :--- | :--- |
-| **Kotlin** | 开发语言 |
+| **Kotlin 2.0.21** | 开发语言 |
 | **Jetpack Compose + Material3** | UI 框架 |
 | **Media3 (ExoPlayer)** | 视频播放 |
 | **Retrofit + OkHttp** | 网络请求 |
@@ -188,3 +205,14 @@ AsyncImage(
 | **DataStore** | 偏好存储 |
 | **Coroutines + Flow** | 异步/响应式 |
 | **Navigation Component** | 页面导航 |
+| **AGP 8.7.3 + Gradle 8.11.1** | 构建系统 |
+
+## 🧹 项目清理记录
+
+| 操作 | 说明 |
+| :--- | :--- |
+| 🗑️ 删除 `android/` 目录 | 旧 React Native 残留的孤立项目（含 `com.facebook.react` 引用） |
+| 🗑️ 保留 `app/src/test/` | 标准单元测试骨架，含 `ExampleUnitTest.kt`（JUnit4） |
+| 🗑️ 保留 `app/src/androidTest/` | 标准仪器测试骨架 |
+| 📦 迁移 `ic_launcher.png` | 从 `android/` 迁移到 `app/src/main/res/mipmap-*` |
+| 📦 迁移 `boot_background.png` | 从 `android/` 迁移到 `app/src/main/res/drawable/` |

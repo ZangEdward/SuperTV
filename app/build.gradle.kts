@@ -1,11 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     kotlin("android")
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.supertv.app"
-    compileSdk = 36
+    compileSdk = 35
 
     signingConfigs {
         create("release") {
@@ -19,7 +20,7 @@ android {
     defaultConfig {
         applicationId = "com.supertv.app"
         minSdk = 24                     // Android 7.0，兼容老电视
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 2                 // 递增，原为1
         versionName = "6.0.0.0"         // 新版本号
 
@@ -43,9 +44,6 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
     }
 }
 
