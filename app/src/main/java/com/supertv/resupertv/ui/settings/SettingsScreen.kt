@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * 设置页面 (Compose 版本) - 对应原项目的 components/settings/*
+ * 设置页面 (Compose 版本) - 对应原项目的 components/settings 组件
  *
  * 使用 Material3 构建的设置页面
  */

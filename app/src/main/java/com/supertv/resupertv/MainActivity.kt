@@ -53,10 +53,10 @@ class MainActivity : AppCompatActivity() {
         setupActionBarWithNavController(navController, appBarConfiguration)
 
         // 设置底部导航
-        binding.contentMain.bottomNavView.setupWithNavController(navController)
+        binding.appBarMain.contentMain?.bottomNavView?.setupWithNavController(navController)
 
         // 设置导航抽屉
-        binding.navView.setupWithNavController(navController)
+        binding.navView?.setupWithNavController(navController)
     }
 
     /**
