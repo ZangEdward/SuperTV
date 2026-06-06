@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       job_type:
-        description: '选择构建类型 (build-only 或 ota)'
+        description: '构建类型'
         required: true
         default: 'ota'
         type: choice
@@ -21,15 +21,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      VERSION: ${{ steps.get_version.outputs.VERSION }}
+      VERSION_NAME: ${{ steps.get_version.outputs.VERSION_NAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -40,23 +35,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
-        run: |
-          yarn config set network-timeout 300000
-          yarn install
-
-      - name: Clear Metro cache
-        run: rm -rf node_modules/.cache/metro
-
-      - name: Get version
+      - name: Get version from build.gradle
         id: get_version
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Expo Prebuild
-        run: npx expo prebuild --platform android --no-install --clean
+          # 从 app/build.gradle 中提取 versionName
+          VERSION_NAME=$(grep -oP 'versionName "\K[^"]+' android/app/build.gradle)
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
 
       - name: Decode Keystore
         run: |
@@ -70,23 +55,23 @@ jobs:
           echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
           echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> android/gradle.properties
 
-      - name: Build APK
+      - name: Build Release APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      - name: Copy and Upload APK
+      - name: Copy and Rename APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
 
-      - name: Upload APK artifact (for OTA job)
+      - name: Upload APK artifact
         if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
-          path: output/SuperTV-${{ env.VERSION }}.apk
+          path: output/SuperTV-${{ env.VERSION_NAME }}.apk
 
   ota:
     needs: build
@@ -101,24 +86,26 @@ jobs:
         with:
           name: supertv-apk
 
-      - name: Set environment
+      - name: Set version environment
         run: |
-          VERSION="${{ needs.build.outputs.VERSION }}"
+          VERSION="${{ needs.build.outputs.VERSION_NAME }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          mv SuperTV-*.apk SuperTV-$VERSION.apk || true
+          # 确保 APK 文件名正确（如果下载时名称丢失，重命名）
+          if [ ! -f "SuperTV-$VERSION.apk" ]; then
+            mv *.apk SuperTV-$VERSION.apk
+          fi
 
-      - name: Clone log repository
+      - name: Clone OTA repository
         run: |
           git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
 
-      - name: Update metadata files
+      - name: Update OTA files
         run: |
+          # 确保 log 目录存在
           if [ -e "sync-repo/log" ] && [ ! -d "sync-repo/log" ]; then
             rm -f sync-repo/log
           fi
-          if [ ! -d "sync-repo/log" ]; then
-            mkdir -p sync-repo/log
-          fi
+          mkdir -p sync-repo/log
           cp SuperTV-$VERSION.apk sync-repo/log/
           echo "$VERSION" > sync-repo/log/latest_version.txt
           cd sync-repo
