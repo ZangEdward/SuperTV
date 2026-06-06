@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.supertv.app"
+    namespace = "com.supertv.resupertv"
     compileSdk = 36
 
     signingConfigs {
