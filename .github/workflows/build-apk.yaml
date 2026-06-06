@@ -1,13 +1,31 @@
-name: Build Android APK
+name: Build and Deploy OTA
 
 on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+    inputs:
+      job_type:
+        description: '选择构建类型 (build-only 或 ota)'
+        required: true
+        default: 'ota'
+        type: choice
+        options:
+          - ota
+          - build-only
+      update_notes:
+        description: '请输入本次更新内容'
+        required: true
+        default: '常规更新与性能优化'
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,10 +39,75 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleDebug
+          ./gradlew :app:assembleRelease --no-daemon
 
-      - name: Upload APK
+      - name: Get version
+        id: get_version
+        run: |
+          # 假设通过读取 build.gradle 或 version.properties 获取版本
+          VERSION=$(grep "versionName" android/app/build.gradle | cut -d'"' -f2 | head -1)
+          if [ -z "$VERSION" ]; then VERSION=$(date +%Y%m%d); fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Copy APK
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION }}.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: supertv-apk
+          path: output/SuperTV-${{ env.VERSION }}.apk
+
+  ota:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: supertv-apk
+
+      - name: Update metadata and Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+          REPO: ${{ secrets.SYNC_REPO }}
+          VERSION: ${{ needs.build.outputs.VERSION }}
+        run: |
+          FILE_NAME="SuperTV-${{ env.VERSION }}.apk"
+          
+          # 1. 删除旧的同名 Asset (防冲突)
+          RELEASE_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$REPO/releases/tags/v$VERSION)
+          RELEASE_ID=$(echo $RELEASE_INFO | jq -r '.id')
+          
+          if [ "$RELEASE_ID" != "null" ]; then
+            ASSET_ID=$(echo $RELEASE_INFO | jq -r ".assets[] | select(.name==\"$FILE_NAME\") | .id")
+            if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
+              curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/repos/$REPO/releases/assets/$ASSET_ID
+            fi
+          fi
+
+          # 2. 上传新 APK
+          gh release upload v$VERSION $FILE_NAME --clobber || gh release create v$VERSION $FILE_NAME --title "SuperTV v$VERSION" --notes "${{ github.event.inputs.update_notes }}"
+
+      - name: Generate alien log
+        run: |
+          TIMESTAMP=$(date +%s)
+          LOGFILE="${TIMESTAMP}.log"
+          RAW_RANDOM=$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 1000)
+          
+          {
+            echo "📅 更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "📝 内容: ${{ github.event.inputs.update_notes }}"
+            echo "---"
+            echo "流数据:"
+            echo "$RAW_RANDOM" | fold -w 100
+          } > ${LOGFILE}
+          
+          echo "Generated log: $LOGFILE"
