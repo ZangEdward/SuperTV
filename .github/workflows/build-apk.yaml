@@ -38,7 +38,12 @@ jobs:
       - name: Get version from build.gradle.kts
         id: get_version
         run: |
-          VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle.kts || grep -oP "versionName\s+'\K[^']+" app/build.gradle.kts)
+          # 适配 Kotlin DSL: versionName = "x.x.x.x"（等号前后可能有空格）
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          if [ -z "$VERSION_NAME" ]; then
+            # 兼容旧版 Groovy DSL 格式: versionName "x.x.x.x"
+            VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle.kts)
+          fi
           if [ -z "$VERSION_NAME" ]; then
             echo "❌ 无法从 build.gradle.kts 中提取 versionName"
             exit 1
