@@ -35,7 +35,8 @@ android {
         doLast {
             assetsDir.asFile.mkdirs()
             val file = assetsDir.file("api_nodes.json").asFile
-            file.writeText(jsonString)
+            // 明确指定使用 UTF-8 编码写入文件，解决中文乱码问题
+            file.writeText(jsonString, Charsets.UTF_8)
         }
     }
 

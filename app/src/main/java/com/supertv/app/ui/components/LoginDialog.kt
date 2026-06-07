@@ -199,13 +199,6 @@ fun LoginDialog(
                         Text("登录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
-                
-                TextButton(
-                    onClick = { /* 演示模式逻辑 */ },
-                    modifier = Modifier.padding(top = 16.dp)
-                ) {
-                    Text("使用本地模式 (演示)", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
         }
     }

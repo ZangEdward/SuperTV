@@ -74,42 +74,42 @@ class TransformFragment : Fragment() {
                             }
                         }
 
-                        if (!isLoggedIn) {
-                            LoginDialog(onLoginSuccess = {
-                                isLoggedIn = true
-                                viewModel.refresh()
-                            })
-                        }
-
-                        if (showUserMenu) {
-                            UserMenu(
-                                onClose = { showUserMenu = false },
-                                onLogout = { isLoggedIn = false }
-                            )
-                        }
-
                         // Get category from arguments
                         val category = arguments?.getString("category") ?: "热门"
                         LaunchedEffect(category) {
                             viewModel.selectCategory(category)
                         }
 
-                        if (isTv) {
-                            TVHomeScreen(
-                                viewModel = viewModel,
-                                onItemClick = { /* 导航 */ },
-                                onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
-                                onUserClick = { showUserMenu = true }
-                            )
+                        if (!isLoggedIn) {
+                            LoginDialog(onLoginSuccess = {
+                                isLoggedIn = true
+                                viewModel.refresh()
+                            })
                         } else {
-                            HomeScreen(
-                                viewModel = viewModel,
-                                onItemClick = { /* 导航逻辑 */ },
-                                onSearchClick = {
-                                    findNavController().navigate(R.id.action_nav_transform_to_search)
-                                },
-                                onUserClick = { showUserMenu = true }
-                            )
+                            if (showUserMenu) {
+                                UserMenu(
+                                    onClose = { showUserMenu = false },
+                                    onLogout = { isLoggedIn = false }
+                                )
+                            }
+
+                            if (isTv) {
+                                TVHomeScreen(
+                                    viewModel = viewModel,
+                                    onItemClick = { /* 导航 */ },
+                                    onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
+                                    onUserClick = { showUserMenu = true }
+                                )
+                            } else {
+                                HomeScreen(
+                                    viewModel = viewModel,
+                                    onItemClick = { /* 导航逻辑 */ },
+                                    onSearchClick = {
+                                        findNavController().navigate(R.id.action_nav_transform_to_search)
+                                    },
+                                    onUserClick = { showUserMenu = true }
+                                )
+                            }
                         }
                     }
                 }
