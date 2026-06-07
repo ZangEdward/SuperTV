@@ -194,6 +194,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch: (String) -> Unit) {
     Column(

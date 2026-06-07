@@ -1,6 +1,7 @@
 package com.supertv.app.services
 
 import android.content.Context
+import android.net.wifi.WifiManager
 import android.util.Log
 import com.supertv.app.model.DLNADevice
 import kotlinx.coroutines.*
@@ -15,7 +16,7 @@ import java.net.Socket
 /**
  * DLNA 投屏服务 - 对应原项目的 services/dlnaService.ts
  *
- * 支持发现 DLNA 设备和控制投屏播�?
+ * 支持发现 DLNA 设备和控制投屏播?
  */
 class DlnaService(private val context: Context) {
 
@@ -35,6 +36,8 @@ class DlnaService(private val context: Context) {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     private val _devices = MutableStateFlow<List<DLNADevice>>(emptyList())
     val devices: StateFlow<List<DLNADevice>> = _devices.asStateFlow()
@@ -55,6 +58,12 @@ class DlnaService(private val context: Context) {
 
         scope.launch {
             try {
+                // 获取组播锁
+                multicastLock = wifiManager.createMulticastLock("DlnaSearchLock").apply {
+                    setReferenceCounted(true)
+                    acquire()
+                }
+
                 val socket = DatagramSocket()
                 socket.soTimeout = SEARCH_TIMEOUT.toInt()
                 socket.broadcast = true
@@ -89,13 +98,21 @@ class DlnaService(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Device discovery failed", e)
             } finally {
+                // 释放组播锁
+                try {
+                    multicastLock?.let {
+                        if (it.isHeld) it.release()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Release multicast lock failed", e)
+                }
                 _isSearching.value = false
             }
         }
     }
 
     /**
-     * 连接�?DLNA 设备
+     * 连接�?DLNA 设备
      */
     fun connectToDevice(device: DLNADevice) {
         _connectedDevice.value = device
