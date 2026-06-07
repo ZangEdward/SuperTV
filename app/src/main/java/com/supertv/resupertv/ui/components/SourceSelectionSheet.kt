@@ -77,13 +77,13 @@ fun SourceSelectionSheet(
     ) {
         Column {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.SwapHoriz, null, tint = PrimaryGreen, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
                 Text("换源 (${sources.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
                 IconButton(onClick = { runSpeedTest() }, enabled = !isTesting) {
                     if (isTesting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = PrimaryGreen)
-                    else Icon(Icons.Default.Refresh, "测速", tint = TextSecondary)
+                    else Icon(Icons.Default.Refresh, contentDescription = "测速", tint = TextSecondary)
                 }
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "关闭", tint = TextTertiary) }
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextTertiary) }
             }
 
             if (cover.isNotBlank() || title.isNotBlank()) {

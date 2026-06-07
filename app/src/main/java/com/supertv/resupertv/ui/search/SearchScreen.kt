@@ -98,7 +98,7 @@ fun SearchScreen(
         // ─── 主体内容 ───
         when {
             isSearching -> {
-                ShimmerGrid(columns = 3, modifier = Modifier.padding(16.dp))
+                Box(modifier = Modifier.padding(16.dp)) { ShimmerGrid(columns = 3) }
             }
 
             results.isNotEmpty() -> {

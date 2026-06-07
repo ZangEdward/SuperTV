@@ -1,6 +1,10 @@
 package com.supertv.resupertv.services
 
 import com.supertv.resupertv.api.ApiService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -53,9 +57,9 @@ object PinyinSuggestionsFetcher {
             val batch = pinyinHits.subList(i, (i + batchSize).coerceAtMost(pinyinHits.size))
 
             // 并发调用后端验证
-            val batchResults = kotlinx.coroutines.coroutineScope {
+            val batchResults = coroutineScope {
                 batch.map { hit ->
-                    kotlinx.coroutines.async {
+                    async {
                         try {
                             val response = apiService.getSuggestions(hit)
                             if (response.isSuccessful) {
@@ -85,7 +89,7 @@ object PinyinSuggestionsFetcher {
      */
     private suspend fun fetchPinyinHits(key: String): List<String> {
         if (key.length < 2) return emptyList()
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             try {
                 val url = "$PINYIN_API_URL?format=json&page_num=0&page_size=20&key=${java.net.URLEncoder.encode(key, "UTF-8")}"
                 val request = Request.Builder()
