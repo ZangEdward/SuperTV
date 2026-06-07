@@ -1,6 +1,6 @@
 # SuperTV 原生安卓重构项目
 
-本项目致力于将基于 React Native 的项目完全重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
+本项目致力于将基于 Expo/React Native 的 `supertv` 项目重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
 
 ## 目录结构
 ```text
