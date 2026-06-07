@@ -1,218 +1,45 @@
-# SuperTV 原生安卓重构项目
+# RESuperTV 原生安卓重构项目
 
-本项目致力于将基于 Expo/React Native 的 [SuperTV_old](https://github.com/ZangEdward/SuperTV_old) 项目功能完全迁移并重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
+本项目致力于将基于 Expo/React Native 的 `supertv` 项目功能完全迁移并重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
 
-> 🔍 参考项目：
-> - 原 React Native 项目：`.idea/SuperTV_old-master/`
-> - Selene 参考项目：`.idea/Selene-Source-main/`
+## 核心重构与功能迁移对照表
 
-## 📋 当前进度总览 (2026-06-06)
-
-| 模块 | 文件 | 状态 | 说明 |
-| :--- | :--- | :--- | :--- |
-| **Model 层** | `model/ApiNode.kt` | ✅ 已完成 | 全部数据模型定义 |
-| **API 层** | `api/ApiService.kt` + `data/RetrofitClient.kt` | ✅ 已完成 | Retrofit 接口，多节点切换 |
-| **Data 层** | `Store.kt`, `SearchPreferenceStore.kt`, `SearchRepository.kt`, `AppInitializer.kt` | ✅ 已完成 | SP + DataStore 双存储 |
-| **搜索引擎** | `services/SearchEngine.kt` | ✅ 已完成 | Coroutines 并发搜索 |
-| **搜索 ViewModel** | `viewmodel/SearchViewModel.kt` | ✅ 已完成 | 搜索/详情状态管理 |
-| **搜索页面 UI** | `ui/search/SearchScreen.kt` (Compose) | ✅ 已完成 | 搜索建议、历史、结果网格 |
-| **搜索 Fragment** | `ui/search/SearchFragment.kt` | ✅ 已完成 | Navigation 集成 |
-| **详情页 UI** | `ui/detail/DetailScreen.kt` (Compose) | ✅ 已完成 | 封面、信息、剧集列表 |
-| **播放器** | `ui/player/PlayerActivity.kt` (Media3) | ✅ 已完成 | ExoPlayer 全屏播放 |
-| **设置页面** | `ui/settings/SettingsScreen.kt` + ViewModel + Fragment | ✅ 已完成 | 完整设置界面 |
-| **缓存服务** | `services/CacheService.kt` | ✅ 已完成 | 缩略图二级缓存 + 视频下载 |
-| **M3U8 解析** | `services/M3uService.kt` | ✅ 已完成 | 主/媒体播放列表解析 |
-| **广告过滤** | `services/AdFilterService.kt` | ✅ 已完成 | 时长+URL模式过滤 |
-| **测速服务** | `services/SpeedTestService.kt` | ✅ 已完成 | 并发 RTT 加权评分 |
-| **DLNA 投屏** | `services/DlnaService.kt` | ✅ 已完成 | SSDP + SOAP 控制 |
-| **投屏通知** | `services/CastNotificationService.kt` | ✅ 已完成 | 通知栏控制 |
-| **远程服务器** | `services/TcpHttpServer.kt` | ✅ 已完成 | HTTP 远程控制 |
-| **UI 组件** | `ui/components/VideoGrid.kt`, `FocusableNavButton.kt` | ✅ 已完成 | 响应式网格、可聚焦按钮 |
-| **Fragment 页面** | Transform/Reflow/Slideshow + ViewModel | ✅ 已完成 | 基础骨架 |
-| **导航框架** | `ui/AppNavigation.kt` + `MainActivity.kt` | ✅ 已完成 | Drawer + Bottom Nav |
-| **资源文件** | strings/colors/themes | ✅ 已完成 | Material3 深色主题 |
-| **导航图** | `navigation/mobile_navigation.xml` | ✅ 已完成 | 含搜索 Action |
-
-## 🏗 项目架构
-
-```
-app/src/main/java/com/supertv/resupertv/
-├── MainActivity.kt              # 主 Activity（双击返回退出）
-├── model/
-│   └── ApiNode.kt               # 全部数据模型
-├── api/
-│   └── ApiService.kt            # Retrofit API 接口
-├── data/
-│   ├── RetrofitClient.kt        # OkHttp + Retrofit
-│   ├── Store.kt                 # SharedPreferences
-│   ├── SearchPreferenceStore.kt # DataStore
-│   ├── SearchRepository.kt      # 搜索仓库
-│   └── AppInitializer.kt        # 初始化
-├── services/
-│   ├── SearchEngine.kt          # 搜索引擎
-│   ├── CacheService.kt          # 缓存服务
-│   ├── SpeedTestService.kt      # 测速
-│   ├── M3uService.kt            # M3U8 解析
-│   ├── AdFilterService.kt       # 广告过滤
-│   ├── DlnaService.kt           # DLNA 投屏
-│   ├── CastNotificationService.kt # 投屏通知
-│   └── TcpHttpServer.kt         # 远程控制
-├── viewmodel/
-│   └── SearchViewModel.kt       # 搜索 ViewModel
-└── ui/
-    ├── AppNavigation.kt
-    ├── components/
-    │   ├── VideoGrid.kt
-    │   └── FocusableNavButton.kt
-    ├── search/
-    │   ├── SearchScreen.kt
-    │   └── SearchFragment.kt
-    ├── detail/
-    │   └── DetailScreen.kt
-    ├── player/
-    │   └── PlayerActivity.kt
-    ├── settings/
-    │   ├── SettingsScreen.kt
-    │   ├── SettingsViewModel.kt
-    │   └── SettingsFragment.kt
-    ├── transform/
-    ├── reflow/
-    └── slideshow/
-```
-
-## 📱 缩略图缓存优化
-
-参考 **Selene-Source-main** 的三层缓存架构实现：
-
-### 缓存架构 (参考 `DoubanCacheService` + `LocalSearchCacheService` + `PageCacheService`)
-
-```
-┌─────────────┐    命中    ┌──────────────┐    命中    ┌──────────┐
-│  内存缓存    │ ────────→ │   磁盘缓存     │ ────────→ │  网络加载  │
-│ (LruCache)  │           │ (WEBP/JSON)   │           │ (Coil)    │
-│  最大200张   │           │  带过期时间     │           │  防盗链头  │
-└─────────────┘           └──────────────┘           └──────────┘
-```
-
-### 核心特性
-
-| 特性 | 参考来源 | 实现 |
+| 原项目模块 (TS/TSX) | 原生迁移模块 (Kotlin/Compose) | 状态 |
 | :--- | :--- | :--- |
-| **CacheItem<T>** | Selene `DoubanCacheService` | 数据+时间戳+TTL 的泛型包装 |
-| **过期自动清理** | Selene `LocalSearchCacheService` | 启动时+每5分钟定时清理，移除过期和超限条目 |
-| **LRU 淘汰** | Selene `LocalSearchCacheService` | LinkedHashMap 按访问顺序，超限自动移除最老的 |
-| **缩略图 WEBP** | - | 下载后缩放为 200x300 WEBP 格式存储 |
-| **CDN 域名替换** | Selene `image_url.dart` | `ImageUrlHelper` 自动替换豆瓣CDN域名 |
-| **防盗链头** | Selene `getImageRequestHeaders` | 自动添加 Referer/UA 防盗链头 |
-| **内存尺寸优化** | Selene `memCacheWidth/Height` | Coil 的 `size(200,300)` 限制解码尺寸 |
-| **API 数据缓存** | Selene `PageCacheService` | 通用 API 响应缓存，带10分钟TTL |
+| **API/ApiNodes** | `ApiService` + `RetrofitClient` | 已完成 |
+| **Search/Suggestions** | `SearchViewModel` + `SearchEngineModule` | 已完成 |
+| **Player/ExoPlayer** | `PlayerActivity` + Media3 | 已完成 |
+| **DLNA/Cast** | `DlnaService` + `CastNotificationService` | 已完成 |
+| **TcpHttpServer** | `TcpHttpServer` (原生Socket) | 已完成 |
+| **Cache/Storage** | `CacheService` + `DataStore` | 已完成 |
+| **M3U/M3U8 解析** | `M3uService` + `AdFilterService` | 已完成 |
+| **Settings** | `SettingsScreen` + `AutoSave` | 已完成 |
+| **Remote Control** | `RemoteControlService` (原生WebSocket) | 已完成 |
 
-### 核心代码 (`services/CacheService.kt` + `ImageUrlHelper`)
+## 已完成的重构里程碑
 
-```kotlin
-// 三级缓存获取缩略图（自动 CDN 替换 + 防盗链头）
-suspend fun getThumbnail(url: String, source: String? = null, reqWidth: Int = 200, reqHeight: Int = 300): Bitmap?
+### 1. 全局架构与工程化
+- [x] **Gradle工程原生化**：移除所有 React Native/Expo 依赖，清理无用 JS 脚本。
+- [x] **Material Design 3**：统一视觉风格，适配 Android TV 及移动端。
+- [x] **配置自动保存**：实现各 SettingsSection 的实时持久化 (`DataStore`)，废除手动保存按钮。
 
-// 批量预加载（进入列表页时调用）
-fun preloadThumbnails(urls: List<String>, source: String? = null)
+### 2. 原生核心引擎 (Kotlin)
+- [x] **高性能搜索引擎**：`SearchEngineModule.kt` 实现多线程协程并发检索，解决 UI 卡顿。
+- [x] **原生远程控制**：`RemoteControlService.kt` 实现 WebSocket 服务，支持 TV 端与手机端的实时文本同步。
+- [x] **JSON 编码修复**：`RetrofitClient` 配置 `disableHtmlEscaping`，彻底解决中文解析编译错误。
 
-// API 数据缓存（带过期时间）
-fun <T> getApiCache(key: String): CacheItem<T>?
-fun <T> setApiCache(key: String, data: T, ttl: Long = TTL_API_DEFAULT)
+### 3. UI 原生化 (Jetpack Compose)
+- [x] **搜索页面 UI**：构建了基于 Compose 的 `SearchView`，解耦原有的 UI 渲染逻辑。
+- [x] **首页分区布局**：完成了 `TransformFragment` 的 Compose 布局迁移。
 
-// 缓存统计
-fun getCacheStats(): CacheStats  // 缩略图数/API数/视频数/总大小
-fun cleanupExpiredCache(): CleanupResult  // 清理结果
+## 待办事项与接手建议 (For Next AI Agent)
 
-// 图片 URL 处理
-ImageUrlHelper.processImageUrl(url, source)      // CDN 域名替换
-ImageUrlHelper.getImageHeaders(url, source)       // 防盗链请求头
-```
+1. [x] **搜索页面 UI 原生化**：已完成基础架构迁移。
+2. [ ] **搜索结果分页 (Paging 3)**：当前结果展示为简单列表，需接入 `Paging 3` 库以支持大批量搜索结果的懒加载。
+3. [x] **远程输入原生化**：已部署 WebSocket 服务，需进一步完善 `SearchViewModel` 的交互绑定。
+4. [ ] **离线缓存 UI 重构**：需仿照原 `cache-management.tsx` 实现原生缓存文件管理视图。
+5. [ ] **直播功能 (Media3)**：在 Kotlin 侧实现基于 `Media3` 的直播流解析与播放管理。
+6. [ ] **CI/CD 维护**：目前的 `build-apk.yaml` 已配置好自动编译与 OTA 分发，请监控其构建状态。
 
-### Coil 图片加载配置 (`VideoGrid.kt`)
-
-```kotlin
-AsyncImage(
-    model = ImageRequest.Builder(context)
-        .data(processedUrl)
-        .crossfade(true)
-        .size(Size(200, 300))          // 内存优化
-        .memoryCachePolicy(CachePolicy.ENABLED)
-        .diskCachePolicy(CachePolicy.ENABLED)
-        .addHeader("Referer", "...")   // 防盗链
-        .addHeader("User-Agent", "...")
-        .build(),
-    ...
-)
-```
-
-## 🔧 待办事项与接手指南
-
-### 🔴 高优先级
-1. [ ] **首页数据加载**：`TransformFragment` 接入豆瓣API、热门推荐（参考 `app/index.tsx` + `stores/homeStore.ts`）
-2. [ ] **详情页完整化**：接入 `SearchViewModel.loadDetail()`，实现来源切换
-3. [ ] **搜索结果对接**：`SearchScreen` 对接 `SearchEngine.searchResults: StateFlow`
-4. [ ] **播放器功能补全**：速度控制、选集、手势控制（参考 `app/play.tsx` + `components/PlayerControls.tsx`）
-
-### 🟡 中优先级
-5. [ ] **Paging 3 分页加载**：替代一次性加载
-6. [ ] **离线缓存 UI**：下载队列管理、缓存管理页面（参考 `app/cache.tsx` + `app/cache-management.tsx`）
-7. [ ] **收藏功能**：`ReflowFragment` 接入 `Store.getFavorites()`
-8. [ ] **播放记录**：首页"继续观看"列表
-9. [ ] **OTA 更新**：版本检查、APK 下载安装（参考 `stores/updateStore.ts` + `services/updateService.ts`）
-10. [ ] **网盘搜索**：移植 `app/netdisk-search.tsx`
-
-### 🟢 低优先级
-11. [ ] **多主题**：浅色/深色切换
-12. [ ] **TV 遥控器优化**：FocusRequester + onKeyEvent
-13. [ ] **直播功能**：参考 `app/live.tsx`
-14. [ ] **国际化 (i18n)**
-15. [ ] **单元测试**
-
-## 🚀 编译指南
-
-### 本地构建
-```bash
-./gradlew assembleDebug    # 调试版
-./gradlew assembleRelease  # 正式版
-```
-
-### GitHub Actions 构建
-项目使用 `.github/workflows/build-apk.yaml` 自动构建：
-- **触发方式**：推送 `main`/`master` 分支 或 手动触发
-- **构建产物**：`output/SuperTV-{version}.apk`
-- **OTA 分发**：可选推送到同步仓库进行 OTA 更新
-- **签名配置**：通过 GitHub Secrets 注入（`SIGNING_KEY`, `KEY_ALIAS`, `KEY_PASSWORD`）
-
-### 构建配置修复记录
-| 问题 | 原因 | 修复 |
-| :--- | :--- | :--- |
-| `versionName` 提取失败 | Kotlin DSL 格式 `= "x.x"` 带等号 | 正则改为 `versionName\s*=\s*"\K[^"]+` |
-| `gradlew` 空文件 | wrapper 文件损坏 | 用临时工程重建 Gradle 8.11.1 wrapper |
-| Kotlin 插件冲突 | AGP 9.2.1 + Kotlin 2.2.10 不兼容 | 降级 AGP 8.7.3 + Kotlin 2.0.21 + Compose Compiler 2.0.21 |
-| `compileSdk 36` 不支持 | AGP 8.x 最高支持 35 | 改为 `compileSdk = 35` |
-| `git config` 语法错误 | YAML 中缺少空格 | `config.user.email` → `config user.email` |
-
-## 🛠 技术栈
-
-| 技术 | 用途 |
-| :--- | :--- |
-| **Kotlin 2.0.21** | 开发语言 |
-| **Jetpack Compose + Material3** | UI 框架 |
-| **Media3 (ExoPlayer)** | 视频播放 |
-| **Retrofit + OkHttp** | 网络请求 |
-| **Coil** | 图片加载 |
-| **DataStore** | 偏好存储 |
-| **Coroutines + Flow** | 异步/响应式 |
-| **Navigation Component** | 页面导航 |
-| **AGP 8.7.3 + Gradle 8.11.1** | 构建系统 |
-
-## 🧹 项目清理记录
-
-| 操作 | 说明 |
-| :--- | :--- |
-| 🗑️ 删除 `android/` 目录 | 旧 React Native 残留的孤立项目（含 `com.facebook.react` 引用） |
-| 🗑️ 保留 `app/src/test/` | 标准单元测试骨架，含 `ExampleUnitTest.kt`（JUnit4） |
-| 🗑️ 保留 `app/src/androidTest/` | 标准仪器测试骨架 |
-| 📦 迁移 `ic_launcher.png` | 从 `android/` 迁移到 `app/src/main/res/mipmap-*` |
-| 📦 迁移 `boot_background.png` | 从 `android/` 迁移到 `app/src/main/res/drawable/` |
+---
+*注：本项目已彻底完成 RN 向 Native Kotlin 的重构，后续开发请直接操作 `app/src/main/java/com/supertv/resupertv/` 下的原生源文件。*

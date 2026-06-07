@@ -83,10 +83,15 @@ object RetrofitClient {
     fun getCurrentBaseUrl(): String = currentBaseUrl
 
     private fun buildRetrofit(): Retrofit {
+        val gson = com.google.gson.GsonBuilder()
+            .setLenient()
+            .disableHtmlEscaping() // 关键修复：防止中文被转义
+            .create()
+
         return Retrofit.Builder()
             .baseUrl(currentBaseUrl)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 }
