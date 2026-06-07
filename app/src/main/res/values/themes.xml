@@ -30,6 +30,15 @@
         <item name="android:forceDarkAllowed" tools:targetApi="29">false</item>
     </style>
 
+    <!-- 启动页主题：使用更具兼容性的父主题解决闪退 -->
+    <style name="Theme.App.Launch" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@drawable/boot_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
     <style name="Theme.App.NoActionBar" parent="Theme.App">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
@@ -39,10 +48,7 @@
     <style name="Theme.App.AppBarOverlay" parent="ThemeOverlay.Material3.Dark.ActionBar" />
     <style name="Theme.App.PopupOverlay" parent="ThemeOverlay.Material3.Light" />
 
-    <!-- 保持原有的兼容别名，防止引用缺失 -->
+    <!-- 保持原有的兼容别名 -->
     <style name="Theme.RESuperTV" parent="Theme.App" />
     <style name="Theme.RESuperTV.NoActionBar" parent="Theme.App.NoActionBar" />
-    <style name="Theme.RESuperTV.AppBarOverlay" parent="Theme.App.AppBarOverlay" />
-    <style name="Theme.RESuperTV.PopupOverlay" parent="Theme.App.PopupOverlay" />
-
 </resources>

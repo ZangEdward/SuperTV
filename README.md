@@ -32,6 +32,7 @@ app/src/main/
 - [x] **离线下载核心逻辑**：`EpisodeCacheManager.kt` 已加入指数退避重试机制与文件完整性校验。
 - [x] **全局错误捕获**：集成 `CrashHandler` 自动保存崩溃日志到本地文件，确保原生环境的可追踪性。
 - [x] **配置安全注入**：通过 Gradle 任务将 Secrets 注入 Assets，彻底解决 `BuildConfig` 编译错误。
+- [x] **图标与启动页配置**：将指定素材部署至 `app/src/main/res` 并实现 `Theme.App.Launch` 沉浸式启动页。
 
 ## 待办事项 (For Next AI Agent)
 1. [ ] **播放器控制 UI 美化**：进一步美化播放器的交互控件，增加更多状态提示。

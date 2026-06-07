@@ -4,7 +4,6 @@
     package="com.supertv.app">
 
     <application
-        android:name=".SuperTVApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="SuperTV"
@@ -16,7 +15,7 @@
             android:exported="true"
             android:label="SuperTV"
             android:resizeableActivity="true"
-            android:theme="@style/Theme.App.NoActionBar"
+            android:theme="@style/Theme.App.Launch"
             tools:targetApi="24">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
