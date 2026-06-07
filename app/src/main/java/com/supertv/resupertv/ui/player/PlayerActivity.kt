@@ -204,7 +204,7 @@ fun TVPlayerScreen(
                     }
 
                     // 底部：进度 + 集数 + 按钮
-                    Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.BottomCenter)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp).align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (dur > 0) {
                             LinearProgressIndicator(progress = { (curPos.toFloat() / dur).coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth().height(3.dp), color = PrimaryGreen, trackColor = Color(0x4DFFFFFF))
