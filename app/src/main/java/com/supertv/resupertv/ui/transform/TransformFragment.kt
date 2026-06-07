@@ -104,62 +104,44 @@ fun HomeScreen(
         ServerConfig.getNodes().firstOrNull { it.key == currentNodeKey }?.label ?: ""
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDark),
-        contentPadding = PaddingValues(bottom = 16.dp)
-    ) {
-        // ——— TopAppBar ———
-        item {
-            TopAppBar(
-                title = {
-                    Text("SuperTV", fontWeight = FontWeight.Bold, color = PrimaryGreen)
-                },
-                actions = {
-                    TextButton(onClick = onSearchClick) {
-                        Text("搜索", color = TextSecondary)
-                    }
-                    // 头像按钮 — 仿 Selene 右上角用户图标
-                    IconButton(onClick = { showUserMenu = true }) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = PrimaryGreen.copy(alpha = 0.2f),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = if (currentNodeLabel.isNotBlank())
-                                        currentNodeLabel.first().toString()
-                                    else "U",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryGreen
-                                )
+    Box(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            // ——— TopAppBar ———
+            item {
+                TopAppBar(
+                    title = {
+                        Text("SuperTV", fontWeight = FontWeight.Bold, color = PrimaryGreen)
+                    },
+                    actions = {
+                        TextButton(onClick = onSearchClick) {
+                            Text("搜索", color = TextSecondary)
+                        }
+                        // 头像按钮 — 仿 Selene 右上角用户图标
+                        IconButton(onClick = { showUserMenu = true }) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = PrimaryGreen.copy(alpha = 0.2f),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = if (currentNodeLabel.isNotBlank())
+                                            currentNodeLabel.first().toString()
+                                        else "U",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PrimaryGreen
+                                    )
+                                }
                             }
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
-            )
-        }
-
-        // ——— 服务器切换弹窗 ———
-        if (showServerSwitch) {
-            ServerSwitchDialog(onDismiss = { showServerSwitch = false })
-        }
-
-        // ——— 用户菜单弹窗 ———
-        if (showUserMenu) {
-            UserMenuDialog(
-                currentNodeLabel = currentNodeLabel,
-                onSwitchServer = {
-                    showUserMenu = false
-                    showServerSwitch = true
-                },
-                onDismiss = { showUserMenu = false }
-            )
-        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                )
+            }
 
         // ——— 搜索栏 ———
         item {
