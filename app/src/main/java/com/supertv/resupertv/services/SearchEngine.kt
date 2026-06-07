@@ -1,6 +1,7 @@
 package com.supertv.resupertv.services
 
 import com.supertv.resupertv.api.ApiService
+import com.supertv.resupertv.data.SearchRepository
 import com.supertv.resupertv.model.SearchResult
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,9 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 搜索引擎 - 对应原项目的搜索模块
  *
- * 支持多源并发搜索、渐进式加载、拼音匹配
+ * 支持多源并发搜索、渐进式加载、拼音匹配、去尾搜索
  */
 class SearchEngine(private val apiService: ApiService) {
+
+    private val repository = SearchRepository(apiService)
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -66,6 +69,13 @@ class SearchEngine(private val apiService: ApiService) {
             _statusMessage.value = ""
             _isSearching.value = false
         }
+    }
+
+    /**
+     * 去尾搜索匹配 — 如 "abcd" 无结果则自动尝试 "abc"→"ab"
+     */
+    suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        return repository.searchWithTailTrim(query, sources)
     }
 
     /**

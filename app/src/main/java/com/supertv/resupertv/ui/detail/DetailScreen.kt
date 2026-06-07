@@ -26,6 +26,7 @@ import coil.request.ImageRequest
 import com.supertv.resupertv.model.Episode
 import com.supertv.resupertv.model.SearchResult
 import com.supertv.resupertv.model.VideoDetail
+import com.supertv.resupertv.ui.components.SourceSelectionSheet
 import com.supertv.resupertv.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -174,56 +175,20 @@ fun DetailScreen(
     }
 
     if (showSourcesDialog && allSources.isNotEmpty()) {
-        SourceSelectionDialog(
+        SourceSelectionSheet(
             sources = allSources,
-            currentSourceKey = currentSource,
-            onSelect = { source ->
+            currentSource = currentSource,
+            currentId = detail?.id.orEmpty(),
+            cover = detail?.cover.orEmpty(),
+            title = detail?.title.orEmpty(),
+            onSourceSelected = { source ->
                 onSourceSelect(source)
                 showSourcesDialog = false
             },
+            onRefresh = { },
             onDismiss = { showSourcesDialog = false }
         )
     }
-}
-
-@Composable
-fun SourceSelectionDialog(
-    sources: List<SearchResult>,
-    currentSourceKey: String,
-    onSelect: (SearchResult) -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("选择播放源", color = TextPrimary) },
-        text = {
-            Column {
-                sources.forEach { source ->
-                    val isSelected = source.source == currentSourceKey
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onSelect(source) },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) PrimaryGreenDark else BackgroundCard
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(source.sourceName, color = TextPrimary, fontWeight = FontWeight.Medium)
-                                Text("${source.episodes.size}集 · ${source.year}", color = TextTertiary, fontSize = 12.sp)
-                            }
-                            if (isSelected) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryGreen)
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭", color = PrimaryGreen) } },
-        containerColor = BackgroundDark
-    )
 }
 
 @Composable

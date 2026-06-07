@@ -45,6 +45,25 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
+     * 去尾搜索匹配 — 如 "abcd" 无结果则尝试 "abc"→"ab"
+     */
+    suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        if (query.length <= 1) return emptyList()
+
+        var results = search(query, sources)
+        var trimmed = query
+
+        // 逐位去尾重试，直到有结果或只剩1个字
+        while (results.isEmpty() && trimmed.length > 1) {
+            trimmed = trimmed.dropLast(1)
+            if (trimmed.length >= 1) {
+                results = search(trimmed, sources)
+            }
+        }
+        return results
+    }
+
+    /**
      * 获取搜索建议
      */
     suspend fun getSuggestions(query: String): List<String> {

@@ -25,6 +25,13 @@ android {
         versionName = "6.0.0.0"         // 新版本号
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // API 节点列表 JSON — 构建时由 CI/Secrets 注入
+        buildConfigField(
+            "String",
+            "API_NODES_JSON",
+            "\"${project.findProperty("API_NODES_JSON") ?: "[]"}\""
+        )
     }
 
     buildTypes {
@@ -47,6 +54,7 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
+        buildConfig = true
     }
 }
 
