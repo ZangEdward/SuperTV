@@ -180,7 +180,6 @@ fun TVPlayerScreen(
         ) { showControls = !showControls }) {
             if (showControls) {
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
-                Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
                     // 顶部：返回 + 标题 + 倍速
                     Row(Modifier.fillMaxWidth().padding(16.dp).align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White, modifier = Modifier.size(28.dp)) }
