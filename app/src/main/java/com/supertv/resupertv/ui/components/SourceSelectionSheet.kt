@@ -30,12 +30,6 @@ import com.supertv.resupertv.services.SpeedTestService
 import com.supertv.resupertv.ui.theme.*
 import kotlinx.coroutines.launch
 
-/**
- * 播放源选择底部面板 — 仿 Selene PlayerSourcesPanel
- *
- * 显示所有搜索到的播放源，含封面/来源名/集数/测速结果
- * 支持测速刷新、自动滚动到当前源
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceSelectionSheet(
@@ -85,7 +79,6 @@ fun SourceSelectionSheet(
                 }
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextTertiary) }
             }
-
             if (cover.isNotBlank() || title.isNotBlank()) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (cover.isNotBlank()) {
@@ -99,7 +92,6 @@ fun SourceSelectionSheet(
                     }
                 }
             }
-
             Spacer(Modifier.height(8.dp))
             LazyColumn(state = listState, modifier = Modifier.heightIn(max = 400.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -117,6 +109,7 @@ fun SourceSelectionSheet(
 
 @Composable
 private fun SourceItem(context: android.content.Context, source: SearchResult, isSelected: Boolean, latency: Long?, isTesting: Boolean, onClick: () -> Unit) {
+    val st = remember { SpeedTestService() }
     Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp), color = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else BackgroundSurface) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -131,12 +124,17 @@ private fun SourceItem(context: android.content.Context, source: SearchResult, i
                     color = if (isSelected) PrimaryGreen else TextPrimary)
                 Text("${source.episodes.size}集 · ${source.year.ifBlank { "未知" }}", fontSize = 12.sp, color = TextTertiary)
             }
-            if (isTesting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = TextTertiary)
-            else if (latency != null) {
-                val c = when { latency >= Long.MAX_VALUE -> ErrorRed; latency < 200 -> PrimaryGreen; latency < 500 -> StarYellow; else -> ErrorRed }
-                Text(if (latency >= Long.MAX_VALUE) "超时" else "${latency}ms", fontSize = 12.sp, color = c, fontWeight = FontWeight.Medium)
+            if (isTesting) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = TextTertiary)
+            } else if (latency != null) {
+                val grade = st.getLatencyGrade(latency)
+                val gc = when { latency >= Long.MAX_VALUE -> ErrorRed; latency < 100 -> PrimaryGreen; latency < 300 -> StarYellow; else -> ErrorRed }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(grade, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = gc)
+                    Text(st.formatLatency(latency), fontSize = 10.sp, color = gc.copy(alpha = 0.7f))
+                }
             }
-            if (isSelected) { Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Check, null, tint = PrimaryGreen, Modifier.size(18.dp)) }
+            if (isSelected) { Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp)) }
         }
     }
 }

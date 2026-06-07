@@ -26,6 +26,8 @@ import coil.request.ImageRequest
 import com.supertv.resupertv.model.Episode
 import com.supertv.resupertv.model.SearchResult
 import com.supertv.resupertv.model.VideoDetail
+import com.supertv.resupertv.services.EpisodeCacheManager
+import com.supertv.resupertv.ui.components.EpisodeCacheDialog
 import com.supertv.resupertv.ui.components.SourceSelectionSheet
 import com.supertv.resupertv.ui.theme.*
 
@@ -44,7 +46,10 @@ fun DetailScreen(
     onPlayAll: () -> Unit,
     onSourceSelect: (SearchResult) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val cacheManager = remember { EpisodeCacheManager(context) }
     var showSourcesDialog by remember { mutableStateOf(false) }
+    var showCacheDialog by remember { mutableStateOf(false) }
 
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize().background(BackgroundDark), contentAlignment = Alignment.Center) {
@@ -152,6 +157,17 @@ fun DetailScreen(
                     Spacer(Modifier.width(4.dp))
                     Text(if (isFavorite) "取消收藏" else "收藏")
                 }
+                // 缓存按钮
+                OutlinedButton(
+                    onClick = { showCacheDialog = true },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                ) {
+                    Icon(Icons.Default.CloudDownload, "缓存", modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("缓存")
+                }
             }
 
             Spacer(Modifier.height(20.dp))
@@ -187,6 +203,17 @@ fun DetailScreen(
             },
             onRefresh = { },
             onDismiss = { showSourcesDialog = false }
+        )
+    }
+
+    if (showCacheDialog && detail != null) {
+        EpisodeCacheDialog(
+            videoId = detail.id,
+            title = detail.title,
+            episodes = detail.episodes,
+            cachedEpisodes = cachedEpisodes,
+            cacheManager = cacheManager,
+            onDismiss = { showCacheDialog = false }
         )
     }
 }

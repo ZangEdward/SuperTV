@@ -420,7 +420,7 @@ private fun MiddleSuggestionPane(
             // 清空历史
             if (showHistory && words.isNotEmpty()) {
                 TVSmallButton(
-                    icon = Icons.Default.Delete,
+                    icon = Icons.Default.DeleteOutline,
                     onClick = onClearHistory,
                     isFocused = focusedKey == "__clearHistory",
                     onFocus = { onFocusChange("__clearHistory") },

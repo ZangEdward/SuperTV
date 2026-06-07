@@ -76,30 +76,68 @@ class SpeedTestService {
     }
 
     /**
-     * 计算加权评分
-     * 综合考虑延迟(30%)、稳定性(70%)
+     * 计算加权评分 — 仿 Selene _calculateSourceScore
+     * 综合延迟评分 (满分100)，数字越高越好
      */
     fun calculateScore(latency: Long): Double {
         if (latency == Long.MAX_VALUE) return 0.0
-        // 延迟越低，分数越高 (满分100)
-        val latencyScore = when {
-            latency < 100 -> 95.0
-            latency < 300 -> 80.0
-            latency < 500 -> 60.0
-            latency < 1000 -> 40.0
-            else -> 20.0
+        // 延迟评分 — 线性映射，越低分越高
+        val pingScore = when {
+            latency < 50 -> 100.0
+            latency < 100 -> 90.0
+            latency < 200 -> 75.0
+            latency < 300 -> 60.0
+            latency < 500 -> 40.0
+            latency < 1000 -> 25.0
+            else -> 10.0
         }
-        return latencyScore
+        return pingScore
+    }
+
+    /**
+     * 获取延迟对应的显示等级 (S/A/B/C/D)
+     */
+    fun getLatencyGrade(latency: Long): String {
+        return when {
+            latency >= Long.MAX_VALUE -> "F"
+            latency < 50 -> "S"
+            latency < 100 -> "A"
+            latency < 200 -> "B"
+            latency < 300 -> "C"
+            latency < 500 -> "D"
+            else -> "E"
+        }
+    }
+
+    /**
+     * 格式化延迟显示
+     */
+    fun formatLatency(latency: Long): String {
+        return when {
+            latency >= Long.MAX_VALUE -> "超时"
+            latency < 1000 -> "${latency}ms"
+            else -> "${latency / 1000}.${(latency % 1000) / 100}s"
+        }
     }
 
     /**
      * 获取最优节点
+     */
+    /**
+     * 获取最优节点 (延迟最低)
      */
     fun getBestNode(): String? {
         val sorted = _latencies.value.entries
             .filter { it.value != Long.MAX_VALUE }
             .sortedBy { it.value }
         return sorted.firstOrNull()?.key
+    }
+
+    /**
+     * 根据测速结果排序源 (评分从高到低)
+     */
+    fun sortByScore(sources: List<Pair<String, Long>>): List<Pair<String, Long>> {
+        return sources.sortedByDescending { calculateScore(it.second) }
     }
 
     fun destroy() {

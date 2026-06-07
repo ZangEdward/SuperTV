@@ -29,6 +29,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 每次启动清除测速缓存
+        getSharedPreferences("speedtest_cache", Context.MODE_PRIVATE).edit().clear().apply()
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

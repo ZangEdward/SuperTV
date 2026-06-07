@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -190,7 +191,7 @@ fun SearchScreen(
                                 Text(
                                     text = "暂无搜索历史",
                                     fontSize = 18.sp,
-                                    fontWeight = FontWeight.w500,
+                                    fontWeight = FontWeight.Medium,
                                     color = Color(0xFF666666)
                                 )
                                 Spacer(Modifier.height(12.dp))
