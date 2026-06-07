@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.supertv.app"
-    compileSdk = 35 // 使用更稳定的 35
+    compileSdk = 35
 
     signingConfigs {
         create("release") {
@@ -19,8 +19,8 @@ android {
 
     defaultConfig {
         applicationId = "com.supertv.app"
-        minSdk = 24
-        targetSdk = 34 // 使用 34 兼容性更好
+        minSdk = 24 // 支持安卓 7 以上
+        targetSdk = 34
         versionCode = 2
         versionName = "6.0.0.0"
 
