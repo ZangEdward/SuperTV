@@ -57,8 +57,8 @@ class TransformFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                MaterialTheme {
-                    Surface(color = BackgroundDark) {
+                SuperTVTheme {
+                    Surface(color = MaterialTheme.colorScheme.background) {
                         val configuration = LocalConfiguration.current
                         val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
                         

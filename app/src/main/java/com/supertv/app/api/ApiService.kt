@@ -2,6 +2,7 @@ package com.supertv.app.api
 
 import com.supertv.app.model.*
 import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Query
@@ -100,13 +101,12 @@ interface ApiService {
 
     // ==================== 认证 ====================
 
-    @POST("api/v1/login")
+    @POST("api/login")
     suspend fun login(
-        @Query("username") username: String,
-        @Query("password") password: String
+        @Body request: LoginRequest
     ): Response<LoginResponse>
 
-    @GET("api/v1/logout")
+    @GET("api/logout")
     suspend fun logout(): Response<Map<String, Any>>
 
     // ==================== 同步 ====================
@@ -161,6 +161,11 @@ interface ApiService {
     @GET("api/v1/calendar/release")
     suspend fun getReleaseCalendar(): Response<ReleaseCalendarResponse>
 }
+
+data class LoginRequest(
+    val username: String,
+    val password: String
+)
 
 data class LoginResponse(
     val success: Boolean = false,

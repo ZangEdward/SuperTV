@@ -42,131 +42,132 @@ fun SearchScreen(
     onResultClick: (SearchResult) -> Unit,
     onBack: () -> Unit
 ) {
-    val query by viewModel.query.collectAsState()
-    val pagingItems = viewModel.searchPagingData.collectAsLazyPagingItems()
-    val netDiskResults by viewModel.netDiskResults.collectAsState()
-    val searchMode by viewModel.searchMode.collectAsState()
-    val suggestions by viewModel.suggestions.collectAsState()
-    val searchHistory by viewModel.searchHistory.collectAsState()
-    val isSearching by viewModel.isSearching.collectAsState()
+    SuperTVTheme {
+        val query by viewModel.query.collectAsState()
+        val pagingItems = viewModel.searchPagingData.collectAsLazyPagingItems()
+        val netDiskResults by viewModel.netDiskResults.collectAsState()
+        val searchMode by viewModel.searchMode.collectAsState()
+        val searchHistory by viewModel.searchHistory.collectAsState()
+        val isSearching by viewModel.isSearching.collectAsState()
 
-    var showClearDialog by remember { mutableStateOf(false) }
+        var showClearDialog by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundDark)
-    ) {
-        // Search Header
-        Surface(modifier = Modifier.fillMaxWidth(), color = BackgroundDark) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            // Search Header
+            Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { viewModel.updateQuery(it) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 16.dp, top = 8.dp, bottom = 8.dp),
+                        placeholder = { Text("搜索影视、网盘资源...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                        trailingIcon = {
+                            if (query.isNotBlank()) {
+                                IconButton(onClick = { viewModel.updateQuery("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "清除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
+                        singleLine = true,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onBackground
+                        )
+                    )
                 }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { viewModel.updateQuery(it) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 16.dp, top = 8.dp, bottom = 8.dp),
-                    placeholder = { Text("搜索影视、网盘资源...", color = TextTertiary) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextTertiary)
-                    },
-                    trailingIcon = {
-                        if (query.isNotBlank()) {
-                            IconButton(onClick = { viewModel.updateQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "清除", tint = TextTertiary)
+            }
+
+            // Search Tabs
+            TabRow(
+                selectedTabIndex = searchMode,
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = { tabPositions ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[searchMode]),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            ) {
+                Tab(
+                    selected = searchMode == 0,
+                    onClick = { viewModel.setSearchMode(0) },
+                    text = { Text("全网聚合") }
+                )
+                Tab(
+                    selected = searchMode == 1,
+                    onClick = { viewModel.setSearchMode(1) },
+                    text = { Text("网盘资源") }
+                )
+            }
+
+            when {
+                isSearching -> {
+                    Box(modifier = Modifier.padding(16.dp)) { 
+                        if (searchMode == 0) ShimmerGrid(columns = 3) else CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+
+                searchMode == 0 && pagingItems.itemCount > 0 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            count = pagingItems.itemCount,
+                            key = pagingItems.itemKey { "${it.id}${it.source}" }
+                        ) { index ->
+                            pagingItems[index]?.let { item ->
+                                VideoCard(result = item, onClick = { onResultClick(item) })
                             }
                         }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryGreen,
-                        unfocusedBorderColor = BackgroundSurface,
-                        cursorColor = PrimaryGreen,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
-                    )
-                )
-            }
-        }
-
-        // Search Tabs
-        TabRow(
-            selectedTabIndex = searchMode,
-            containerColor = BackgroundDark,
-            contentColor = PrimaryGreen,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[searchMode]),
-                    color = PrimaryGreen
-                )
-            }
-        ) {
-            Tab(
-                selected = searchMode == 0,
-                onClick = { viewModel.setSearchMode(0) },
-                text = { Text("全网聚合") }
-            )
-            Tab(
-                selected = searchMode == 1,
-                onClick = { viewModel.setSearchMode(1) },
-                text = { Text("网盘资源") }
-            )
-        }
-
-        when {
-            isSearching -> {
-                Box(modifier = Modifier.padding(16.dp)) { 
-                    if (searchMode == 0) ShimmerGrid(columns = 3) else CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.align(Alignment.Center))
+                    }
                 }
-            }
-
-            searchMode == 0 && pagingItems.itemCount > 0 -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(
-                        count = pagingItems.itemCount,
-                        key = pagingItems.itemKey { "${it.id}${it.source}" }
-                    ) { index ->
-                        pagingItems[index]?.let { item ->
-                            VideoCard(result = item, onClick = { onResultClick(item) })
+                
+                searchMode == 1 && netDiskResults.isNotEmpty() -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+                        items(netDiskResults) { item ->
+                            NetDiskResultItem(item)
                         }
                     }
                 }
-            }
-            
-            searchMode == 1 && netDiskResults.isNotEmpty() -> {
-                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-                    items(netDiskResults) { item ->
-                        NetDiskResultItem(item)
-                    }
+
+                else -> {
+                    SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
                 }
             }
-
-            else -> {
-                SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
-            }
         }
-    }
 
-    if (showClearDialog) {
-        ClearHistoryDialog(
-            onDismiss = { showClearDialog = false },
-            onConfirm = {
-                viewModel.clearSearchHistory()
-                showClearDialog = false
-            }
-        )
+        if (showClearDialog) {
+            ClearHistoryDialog(
+                onDismiss = { showClearDialog = false },
+                onConfirm = {
+                    viewModel.clearSearchHistory()
+                    showClearDialog = false
+                }
+            )
+        }
     }
 }
 

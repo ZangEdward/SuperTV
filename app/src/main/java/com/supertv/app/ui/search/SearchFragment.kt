@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.ui.player.PlayerActivity
 import com.supertv.app.viewmodel.SearchViewModel
 
@@ -29,7 +30,7 @@ class SearchFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                androidx.compose.material3.MaterialTheme {
+                SuperTVTheme {
                     val context = LocalContext.current
                     val isTv = remember {
                         val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager

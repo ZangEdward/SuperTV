@@ -1,6 +1,5 @@
 package com.supertv.app.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -39,7 +37,13 @@ fun LoginDialog(
     
     var username by remember { mutableStateOf(authRepo.getSavedUsername()) }
     var password by remember { mutableStateOf(authRepo.getSavedPassword()) }
-    var serverUrl by remember { mutableStateOf(authRepo.getServerUrl().ifBlank { nodes.firstOrNull()?.url ?: "" }) }
+    
+    // 默认选中第一个节点，仅显示名称
+    var expanded by remember { mutableStateOf(false) }
+    var selectedNode by remember { 
+        mutableStateOf(nodes.find { it.url == authRepo.getServerUrl() } ?: nodes.firstOrNull()) 
+    }
+    var serverUrl by remember { mutableStateOf(selectedNode?.url ?: "") }
     
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -50,10 +54,8 @@ fun LoginDialog(
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundDark),
-            color = BackgroundDark
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
         ) {
             Column(
                 modifier = Modifier
@@ -64,40 +66,62 @@ fun LoginDialog(
             ) {
                 Text(
                     text = "欢迎使用 SuperTV",
-                    fontSize = 28.sp,
+                    style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.ExtraBold,
-                    color = PrimaryGreen,
+                    color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 2.sp
                 )
                 
                 Text(
                     text = "请登录以获取服务器资源",
-                    fontSize = 14.sp,
-                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
                 )
 
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage!!,
-                        color = ErrorRed,
-                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                 }
 
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text("服务器地址") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryGreen,
-                        unfocusedBorderColor = BackgroundSurface,
-                        focusedLabelColor = PrimaryGreen
+                // 服务器节点选择菜单
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = selectedNode?.label ?: "请选择节点",
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("服务器节点") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     )
-                )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        nodes.forEach { node ->
+                            DropdownMenuItem(
+                                text = { Text(node.label) },
+                                onClick = {
+                                    selectedNode = node
+                                    serverUrl = node.url
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -108,9 +132,8 @@ fun LoginDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryGreen,
-                        unfocusedBorderColor = BackgroundSurface,
-                        focusedLabelColor = PrimaryGreen
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 )
 
@@ -133,9 +156,8 @@ fun LoginDialog(
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryGreen,
-                        unfocusedBorderColor = BackgroundSurface,
-                        focusedLabelColor = PrimaryGreen
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 )
 
@@ -168,21 +190,21 @@ fun LoginDialog(
                         .fillMaxWidth()
                         .height(56.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     enabled = !isLoading
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
                     } else {
-                        Text("登录", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("登录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
                 
                 TextButton(
-                    onClick = { /* 切换本地模式逻辑 */ },
+                    onClick = { /* 演示模式逻辑 */ },
                     modifier = Modifier.padding(top = 16.dp)
                 ) {
-                    Text("使用本地模式 (演示)", color = TextSecondary)
+                    Text("使用本地模式 (演示)", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

@@ -1,5 +1,8 @@
 package com.supertv.app.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // 主色调 - 原始项目的绿色
@@ -25,6 +28,49 @@ val FavoriteRed = Color(0xFFE53935)
 val CacheGreen = Color(0xFF1B5E20)
 val StarYellow = Color(0xFFFFC107)
 
-// 渐变
-val GradientDark = listOf(Color(0xFF000000), Color(0xFF121212))
-val GradientOverlay = listOf(Color.Transparent, Color(0xFF000000))
+private val DarkColorScheme = darkColorScheme(
+    primary = PrimaryGreen,
+    onPrimary = Color.Black,
+    primaryContainer = PrimaryGreenDark,
+    onPrimaryContainer = Color.White,
+    secondary = PrimaryGreenLight,
+    onSecondary = Color.Black,
+    background = BackgroundDark,
+    onBackground = TextPrimary,
+    surface = BackgroundSurface,
+    onSurface = TextPrimary,
+    surfaceVariant = BackgroundCard,
+    onSurfaceVariant = TextSecondary,
+    error = ErrorRed,
+    onError = Color.White
+)
+
+private val LightColorScheme = lightColorScheme(
+    primary = PrimaryGreen,
+    onPrimary = Color.White,
+    primaryContainer = PrimaryGreenLight,
+    onPrimaryContainer = Color.Black,
+    secondary = PrimaryGreenDark,
+    onSecondary = Color.White,
+    background = Color.White,
+    onBackground = Color.Black,
+    surface = Color(0xFFF5F5F5),
+    onSurface = Color.Black,
+    surfaceVariant = Color(0xFFEEEEEE),
+    onSurfaceVariant = Color.DarkGray,
+    error = ErrorRed,
+    onError = Color.White
+)
+
+@Composable
+fun SuperTVTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+
+    MaterialTheme(
+        colorScheme = colorScheme,
+        content = content
+    )
+}

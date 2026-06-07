@@ -35,7 +35,7 @@ class SlideshowFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                MaterialTheme {
+                SuperTVTheme {
                     CacheManagementScreen()
                 }
             }

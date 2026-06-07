@@ -12,18 +12,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.automirrored.outlined.Backspace
-import androidx.compose.material.icons.outlined.RadioButtonChecked
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.automirrored.outlined.ArrowRight
-import androidx.compose.material.icons.outlined.Clear
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,6 +42,7 @@ import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
 import com.supertv.app.model.SearchResult
 import com.supertv.app.services.PinyinSuggestionsFetcher
+import com.supertv.app.ui.components.VideoCard
 import com.supertv.app.ui.theme.*
 import com.supertv.app.viewmodel.SearchViewModel
 import kotlinx.coroutines.Job
@@ -79,254 +73,256 @@ fun TVSearchScreen(
     onResultClick: (SearchResult) -> Unit,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
-    val store = remember { Store.getInstance(context) }
-    val apiService = remember { RetrofitClient.getApiService() }
+    SuperTVTheme {
+        val context = LocalContext.current
+        val store = remember { Store.getInstance(context) }
+        val apiService = remember { RetrofitClient.getApiService() }
 
-    val results by viewModel.tvResults.collectAsState()
-    val isSearching by viewModel.isSearching.collectAsState()
-    val viewModelQuery by viewModel.query.collectAsState()
+        val results by viewModel.tvResults.collectAsState()
+        val isSearching by viewModel.isSearching.collectAsState()
+        val viewModelQuery by viewModel.query.collectAsState()
 
-    var query by remember { mutableStateOf("") }
-    var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
-    var trending by remember { mutableStateOf<List<String>>(emptyList()) }
-    var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showHistory by remember { mutableStateOf(false) }
-    var isExactMode by remember { mutableStateOf(store.getBoolean("tv_search_mode_is_exact", true)) }
-    var focusedKey by remember { mutableStateOf<String?>(null) }
-    var debounceJob by remember { mutableStateOf<Job?>(null) }
-    
-    val inputFocusRequester = remember { FocusRequester() }
-
-    // 初始化加载
-    LaunchedEffect(Unit) {
-        inputFocusRequester.requestFocus()
+        var query by remember { mutableStateOf("") }
+        var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+        var trending by remember { mutableStateOf<List<String>>(emptyList()) }
+        var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
+        var showHistory by remember { mutableStateOf(false) }
+        var isExactMode by remember { mutableStateOf(store.getBoolean("tv_search_mode_is_exact", true)) }
+        var focusedKey by remember { mutableStateOf<String?>(null) }
+        var debounceJob by remember { mutableStateOf<Job?>(null) }
         
-        // 加载历史
-        searchHistory = store.getSearchHistory().take(MAX_HISTORY)
+        val inputFocusRequester = remember { FocusRequester() }
 
-        // 加载热搜/建议
-        try {
-            val resp = apiService.getSuggestions("")
-            if (resp.isSuccessful) {
-                trending = resp.body()?.filter { it.isNotBlank() } ?: emptyList()
+        // 初始化加载
+        LaunchedEffect(Unit) {
+            inputFocusRequester.requestFocus()
+            
+            // 加载历史
+            searchHistory = store.getSearchHistory().take(MAX_HISTORY)
+
+            // 加载热搜/建议
+            try {
+                val resp = apiService.getSuggestions("")
+                if (resp.isSuccessful) {
+                    trending = resp.body()?.filter { it.isNotBlank() } ?: emptyList()
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 拼音联想逻辑
+        LaunchedEffect(query, isExactMode) {
+            debounceJob?.cancel()
+            if (query.length < 2) {
+                suggestions = emptyList()
+                return@LaunchedEffect
             }
-        } catch (_: Exception) {}
-    }
-
-    // 拼音联想逻辑
-    LaunchedEffect(query, isExactMode) {
-        debounceJob?.cancel()
-        if (query.length < 2) {
-            suggestions = emptyList()
-            return@LaunchedEffect
-        }
-        debounceJob = launch {
-            delay(200)
-            suggestions = if (isExactMode) {
-                PinyinSuggestionsFetcher.exactSuggest(query, apiService)
-            } else {
-                PinyinSuggestionsFetcher.fastSuggest(query)
+            debounceJob = launch {
+                delay(200)
+                suggestions = if (isExactMode) {
+                    PinyinSuggestionsFetcher.exactSuggest(query, apiService)
+                } else {
+                    PinyinSuggestionsFetcher.fastSuggest(query)
+                }
             }
         }
-    }
 
-    fun doSearch(term: String = query) {
-        if (term.isBlank()) return
-        viewModel.searchTV(term)
-        // 更新历史
-        val updated = (listOf(term) + searchHistory.filter { it != term }).take(MAX_HISTORY)
-        searchHistory = updated
-        store.addSearchHistory(term)
-    }
-
-    val currentWords = if (showHistory) searchHistory else (suggestions.ifEmpty { trending })
-    val wordLabel = if (showHistory) "历史" else (if (suggestions.isNotEmpty()) "拼音联想" else "建议")
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(TV_BG)
-    ) {
-        // Close Button
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.padding(16.dp).align(Alignment.TopEnd)
-        ) {
-            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+        fun doSearch(term: String = query) {
+            if (term.isBlank()) return
+            viewModel.searchTV(term)
+            // 更新历史
+            val updated = (listOf(term) + searchHistory.filter { it != term }).take(MAX_HISTORY)
+            searchHistory = updated
+            store.addSearchHistory(term)
         }
 
-        Row(
+        val currentWords = if (showHistory) searchHistory else (suggestions.ifEmpty { trending })
+        val wordLabel = if (showHistory) "历史" else (if (suggestions.isNotEmpty()) "拼音联想" else "建议")
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp)
+                .background(TV_BG)
         ) {
-            // Left Pane (30%)
-            Column(modifier = Modifier.weight(0.3f).padding(horizontal = 10.dp)) {
-                // Input Box
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                    TVBoxItem(
-                        isFocused = focusedKey == "__input",
-                        onFocus = { focusedKey = "__input" },
-                        modifier = Modifier.weight(1f).height(52.dp).focusRequester(inputFocusRequester),
-                        onClick = { /* 默认聚焦不执行操作 */ }
-                    ) {
-                        Text(
-                            text = query.ifEmpty { "输入拼音首字母" },
-                            color = if (query.isEmpty()) Color(0xFF888888) else Color.White,
-                            fontSize = 18.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp)
+            // Close Button
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.padding(16.dp).align(Alignment.TopEnd)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp)
+            ) {
+                // Left Pane (30%)
+                Column(modifier = Modifier.weight(0.3f).padding(horizontal = 10.dp)) {
+                    // Input Box
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        TVBoxItem(
+                            isFocused = focusedKey == "__input",
+                            onFocus = { focusedKey = "__input" },
+                            modifier = Modifier.weight(1f).height(52.dp).focusRequester(inputFocusRequester),
+                            onClick = { /* 默认聚焦不执行操作 */ }
+                        ) {
+                            Text(
+                                text = query.ifEmpty { "输入拼音首字母" },
+                                color = if (query.isEmpty()) Color(0xFF888888) else Color.White,
+                                fontSize = 18.sp,
+                                modifier = Modifier.padding(horizontal = 14.dp)
+                            )
+                        }
+                        
+                        if (query.isNotEmpty()) {
+                            Spacer(Modifier.width(6.dp))
+                            TVBoxItem(
+                                isFocused = focusedKey == "__clear",
+                                onFocus = { focusedKey = "__clear" },
+                                modifier = Modifier.size(52.dp),
+                                onClick = { 
+                                    query = ""
+                                    viewModel.clearResults()
+                                    suggestions = emptyList()
+                                }
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    // Function Buttons
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TVFuncBtn(
+                            text = "搜索",
+                            icon = Icons.Outlined.Search,
+                            isFocused = focusedKey == "__search",
+                            onFocus = { focusedKey = "__search" },
+                            onClick = { doSearch() },
+                            modifier = Modifier.weight(1f)
+                        )
+                        TVFuncBtn(
+                            text = "退格",
+                            icon = Icons.AutoMirrored.Outlined.Backspace,
+                            isFocused = focusedKey == "__backspace",
+                            onFocus = { focusedKey = "__backspace" },
+                            onClick = { if (query.isNotEmpty()) query = query.dropLast(1) },
+                            modifier = Modifier.weight(1f),
+                            contentColor = Color(0xFFFF6B6B)
                         )
                     }
-                    
-                    if (query.isNotEmpty()) {
-                        Spacer(Modifier.width(6.dp))
-                        TVBoxItem(
-                            isFocused = focusedKey == "__clear",
-                            onFocus = { focusedKey = "__clear" },
-                            modifier = Modifier.size(52.dp),
-                            onClick = { 
-                                query = ""
-                                viewModel.clearResults()
-                                suggestions = emptyList()
+
+                    // Keyboard
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        KEY_ROWS.forEach { row ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { key ->
+                                    TVKeyItem(
+                                        text = key,
+                                        isFocused = focusedKey == key,
+                                        onFocus = { focusedKey = key },
+                                        onClick = { if (query.length < 20) query += key.lowercase() },
+                                        modifier = Modifier.weight(1f).height(52.dp)
+                                    )
+                                }
                             }
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    // Remote Button
+                    TVBoxItem(
+                        isFocused = focusedKey == "__remote",
+                        onFocus = { focusedKey = "__remote" },
+                        onClick = { /* TODO: Remote Input Modal */ },
+                        modifier = Modifier.fillMaxWidth().height(52.dp).padding(top = 6.dp),
+                        backgroundColor = Color(0xFF1A2A1A),
+                        borderColor = Color(0xFF2A4A2A)
+                    ) {
+                        Text("远程输入", color = PrimaryGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    }
+                }
+
+                // Middle Pane (22%)
+                Column(modifier = Modifier.weight(0.22f).padding(horizontal = 8.dp).border(width = (0.5).dp, color = Color(0xFF222222), shape = RoundedCornerShape(0.dp))) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(wordLabel, color = Color(0xFFAAAAAA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TVSmallBtn(
+                                text = if (isExactMode) "精准" else "快速",
+                                isFocused = focusedKey == "__mode",
+                                onFocus = { focusedKey = "__mode" },
+                                onClick = { 
+                                    isExactMode = !isExactMode
+                                    store.putBoolean("tv_search_mode_is_exact", isExactMode)
+                                }
+                            )
+                            
+                            if (showHistory && searchHistory.isNotEmpty()) {
+                                TVSmallBtn(
+                                    icon = Icons.Default.Delete,
+                                    isFocused = focusedKey == "__clearHistory",
+                                    onFocus = { focusedKey = "__clearHistory" },
+                                    onClick = { 
+                                        searchHistory = emptyList()
+                                        store.clearSearchHistory()
+                                    }
+                                )
                             }
+
+                            TVSmallBtn(
+                                text = if (showHistory) "联想" else "历史",
+                                icon = Icons.AutoMirrored.Filled.ArrowRight,
+                                isFocused = focusedKey == "__switch",
+                                onFocus = { focusedKey = "__switch" },
+                                onClick = { showHistory = !showHistory }
+                            )
+                        }
+                    }
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val words = currentWords.map { it.replace("\\s+".toRegex(), "") }.distinct().take(9)
+                        itemsIndexed(words) { index, word ->
+                            val key = "__word_$index"
+                            TVWordItem(
+                                text = word,
+                                isFocused = focusedKey == key,
+                                onFocus = { focusedKey = key },
+                                onClick = { query = word; doSearch(word) }
+                            )
                         }
                     }
                 }
 
-                // Function Buttons
-                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TVFuncBtn(
-                        text = "搜索",
-                        icon = Icons.Outlined.Search,
-                        isFocused = focusedKey == "__search",
-                        onFocus = { focusedKey = "__search" },
-                        onClick = { doSearch() },
-                        modifier = Modifier.weight(1f)
-                    )
-                    TVFuncBtn(
-                        text = "退格",
-                        icon = Icons.AutoMirrored.Outlined.Backspace,
-                        isFocused = focusedKey == "__backspace",
-                        onFocus = { focusedKey = "__backspace" },
-                        onClick = { if (query.isNotEmpty()) query = query.dropLast(1) },
-                        modifier = Modifier.weight(1f),
-                        contentColor = Color(0xFFFF6B6B)
-                    )
-                }
-
-                // Keyboard
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
-                    KEY_ROWS.forEach { row ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            row.forEach { key ->
-                                TVKeyItem(
-                                    text = key,
-                                    isFocused = focusedKey == key,
-                                    onFocus = { focusedKey = key },
-                                    onClick = { if (query.length < 20) query += key.lowercase() },
-                                    modifier = Modifier.weight(1f).height(52.dp)
+                // Right Pane (Remaining)
+                Box(modifier = Modifier.weight(0.48f).padding(horizontal = 10.dp)) {
+                    if (isSearching) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryGreen)
+                    } else if (results.isNotEmpty()) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            itemsIndexed(results) { _, item ->
+                                TVVideoCard(
+                                    result = item,
+                                    onClick = { onResultClick(item) }
                                 )
                             }
                         }
-                    }
-                }
-
-                // Remote Button
-                TVBoxItem(
-                    isFocused = focusedKey == "__remote",
-                    onFocus = { focusedKey = "__remote" },
-                    onClick = { /* TODO: Remote Input Modal */ },
-                    modifier = Modifier.fillMaxWidth().height(52.dp).padding(top = 6.dp),
-                    backgroundColor = Color(0xFF1A2A1A),
-                    borderColor = Color(0xFF2A4A2A)
-                ) {
-                    Text("远程输入", color = PrimaryGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                }
-            }
-
-            // Middle Pane (22%)
-            Column(modifier = Modifier.weight(0.22f).padding(horizontal = 8.dp).border(width = (0.5).dp, color = Color(0xFF222222), shape = RoundedCornerShape(0.dp))) {
-                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(wordLabel, color = Color(0xFFAAAAAA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TVSmallBtn(
-                            text = if (isExactMode) "精准" else "快速",
-                            isFocused = focusedKey == "__mode",
-                            onFocus = { focusedKey = "__mode" },
-                            onClick = { 
-                                isExactMode = !isExactMode
-                                store.putBoolean("tv_search_mode_is_exact", isExactMode)
-                            }
-                        )
-                        
-                        if (showHistory && searchHistory.isNotEmpty()) {
-                            TVSmallBtn(
-                                icon = Icons.Default.Delete,
-                                isFocused = focusedKey == "__clearHistory",
-                                onFocus = { focusedKey = "__clearHistory" },
-                                onClick = { 
-                                    searchHistory = emptyList()
-                                    store.clearSearchHistory()
-                                }
-                            )
-                        }
-
-                        TVSmallBtn(
-                            text = if (showHistory) "联想" else "历史",
-                            icon = Icons.AutoMirrored.Outlined.ArrowRight,
-                            isFocused = focusedKey == "__switch",
-                            onFocus = { focusedKey = "__switch" },
-                            onClick = { showHistory = !showHistory }
+                    } else if (viewModelQuery.isNotEmpty()) {
+                        Text(
+                            "未找到 \"$viewModelQuery\" 相关内容",
+                            color = Color(0xFF888888),
+                            fontSize = 16.sp,
+                            modifier = Modifier.align(Alignment.Center),
+                            textAlign = TextAlign.Center
                         )
                     }
-                }
-
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val words = currentWords.map { it.replace("\\s+".toRegex(), "") }.distinct().take(9)
-                    itemsIndexed(words) { index, word ->
-                        val key = "__word_$index"
-                        TVWordItem(
-                            text = word,
-                            isFocused = focusedKey == key,
-                            onFocus = { focusedKey = key },
-                            onClick = { query = word; doSearch(word) }
-                        )
-                    }
-                }
-            }
-
-            // Right Pane (Remaining)
-            Box(modifier = Modifier.weight(0.48f).padding(horizontal = 10.dp)) {
-                if (isSearching) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryGreen)
-                } else if (results.isNotEmpty()) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        itemsIndexed(results) { _, item ->
-                            TVVideoCard(
-                                result = item,
-                                onClick = { onResultClick(item) }
-                            )
-                        }
-                    }
-                } else if (viewModelQuery.isNotEmpty()) {
-                    Text(
-                        "未找到 \"$viewModelQuery\" 相关内容",
-                        color = Color(0xFF888888),
-                        fontSize = 16.sp,
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }

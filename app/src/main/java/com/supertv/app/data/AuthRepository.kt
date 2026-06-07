@@ -3,6 +3,7 @@ package com.supertv.app.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.supertv.app.api.ApiService
+import com.supertv.app.api.LoginRequest
 import com.supertv.app.api.LoginResponse
 import com.supertv.app.api.UserInfo
 import com.supertv.app.model.Favorite
@@ -58,7 +59,7 @@ class AuthRepository private constructor(context: Context) {
             try {
                 RetrofitClient.switchBaseUrl(serverUrl)
                 val api = RetrofitClient.getApiService()
-                val response = api.login(username, password)
+                val response = api.login(LoginRequest(username, password))
                 if (response.isSuccessful && response.body() != null) {
                     val loginResp = response.body()!!
                     if (loginResp.success) {
