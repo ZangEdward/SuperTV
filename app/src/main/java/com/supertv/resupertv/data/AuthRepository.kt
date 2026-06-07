@@ -24,6 +24,12 @@ class AuthRepository private constructor(context: Context) {
         @Volatile
         private var instance: AuthRepository? = null
 
+        private const val KEY_TOKEN = "token"
+        private const val KEY_SERVER_URL = "server_url"
+        private const val KEY_USERNAME = "username"
+        private const val KEY_PASSWORD = "password"
+        private const val KEY_USER_INFO = "user_info"
+
         fun getInstance(context: Context): AuthRepository {
             return instance ?: synchronized(this) {
                 instance ?: AuthRepository(context.applicationContext).also { instance = it }
@@ -113,11 +119,4 @@ class AuthRepository private constructor(context: Context) {
         return result.isSuccess
     }
 
-    private companion object {
-        private const val KEY_TOKEN = "token"
-        private const val KEY_SERVER_URL = "server_url"
-        private const val KEY_USERNAME = "username"
-        private const val KEY_PASSWORD = "password"
-        private const val KEY_USER_INFO = "user_info"
-    }
 }

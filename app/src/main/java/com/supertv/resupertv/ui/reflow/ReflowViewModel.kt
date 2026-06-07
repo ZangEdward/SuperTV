@@ -34,10 +34,3 @@ class ReflowViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refresh() = loadFavorites()
 }
-
-/**
- * ReflowFragment 的 ViewModel
- */
-class ReflowViewModel(application: Application) : AndroidViewModel(application) {
-    // 收藏数据加载逻辑将在后续实现
-}
