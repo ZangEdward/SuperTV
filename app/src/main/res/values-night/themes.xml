@@ -2,13 +2,13 @@
     <!-- Base application theme - 深色模式 -->
     <style name="Theme.App" parent="Theme.Material3.Dark.NoActionBar">
         <!-- Primary brand colors -->
-        <item name="colorPrimary">@color/accent_purple</item>
+        <item name="colorPrimary">@color/accent_green</item>
         <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryContainer">@color/accent_purple_light</item>
+        <item name="colorPrimaryContainer">@color/accent_green_light</item>
         <item name="colorOnPrimaryContainer">@color/black</item>
 
         <!-- Secondary brand colors -->
-        <item name="colorSecondary">@color/teal_200</item>
+        <item name="colorSecondary">@color/accent_green</item>
         <item name="colorOnSecondary">@color/black</item>
 
         <!-- Background & Surface -->
