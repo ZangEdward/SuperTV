@@ -7,10 +7,14 @@
     <string name="nav_header_desc">导航标题</string>
     <string name="action_settings">设置</string>
 
-    <string name="menu_transform">首页</string>
-    <string name="menu_reflow">收藏</string>
-    <string name="menu_slideshow">浏览</string>
-    <string name="menu_settings">设置</string>
+    <string name="menu_home">首页</string>
+    <string name="menu_movie">电影</string>
+    <string name="menu_tv">剧集</string>
+    <string name="menu_anime">动漫</string>
+    <string name="menu_show">综艺</string>
+    <string name="menu_live">直播</string>
+    <string name="menu_favorites">收藏</string>
+    <string name="menu_cache">下载</string>
 
     <string name="fab_content_description">发送邮件</string>
     <string name="image_view_item_transform_content_description">图片</string>

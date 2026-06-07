@@ -24,8 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import com.supertv.app.services.EpisodeCacheManager
-import com.supertv.app.ui.theme.BackgroundDark
-import com.supertv.app.ui.theme.PrimaryGreen
+import com.supertv.app.ui.theme.*
 
 class SlideshowFragment : Fragment() {
 
@@ -62,12 +61,13 @@ fun CacheManagementScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("缓存管理", fontWeight = FontWeight.Bold) },
+                title = { Text("缓存与离线", fontWeight = FontWeight.Bold, color = PrimaryGreen) },
                 actions = {
                     IconButton(onClick = { cacheManager.clearAllCache() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear All")
+                        Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = PrimaryGreen)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
             )
         }
     ) { padding ->
@@ -80,18 +80,18 @@ fun CacheManagementScreen() {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = BackgroundCard
             ) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Download, contentDescription = null, tint = PrimaryGreen)
                     Spacer(Modifier.width(12.dp))
-                    Text("当前占用空间: $cacheSize", fontSize = 16.sp)
+                    Text("当前占用空间: $cacheSize", fontSize = 16.sp, color = TextPrimary)
                 }
             }
 
             if (downloadStates.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("暂无下载任务", color = Color.Gray)
+                    Text("暂无下载任务", color = TextTertiary)
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -109,20 +109,23 @@ fun CacheManagementScreen() {
 fun CacheTaskItem(taskId: String, state: EpisodeCacheManager.DownloadState, progress: Float) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = BackgroundCard)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(taskId, fontWeight = FontWeight.Medium)
+            Text(taskId, fontWeight = FontWeight.Medium, color = TextPrimary)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.weight(1f).height(4.dp)
+                    modifier = Modifier.weight(1f).height(4.dp),
+                    color = PrimaryGreen,
+                    trackColor = BackgroundSurface
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("${(progress * 100).toInt()}%", fontSize = 12.sp)
+                Text("${(progress * 100).toInt()}%", fontSize = 12.sp, color = PrimaryGreen)
             }
-            Text(state.toString(), fontSize = 12.sp, color = Color.Gray)
+            Text(state.toString(), fontSize = 12.sp, color = TextTertiary)
         }
     }
 }

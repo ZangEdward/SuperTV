@@ -27,6 +27,7 @@ import coil.size.Size
 import com.supertv.app.model.SearchResult
 import com.supertv.app.services.CacheService
 import com.supertv.app.services.ImageUrlHelper
+import com.supertv.app.ui.theme.*
 
 /**
  * 视频网格组件 - 对应原项目的 ResponsiveVideoCard / VideoCard
@@ -47,7 +48,7 @@ fun VideoGrid(
                 text = title,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = TextPrimary,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
@@ -94,11 +95,11 @@ fun VideoCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = BackgroundCard),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            // 封面�?
+            // 封面图
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -109,7 +110,7 @@ fun VideoCard(
                     model = ImageRequest.Builder(context)
                         .data(processedUrl)
                         .crossfade(true)
-                        .size(Size(200, 300))  // 参�?Selene memCacheWidth/memCacheHeight
+                        .size(Size(200, 300))  // 参考 Selene memCacheWidth/memCacheHeight
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .addHeader("Referer", imageHeaders["Referer"] ?: "")
@@ -161,7 +162,7 @@ fun VideoCard(
             Text(
                 text = result.title,
                 fontSize = 13.sp,
-                color = Color.White,
+                color = TextPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
@@ -188,13 +189,13 @@ fun ShimmerGrid(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A2E))
+                colors = CardDefaults.cardColors(containerColor = BackgroundCard)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(0.67f)
-                        .background(Color(0xFF2A2A3E))
+                        .background(BackgroundSurface)
                 )
                 Spacer(Modifier.height(8.dp))
                 Box(
@@ -203,7 +204,7 @@ fun ShimmerGrid(
                         .height(16.dp)
                         .padding(horizontal = 8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF2A2A3E))
+                        .background(BackgroundSurface)
                 )
                 Spacer(Modifier.height(8.dp))
             }

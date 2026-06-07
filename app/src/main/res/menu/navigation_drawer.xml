@@ -7,18 +7,30 @@
         <item
             android:id="@+id/nav_transform"
             android:icon="@drawable/ic_camera_black_24dp"
-            android:title="@string/menu_transform" />
+            android:title="@string/menu_home" />
         <item
-            android:id="@+id/nav_reflow"
+            android:id="@+id/nav_movie"
             android:icon="@drawable/ic_gallery_black_24dp"
-            android:title="@string/menu_reflow" />
+            android:title="@string/menu_movie" />
         <item
-            android:id="@+id/nav_slideshow"
+            android:id="@+id/nav_tv"
             android:icon="@drawable/ic_slideshow_black_24dp"
-            android:title="@string/menu_slideshow" />
+            android:title="@string/menu_tv" />
         <item
-            android:id="@+id/nav_settings"
+            android:id="@+id/nav_anime"
+            android:icon="@drawable/ic_camera_black_24dp"
+            android:title="@string/menu_anime" />
+        <item
+            android:id="@+id/nav_show"
+            android:icon="@drawable/ic_gallery_black_24dp"
+            android:title="@string/menu_show" />
+        <item
+            android:id="@+id/nav_live"
+            android:icon="@drawable/ic_slideshow_black_24dp"
+            android:title="@string/menu_live" />
+        <item
+            android:id="@+id/nav_search"
             android:icon="@drawable/ic_settings_black_24dp"
-            android:title="@string/menu_settings" />
+            android:title="搜索" />
     </group>
 </menu>

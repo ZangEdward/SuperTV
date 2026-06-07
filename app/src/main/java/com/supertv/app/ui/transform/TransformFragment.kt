@@ -31,6 +31,11 @@ import com.supertv.app.R
 import com.supertv.app.model.SearchResult
 import com.supertv.app.ui.transform.TransformViewModel
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Search
+import com.supertv.app.ui.theme.*
+
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
 
@@ -42,13 +47,15 @@ class TransformFragment : Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 MaterialTheme {
-                    HomeScreen(
-                        viewModel = viewModel,
-                        onItemClick = { /* 导航逻辑 */ },
-                        onSearchClick = {
-                            findNavController().navigate(R.id.action_nav_transform_to_search)
-                        }
-                    )
+                    Surface(color = BackgroundDark) {
+                        HomeScreen(
+                            viewModel = viewModel,
+                            onItemClick = { /* 导航逻辑 */ },
+                            onSearchClick = {
+                                findNavController().navigate(R.id.action_nav_transform_to_search)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -62,31 +69,87 @@ fun HomeScreen(
     onSearchClick: () -> Unit
 ) {
     val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
+    val recommended by viewModel.recommended.collectAsState(initial = emptyList())
+    val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+        // Selene Style Header
+        SeleneHeader(onSearchClick = onSearchClick)
+        
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
                 SectionHeader("豆瓣热播")
                 VideoCardRow(items = hotMovies, onClick = onItemClick)
             }
+            item {
+                SectionHeader("精品推荐")
+                VideoCardRow(items = recommended, onClick = onItemClick)
+            }
+            item {
+                SectionHeader("动漫更新")
+                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+            }
+            item { Spacer(modifier = Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+fun SeleneHeader(onSearchClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        IconButton(onClick = onSearchClick) {
+            Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextPrimary)
+        }
+        
+        Text(
+            text = "SuperTV",
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = PrimaryGreen,
+            letterSpacing = 1.5.sp
+        )
+        
+        IconButton(onClick = { /* TODO: User Profile */ }) {
+            Icon(Icons.Default.AccountCircle, contentDescription = "用户", tint = TextPrimary)
         }
     }
 }
 
 @Composable
 fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-        color = Color.White,
-        modifier = Modifier.padding(16.dp)
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(18.dp)
+                .background(PrimaryGreen, RoundedCornerShape(2.dp))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+    }
 }
 
 @Composable
 fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         items(items) { item ->
             PosterCard(result = item, onClick = { onClick(item) })
         }
@@ -95,28 +158,38 @@ fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit) {
 
 @Composable
 fun PosterCard(result: SearchResult, onClick: () -> Unit) {
-    Card(
+    Column(
         modifier = Modifier
-            .width(130.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp)
+            .width(120.dp)
+            .clickable(onClick = onClick)
     ) {
-        Column {
+        Box {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(result.cover)
                     .crossfade(true)
                     .build(),
                 contentDescription = result.title,
-                modifier = Modifier.fillMaxWidth().aspectRatio(0.67f).clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.7f)
+                    .clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
-            Text(
-                text = result.title,
-                fontSize = 13.sp,
-                maxLines = 1,
-                modifier = Modifier.padding(8.dp)
-            )
+            // Rating or Label overlay could go here
         }
+        Text(
+            text = result.title,
+            fontSize = 13.sp,
+            color = TextPrimary,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        )
+        Text(
+            text = result.sourceName,
+            fontSize = 11.sp,
+            color = TextSecondary,
+            maxLines = 1
+        )
     }
 }

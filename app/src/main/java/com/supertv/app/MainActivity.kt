@@ -7,7 +7,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
-import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.supertv.app.databinding.ActivityMainBinding
 
@@ -21,14 +20,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         try {
-            // 设置主题 ( dots -> underscores )
+            // 设置主题
             setTheme(R.style.Theme_App_NoActionBar)
             
             _binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
 
-            // 设置 Toolbar (使用安全的 binding 引用)
             setSupportActionBar(binding.appBarMain.toolbar)
+            supportActionBar?.hide() // 隐藏默认 Action Bar，使用 Compose 自定义 Header
 
             // 获取 NavHost
             val navHostFragment = supportFragmentManager
@@ -37,20 +36,9 @@ class MainActivity : AppCompatActivity() {
             navHostFragment?.let { navHost ->
                 val navController = navHost.navController
                 
-                // 配置 AppBar
-                val appBarConfiguration = AppBarConfiguration(
-                    setOf(
-                        R.id.nav_transform,
-                        R.id.nav_reflow,
-                        R.id.nav_slideshow,
-                        R.id.nav_settings
-                    ),
-                    binding.drawerLayout
-                )
-                setupActionBarWithNavController(navController, appBarConfiguration)
-
-                // 绑定导航组件
+                // 绑定底部导航
                 binding.appBarMain.contentMain?.bottomNavView?.setupWithNavController(navController)
+
                 binding.navView?.setupWithNavController(navController)
             }
 

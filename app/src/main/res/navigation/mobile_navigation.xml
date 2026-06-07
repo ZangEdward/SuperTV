@@ -8,7 +8,7 @@
     <fragment
         android:id="@+id/nav_transform"
         android:name="com.supertv.app.ui.transform.TransformFragment"
-        android:label="@string/menu_transform"
+        android:label="首页"
         tools:layout="@layout/fragment_transform" >
         <action
             android:id="@+id/action_nav_transform_to_search"
@@ -16,22 +16,34 @@
     </fragment>
 
     <fragment
-        android:id="@+id/nav_reflow"
+        android:id="@+id/nav_movie"
         android:name="com.supertv.app.ui.reflow.ReflowFragment"
-        android:label="@string/menu_reflow"
+        android:label="电影"
         tools:layout="@layout/fragment_reflow" />
 
     <fragment
-        android:id="@+id/nav_slideshow"
-        android:name="com.supertv.app.ui.slideshow.SlideshowFragment"
-        android:label="@string/menu_slideshow"
-        tools:layout="@layout/fragment_slideshow" />
+        android:id="@+id/nav_tv"
+        android:name="com.supertv.app.ui.reflow.ReflowFragment"
+        android:label="剧集"
+        tools:layout="@layout/fragment_reflow" />
 
     <fragment
-        android:id="@+id/nav_settings"
-        android:name="com.supertv.app.ui.settings.SettingsFragment"
-        android:label="@string/menu_settings"
-        tools:layout="@layout/fragment_settings" />
+        android:id="@+id/nav_anime"
+        android:name="com.supertv.app.ui.reflow.ReflowFragment"
+        android:label="动漫"
+        tools:layout="@layout/fragment_reflow" />
+
+    <fragment
+        android:id="@+id/nav_show"
+        android:name="com.supertv.app.ui.reflow.ReflowFragment"
+        android:label="综艺"
+        tools:layout="@layout/fragment_reflow" />
+
+    <fragment
+        android:id="@+id/nav_live"
+        android:name="com.supertv.app.ui.slideshow.SlideshowFragment"
+        android:label="直播"
+        tools:layout="@layout/fragment_slideshow" />
 
     <fragment
         android:id="@+id/nav_search"

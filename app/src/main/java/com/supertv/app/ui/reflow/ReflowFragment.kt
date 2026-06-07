@@ -48,7 +48,7 @@ fun FavoritesScreen(viewModel: ReflowViewModel) {
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
         TopAppBar(
-            title = { Text("收藏", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            title = { Text("我的收藏", fontWeight = FontWeight.Bold, color = PrimaryGreen) },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
         )
 
@@ -85,7 +85,7 @@ fun FavoriteCard(favorite: Favorite) {
     ) {
         Column {
             Box(
-                modifier = Modifier.fillMaxWidth().height(160.dp).background(Color(0xFF2A2A3E)),
+                modifier = Modifier.fillMaxWidth().height(160.dp).background(BackgroundSurface),
                 contentAlignment = Alignment.Center
             ) {
                 val title = favorite.title

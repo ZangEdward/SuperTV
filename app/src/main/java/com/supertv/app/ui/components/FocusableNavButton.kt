@@ -21,8 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import com.supertv.app.ui.theme.*
+
 /**
- * 可聚焦导航按�?- 对应原项目的导航按钮
+ * 可聚焦导航按钮 - 对应原项目的导航按钮
  *
  * 支持 TV 遥控器焦点导航和触摸点击
  */
@@ -39,16 +41,16 @@ fun FocusableNavButton(
 
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> Color(0xFF6200EE)
-            isFocused -> Color(0xFF3700B3)
-            else -> Color(0xFF2A2A3E)
+            isSelected -> PrimaryGreen
+            isFocused -> PrimaryGreenDark
+            else -> BackgroundCard
         },
         animationSpec = spring(),
         label = "navBtnBg"
     )
 
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) Color(0xFFBB86FC) else Color.Transparent,
+        targetValue = if (isFocused) PrimaryGreenLight else Color.Transparent,
         animationSpec = spring(),
         label = "navBtnBorder"
     )
@@ -72,7 +74,7 @@ fun FocusableNavButton(
         }
         Text(
             text = label,
-            color = if (isSelected || isFocused) Color.White else Color(0xFFBBBBBB),
+            color = if (isSelected || isFocused) Color.White else TextSecondary,
             fontSize = 14.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
         )
