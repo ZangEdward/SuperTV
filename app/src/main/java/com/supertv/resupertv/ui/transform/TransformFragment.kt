@@ -251,7 +251,7 @@ private val dayOfWeekIndex: Int
     }
 
 @Composable
-private fun AnimeSection(
+fun AnimeSection(
     recentRecords: List<PlayRecord>,
     animeItems: List<SearchResult>,
     onRecordClick: (PlayRecord) -> Unit,
@@ -363,7 +363,7 @@ private fun AnimeSection(
 // ====================================================================
 
 @Composable
-private fun AnimePlayCard(record: PlayRecord, onClick: () -> Unit) {
+fun AnimePlayCard(record: PlayRecord, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .width(120.dp)
@@ -441,7 +441,7 @@ private fun AnimePlayCard(record: PlayRecord, onClick: () -> Unit) {
 // ====================================================================
 
 @Composable
-private fun UserMenuDialog(
+fun UserMenuDialog(
     currentNodeLabel: String,
     onSwitchServer: () -> Unit,
     onDismiss: () -> Unit
@@ -563,7 +563,7 @@ private fun UserMenuDialog(
 // ====================================================================
 
 @Composable
-private fun SectionHeader(title: String) {
+fun SectionHeader(title: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -590,7 +590,7 @@ private fun SectionHeader(title: String) {
 // ====================================================================
 
 @Composable
-private fun PlayRecordRow(records: List<PlayRecord>, onClick: (PlayRecord) -> Unit) {
+fun PlayRecordRow(records: List<PlayRecord>, onClick: (PlayRecord) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -602,7 +602,7 @@ private fun PlayRecordRow(records: List<PlayRecord>, onClick: (PlayRecord) -> Un
 }
 
 @Composable
-private fun PlayRecordPosterCard(record: PlayRecord, onClick: () -> Unit) {
+fun PlayRecordPosterCard(record: PlayRecord, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .width(130.dp)
@@ -700,7 +700,7 @@ private fun PlayRecordPosterCard(record: PlayRecord, onClick: () -> Unit) {
 // ====================================================================
 
 @Composable
-private fun VideoCardRow(
+fun VideoCardRow(
     items: List<SearchResult>,
     onClick: (SearchResult) -> Unit
 ) {
@@ -715,7 +715,7 @@ private fun VideoCardRow(
 }
 
 @Composable
-private fun PosterCard(
+fun PosterCard(
     result: SearchResult,
     onClick: () -> Unit
 ) {
@@ -817,7 +817,7 @@ private fun PosterCard(
 // ====================================================================
 
 @Composable
-private fun LoadingShimmer() {
+fun LoadingShimmer() {
     Column {
         // 模拟 3 个分区骨架
         repeat(3) {
@@ -844,7 +844,7 @@ private fun LoadingShimmer() {
 }
 
 @Composable
-private fun ShimmerCard() {
+fun ShimmerCard() {
     Card(
         modifier = Modifier.width(130.dp),
         shape = RoundedCornerShape(12.dp),

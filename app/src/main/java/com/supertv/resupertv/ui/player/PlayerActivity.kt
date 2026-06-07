@@ -181,17 +181,19 @@ fun TVPlayerScreen(
             if (showControls) {
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
                     // 顶部：返回 + 标题 + 倍速
-                    Row(Modifier.fillMaxWidth().padding(16.dp).align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White, modifier = Modifier.size(28.dp)) }
-                        Spacer(Modifier.width(8.dp))
-                        Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { val i = speedOptions.indexOf(playbackSpeed); setSpeed(speedOptions[(i + 1) % speedOptions.size]) }) {
-                            Text("${playbackSpeed}x", color = PrimaryGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Box(Modifier.fillMaxWidth().padding(16.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.TopStart)) {
+                            IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White, modifier = Modifier.size(28.dp)) }
+                            Spacer(Modifier.width(8.dp))
+                            Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { val i = speedOptions.indexOf(playbackSpeed); setSpeed(speedOptions[(i + 1) % speedOptions.size]) }) {
+                                Text("${playbackSpeed}x", color = PrimaryGreen, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
 
                     // 中间：快退 | 播放/暂停 | 快进
-                    Row(Modifier.fillMaxWidth().align(Alignment.Center), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.Center)) {
                         IconButton(onClick = { seek(-15000) }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.Replay10, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.width(32.dp))
                         IconButton(onClick = { exoPlayer.playWhenReady = !exoPlayer.playWhenReady }, modifier = Modifier.size(80.dp)) {
@@ -202,7 +204,7 @@ fun TVPlayerScreen(
                     }
 
                     // 底部：进度 + 集数 + 按钮
-                    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.align(Alignment.BottomCenter)) {
                         if (dur > 0) {
                             LinearProgressIndicator(progress = { (curPos.toFloat() / dur).coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth().height(3.dp), color = PrimaryGreen, trackColor = Color(0x4DFFFFFF))
@@ -323,14 +325,15 @@ fun MobilePlayerScreen(
 
             if (showControls) {
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
-                    Row(Modifier.fillMaxWidth().padding(8.dp).align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.fillMaxWidth().padding(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.TopStart)) {
                         IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White) }
                         Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         TextButton(onClick = { val i = speedOptions.indexOf(playSpeed); playSpeed = speedOptions[(i + 1) % speedOptions.size]; exo.setPlaybackSpeed(playSpeed) }) {
                             Text("${playSpeed}x", color = PrimaryGreen, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Row(Modifier.fillMaxWidth().align(Alignment.Center), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.Center)) {
                         IconButton(onClick = { seek(-10000) }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Replay10, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp)) }
                         Spacer(Modifier.width(24.dp))
                         IconButton(onClick = { exo.playWhenReady = !exo.playWhenReady }, modifier = Modifier.size(64.dp)) {
@@ -387,6 +390,7 @@ fun MobilePlayerScreen(
     }
 }
 
+}
 @Composable
 private fun MobBtn(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Button(onClick = onClick, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = BackgroundCard), shape = RoundedCornerShape(10.dp)) {

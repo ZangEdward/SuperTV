@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,7 +41,7 @@ private val SeleneHistoryHoverBg = Color(0xFF1e3a28)
 private val SeleneHistoryHoverText = Color(0xFF27ae60)
 private val SeleneHistoryHoverBorder = Color(0xFF52c77a)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
