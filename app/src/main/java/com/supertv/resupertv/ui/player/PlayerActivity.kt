@@ -182,7 +182,7 @@ fun TVPlayerScreen(
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
                     // 顶部：返回 + 标题 + 倍速
                     Box(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.TopStart)) {
+                        Row(Modifier.fillMaxWidth().align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White, modifier = Modifier.size(28.dp)) }
                             Spacer(Modifier.width(8.dp))
                             Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -193,7 +193,7 @@ fun TVPlayerScreen(
                     }
 
                     // 中间：快退 | 播放/暂停 | 快进
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.Center)) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.Center), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { seek(-15000) }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.Replay10, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.width(32.dp))
                         IconButton(onClick = { exoPlayer.playWhenReady = !exoPlayer.playWhenReady }, modifier = Modifier.size(80.dp)) {
@@ -326,14 +326,14 @@ fun MobilePlayerScreen(
             if (showControls) {
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
                     Box(Modifier.fillMaxWidth().padding(8.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.TopStart)) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White) }
                         Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         TextButton(onClick = { val i = speedOptions.indexOf(playSpeed); playSpeed = speedOptions[(i + 1) % speedOptions.size]; exo.setPlaybackSpeed(playSpeed) }) {
                             Text("${playSpeed}x", color = PrimaryGreen, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.Center)) {
+                    Row(Modifier.fillMaxWidth().align(Alignment.Center), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { seek(-10000) }, modifier = Modifier.size(48.dp)) { Icon(Icons.Default.Replay10, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp)) }
                         Spacer(Modifier.width(24.dp))
                         IconButton(onClick = { exo.playWhenReady = !exo.playWhenReady }, modifier = Modifier.size(64.dp)) {
