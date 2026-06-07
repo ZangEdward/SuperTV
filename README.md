@@ -49,6 +49,7 @@ app/src/main/
 ### 开发指南
 - **编译**：`./gradlew assembleRelease`
 - **环境要求**：Android Studio 最新稳定版，JDK 17。
+- **SDK 版本**：`minSdk 24` (支持 Android 7.0+), `compileSdk 36`, `targetSdk 36`。
 
 ---
 *注：本项目目前编译环境已全量跑通。原生功能已覆盖 95% 以上，所有核心交互均已实现。*
