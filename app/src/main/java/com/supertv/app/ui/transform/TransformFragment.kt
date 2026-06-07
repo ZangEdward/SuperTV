@@ -39,6 +39,8 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.supertv.app.R
 import com.supertv.app.model.SearchResult
+import com.supertv.app.data.AuthRepository
+import com.supertv.app.ui.components.LoginDialog
 import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.theme.*
 
@@ -57,10 +59,22 @@ class TransformFragment : Fragment() {
                         val configuration = LocalConfiguration.current
                         val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
                         
+                        val authRepo = remember { AuthRepository.getInstance(context) }
+                        var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                         var showUserMenu by remember { mutableStateOf(false) }
 
+                        if (!isLoggedIn) {
+                            LoginDialog(onLoginSuccess = {
+                                isLoggedIn = true
+                                viewModel.refresh()
+                            })
+                        }
+
                         if (showUserMenu) {
-                            UserMenu(onClose = { showUserMenu = false })
+                            UserMenu(
+                                onClose = { showUserMenu = false },
+                                onLogout = { isLoggedIn = false }
+                            )
                         }
 
                         if (isTv) {

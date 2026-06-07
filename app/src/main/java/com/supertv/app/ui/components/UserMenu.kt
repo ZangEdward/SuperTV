@@ -27,11 +27,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.supertv.app.data.ApiNodeService
+import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
 import com.supertv.app.model.ApiNode
 import com.supertv.app.model.ReleaseItem
 import com.supertv.app.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 enum class MenuPage {
     Main, NodeSelection, AIRecommend, ReleaseCalendar
@@ -39,10 +43,12 @@ enum class MenuPage {
 
 @Composable
 fun UserMenu(
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onLogout: () -> Unit
 ) {
     val context = LocalContext.current
     val store = remember { Store.getInstance(context) }
+    val authRepo = remember { AuthRepository.getInstance(context) }
     val nodes = remember { ApiNodeService.getNodes(context) }
     
     var currentPage by remember { mutableStateOf(MenuPage.Main) }
@@ -98,7 +104,15 @@ fun UserMenu(
                             MenuPage.Main -> MainMenu(
                                 onNavigateToNodes = { currentPage = MenuPage.NodeSelection },
                                 onNavigateToAI = { currentPage = MenuPage.AIRecommend },
-                                onNavigateToCalendar = { currentPage = MenuPage.ReleaseCalendar }
+                                onNavigateToCalendar = { currentPage = MenuPage.ReleaseCalendar },
+                                onLogout = {
+                                    val scope = CoroutineScope(Dispatchers.Main)
+                                    scope.launch {
+                                        authRepo.logout(RetrofitClient.getApiService())
+                                        onLogout()
+                                        onClose()
+                                    }
+                                }
                             )
                             MenuPage.NodeSelection -> NodeSelectionMenu(
                                 nodes = nodes.toList(),
@@ -125,7 +139,8 @@ fun UserMenu(
 fun MainMenu(
     onNavigateToNodes: () -> Unit,
     onNavigateToAI: () -> Unit,
-    onNavigateToCalendar: () -> Unit
+    onNavigateToCalendar: () -> Unit,
+    onLogout: () -> Unit
 ) {
     Column {
         // User Info Header
@@ -145,9 +160,13 @@ fun MainMenu(
             }
             Spacer(Modifier.width(16.dp))
             Column {
+                val context = LocalContext.current
+                val authRepo = remember { AuthRepository.getInstance(context) }
+                val userInfo = authRepo.getUserInfo()
+                
                 Text("当前用户", fontSize = 12.sp, color = TextSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("演示模式", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(userInfo?.nickname?.ifBlank { userInfo.username } ?: "演示模式", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.width(8.dp))
                     Surface(color = PrimaryGreen.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
                         Text("V2", color = PrimaryGreen, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
@@ -171,7 +190,7 @@ fun MainMenu(
             title = "退出登录", 
             textColor = ErrorRed,
             iconColor = ErrorRed,
-            onClick = { /* TODO */ }
+            onClick = onLogout
         )
     }
 }
@@ -292,6 +311,31 @@ fun NodeSelectionMenu(
     onNodeSelected: (ApiNode) -> Unit,
     onBack: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val latencies = remember { mutableStateMapOf<String, Long>() }
+    val apiService = remember { RetrofitClient.getApiService() }
+
+    // 开始测速
+    LaunchedEffect(nodes) {
+        nodes.forEach { node ->
+            scope.launch {
+                try {
+                    val start = System.currentTimeMillis()
+                    // 尝试请求测速接口
+                    val response = apiService.speedTest(node.url)
+                    if (response.isSuccessful) {
+                        val end = System.currentTimeMillis()
+                        latencies[node.url] = end - start
+                    } else {
+                        latencies[node.url] = -1L
+                    }
+                } catch (_: Exception) {
+                    latencies[node.url] = -1L // 表示不可达
+                }
+            }
+        }
+    }
+
     Column {
         Row(
             modifier = Modifier
@@ -310,6 +354,8 @@ fun NodeSelectionMenu(
         LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
             items(nodes) { node ->
                 val isSelected = node.url == selectedUrl
+                val latency = latencies[node.url]
+                
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -324,9 +370,26 @@ fun NodeSelectionMenu(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(node.label, color = if (isSelected) PrimaryGreen else TextPrimary, fontSize = 15.sp)
-                        Text(node.url, color = TextTertiary, fontSize = 12.sp)
+                    }
+                    
+                    // 显示延迟而不是网址
+                    if (latency != null) {
+                        val latencyColor = when {
+                            latency < 0 -> ErrorRed
+                            latency < 100 -> PrimaryGreen
+                            latency < 300 -> Color(0xFFFF9800) // Orange
+                            else -> ErrorRed
+                        }
+                        Text(
+                            text = if (latency < 0) "不可达" else "${latency}ms",
+                            color = latencyColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
                     }
                 }
             }
