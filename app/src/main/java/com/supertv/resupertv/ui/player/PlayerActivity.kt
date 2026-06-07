@@ -369,9 +369,9 @@ fun MobilePlayerScreen(
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MobBtn("选集", Icons.Default.List) { showEpDialog = true }
-                MobBtn("换源", Icons.Default.SwapHoriz) {}
-                MobBtn("收藏", if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder) { isFav = !isFav }
+                MobBtn("选集", Icons.Default.List, { showEpDialog = true }, Modifier.weight(1f))
+                MobBtn("换源", Icons.Default.SwapHoriz, {}, Modifier.weight(1f))
+                MobBtn("收藏", if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder, { isFav = !isFav }, Modifier.weight(1f))
             }
             if (episodes.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp)); Text("剧集列表", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -392,8 +392,8 @@ fun MobilePlayerScreen(
 
 }
 @Composable
-private fun MobBtn(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = BackgroundCard), shape = RoundedCornerShape(10.dp)) {
+private fun MobBtn(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(onClick = onClick, modifier = modifier, colors = ButtonDefaults.buttonColors(containerColor = BackgroundCard), shape = RoundedCornerShape(10.dp)) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(text, fontSize = 14.sp)
     }
 }

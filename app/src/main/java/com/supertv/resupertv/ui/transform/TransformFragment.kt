@@ -234,21 +234,19 @@ fun HomeScreen(
 
 private val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
-private val dayOfWeekIndex: Int
-    get() {
-        val cal = java.util.Calendar.getInstance()
-        val day = cal.get(java.util.Calendar.DAY_OF_WEEK)
-        return when (day) {
-            java.util.Calendar.MONDAY -> 0
-            java.util.Calendar.TUESDAY -> 1
-            java.util.Calendar.WEDNESDAY -> 2
-            java.util.Calendar.THURSDAY -> 3
-            java.util.Calendar.FRIDAY -> 4
-            java.util.Calendar.SATURDAY -> 5
-            java.util.Calendar.SUNDAY -> 6
-            else -> -1
-        }
+private fun getDayOfWeekIndex(): Int {
+    val cal = java.util.Calendar.getInstance()
+    return when (cal.get(java.util.Calendar.DAY_OF_WEEK)) {
+        java.util.Calendar.MONDAY -> 0
+        java.util.Calendar.TUESDAY -> 1
+        java.util.Calendar.WEDNESDAY -> 2
+        java.util.Calendar.THURSDAY -> 3
+        java.util.Calendar.FRIDAY -> 4
+        java.util.Calendar.SATURDAY -> 5
+        java.util.Calendar.SUNDAY -> 6
+        else -> -1
     }
+}
 
 @Composable
 fun AnimeSection(
@@ -257,7 +255,7 @@ fun AnimeSection(
     onRecordClick: (PlayRecord) -> Unit,
     onItemClick: (SearchResult) -> Unit
 ) {
-    val todayIdx = remember { dayOfWeekIndex }
+    val todayIdx = remember { getDayOfWeekIndex() }
     var selectedDay by remember { mutableIntStateOf(todayIdx.coerceAtLeast(0)) }
 
     Column {
@@ -867,4 +865,5 @@ fun ShimmerCard() {
         )
         Spacer(Modifier.height(8.dp))
     }
+}
 }
