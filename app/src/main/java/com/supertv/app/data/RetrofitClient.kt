@@ -8,9 +8,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * Retrofit网络客户�?- 对应原项目的 services/api.ts 中的API�?
+ * Retrofit网络客户�?- 对应原项目的 services/api.ts 中的API�?
  *
- * 支持多节点切换，动态修�?baseUrl
+ * 支持多节点切换，动态修�?baseUrl
  */
 object RetrofitClient {
 
@@ -48,11 +48,18 @@ object RetrofitClient {
      * 获取ApiService实例
      */
     fun getApiService(): ApiService {
-        val currentService = apiService
-        if (currentService != null) {
-            return currentService
+        return try {
+            val currentService = apiService
+            if (currentService != null) {
+                currentService
+            } else {
+                createApiService()
+            }
+        } catch (e: Exception) {
+            // 如果初始化失败（如 URL 非法），返回一个代理或抛出更清晰的异常
+            // 这里为了防止闪退，如果真的报错了，在调用处还会有 try-catch
+            throw e
         }
-        return createApiService()
     }
 
     @Synchronized
@@ -71,8 +78,13 @@ object RetrofitClient {
      */
     @Synchronized
     fun switchBaseUrl(newBaseUrl: String) {
-        if (newBaseUrl == currentBaseUrl) return
-        currentBaseUrl = newBaseUrl
+        val url = if (newBaseUrl.endsWith("/")) newBaseUrl else "$newBaseUrl/"
+        if (url == currentBaseUrl) return
+        
+        // 简单验证 URL 合法性，防止 Retrofit 抛出异常
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return
+        
+        currentBaseUrl = url
         retrofit = null
         apiService = null
     }

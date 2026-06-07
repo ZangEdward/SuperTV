@@ -30,6 +30,7 @@ import com.supertv.app.data.ApiNodeService
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
 import com.supertv.app.model.ApiNode
+import com.supertv.app.model.ReleaseItem
 import com.supertv.app.ui.theme.*
 
 enum class MenuPage {
@@ -51,13 +52,14 @@ fun UserMenu(
 
     // 初始化 Retrofit
     LaunchedEffect(Unit) {
-        if (store.getApiBaseUrl() == null && nodes.isNotEmpty()) {
+        val savedUrl = store.getApiBaseUrl()
+        if (savedUrl == null && nodes.isNotEmpty()) {
             val firstUrl = nodes.first().url
             store.saveApiBaseUrl(firstUrl)
             RetrofitClient.switchBaseUrl(firstUrl)
             selectedNodeUrl = firstUrl
-        } else if (store.getApiBaseUrl() != null) {
-            RetrofitClient.switchBaseUrl(store.getApiBaseUrl()!!)
+        } else if (savedUrl != null) {
+            RetrofitClient.switchBaseUrl(savedUrl)
         }
     }
 
@@ -177,16 +179,18 @@ fun MainMenu(
 @Composable
 fun AIRecommendMenu(onBack: () -> Unit) {
     var aiResponse by remember { mutableStateOf("正在通过 GPT-5o 为您生成推荐...") }
-    val apiService = RetrofitClient.getApiService()
     
     LaunchedEffect(Unit) {
         try {
+            val apiService = RetrofitClient.getApiService()
             val response = apiService.getAIRecommend()
             if (response.isSuccessful) {
                 aiResponse = response.body()?.content ?: "暂时没有推荐内容"
+            } else {
+                aiResponse = "推荐获取失败: ${response.code()}"
             }
         } catch (e: Exception) {
-            aiResponse = "推荐失败: ${e.message}"
+            aiResponse = "推荐异常: ${e.message}"
         }
     }
 
@@ -218,21 +222,50 @@ fun AIRecommendMenu(onBack: () -> Unit) {
 
 @Composable
 fun ReleaseCalendarMenu(onBack: () -> Unit) {
-    // Similar implementation for Calendar
+    var calendarItems by remember { mutableStateOf<List<ReleaseItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        try {
+            val apiService = RetrofitClient.getApiService()
+            val response = apiService.getReleaseCalendar()
+            if (response.isSuccessful) {
+                calendarItems = response.body()?.items ?: emptyList()
+            } else {
+                errorMsg = "加载失败: ${response.code()}"
+            }
+        } catch (e: Exception) {
+            errorMsg = "加载异常: ${e.message}"
+        } finally {
+            isLoading = false
+        }
+    }
+
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
             Text("即将上映日历", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
         
-        Text("2026年 1月发布数据", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+        Text("2026年发布数据", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
         
         Spacer(Modifier.height(8.dp))
         
-        LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-            // Mock or Fetch
-            item { CalendarItem("2026-01-28", "阿凡达：火与灰", "电影") }
-            item { CalendarItem("2026-02-14", "新蝙蝠侠 2", "电影") }
+        Box(modifier = Modifier.heightIn(max = 300.dp)) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryGreen)
+            } else if (errorMsg != null) {
+                Text(errorMsg!!, color = ErrorRed, modifier = Modifier.align(Alignment.Center))
+            } else if (calendarItems.isEmpty()) {
+                Text("暂无上映信息", color = TextTertiary, modifier = Modifier.align(Alignment.Center))
+            } else {
+                LazyColumn {
+                    items(calendarItems) { item ->
+                        CalendarItem(item.date, item.title, item.type)
+                    }
+                }
+            }
         }
         
         Spacer(Modifier.height(16.dp))

@@ -146,15 +146,25 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _isSearching.value = true
         _error.value = null
 
-        if (_searchMode.value == 0) {
-            _searchQuery.value = query
-        } else {
-            performNetDiskSearch(query)
+        viewModelScope.launch {
+            try {
+                if (_searchMode.value == 0) {
+                    _searchQuery.value = query
+                } else {
+                    performNetDiskSearch(query)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SearchViewModel", "Search failed", e)
+                _error.value = "搜索异常: ${e.message}"
+                _isSearching.value = false
+            }
         }
 
         // 保存搜索历史
-        store.addSearchHistory(query)
-        loadSearchHistory()
+        try {
+            store.addSearchHistory(query)
+            loadSearchHistory()
+        } catch (_: Exception) {}
     }
 
     private fun performNetDiskSearch(query: String) {
@@ -163,9 +173,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val response = apiService.netDiskSearch(query)
                 if (response.isSuccessful) {
                     _netDiskResults.value = response.body() ?: emptyList()
+                } else {
+                    _error.value = "网盘搜索失败: ${response.code()}"
                 }
             } catch (e: Exception) {
-                _error.value = "网盘搜索失败: ${e.message}"
+                android.util.Log.e("SearchViewModel", "Netdisk search error", e)
+                _error.value = "网盘搜索异常: ${e.message}"
             } finally {
                 _isSearching.value = false
             }
@@ -177,8 +190,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
      */
     private fun loadSuggestions(query: String) {
         viewModelScope.launch {
-            val result = searchEngine.getSuggestions(query)
-            _suggestions.value = result
+            try {
+                val result = searchEngine.getSuggestions(query)
+                _suggestions.value = result
+            } catch (e: Exception) {
+                android.util.Log.w("SearchViewModel", "Suggestions failed", e)
+            }
         }
     }
 
@@ -205,9 +222,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _isLoadingDetail.value = true
             _error.value = null
             try {
+                // 确保 ApiService 已初始化
+                RetrofitClient.getApiService()
                 val result = repository.getDetail(id, source)
                 _detail.value = result
             } catch (e: Exception) {
+                android.util.Log.e("SearchViewModel", "Load detail failed", e)
                 _error.value = "加载详情失败: ${e.message}"
             } finally {
                 _isLoadingDetail.value = false

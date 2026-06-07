@@ -8,6 +8,7 @@ import com.supertv.app.data.Store
 import com.supertv.app.model.DoubanItem
 import com.supertv.app.model.PlayRecord
 import com.supertv.app.model.SearchResult
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -56,37 +57,56 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
             // Load remote data in parallel
             try {
-                launch {
-                    val hotResult = apiService.getDoubanHot()
-                    if (hotResult.isSuccessful) {
-                        _hotMovies.value = hotResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                coroutineScope {
+                    launch {
+                        try {
+                            val hotResult = apiService.getDoubanHot()
+                            if (hotResult.isSuccessful) {
+                                _hotMovies.value = hotResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("TransformViewModel", "Failed to load hot movies", e)
+                        }
                     }
-                }
 
-                launch {
-                    val recommendResult = apiService.getDoubanRecommend()
-                    if (recommendResult.isSuccessful) {
-                        _recommended.value = recommendResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    launch {
+                        try {
+                            val recommendResult = apiService.getDoubanRecommend()
+                            if (recommendResult.isSuccessful) {
+                                _recommended.value = recommendResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("TransformViewModel", "Failed to load recommended", e)
+                        }
                     }
-                }
 
-                launch {
-                    val animeResult = apiService.getDoubanCategory("anime", 1)
-                    if (animeResult.isSuccessful) {
-                        _animeUpdates.value = animeResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    launch {
+                        try {
+                            val animeResult = apiService.getDoubanCategory("anime", 1)
+                            if (animeResult.isSuccessful) {
+                                _animeUpdates.value = animeResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("TransformViewModel", "Failed to load anime updates", e)
+                        }
                     }
-                }
 
-                launch {
-                    val shortDramaResult = apiService.getShortDramaHot(1)
-                    if (shortDramaResult.isSuccessful) {
-                        _shortDramas.value = shortDramaResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    launch {
+                        try {
+                            val shortDramaResult = apiService.getShortDramaHot(1)
+                            if (shortDramaResult.isSuccessful) {
+                                _shortDramas.value = shortDramaResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("TransformViewModel", "Failed to load short dramas", e)
+                        }
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("TransformViewModel", "Fatal error in loadData", e)
+            } finally {
+                _isLoading.value = false
             }
-
-            _isLoading.value = false
         }
     }
 
