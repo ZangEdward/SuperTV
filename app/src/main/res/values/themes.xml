@@ -1,4 +1,5 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme using Material3 - 深色主题 -->
     <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Primary brand colors -->
         <item name="colorPrimary">@color/accent_purple</item>
@@ -22,7 +23,7 @@
         <!-- Navigation bar -->
         <item name="android:navigationBarColor">@color/background_dark</item>
 
-        <!-- Button style with focus animation -->
+        <!-- Button style -->
         <item name="materialButtonStyle">@style/Widget.Material3.Button</item>
 
         <!-- 夜间模式强制深色 -->
@@ -34,6 +35,14 @@
         <item name="windowNoTitle">true</item>
     </style>
 
+    <!-- 修复缺失的主题引用 -->
     <style name="Theme.App.AppBarOverlay" parent="ThemeOverlay.Material3.Dark.ActionBar" />
     <style name="Theme.App.PopupOverlay" parent="ThemeOverlay.Material3.Light" />
+
+    <!-- 保持原有的兼容别名，防止引用缺失 -->
+    <style name="Theme.RESuperTV" parent="Theme.App" />
+    <style name="Theme.RESuperTV.NoActionBar" parent="Theme.App.NoActionBar" />
+    <style name="Theme.RESuperTV.AppBarOverlay" parent="Theme.App.AppBarOverlay" />
+    <style name="Theme.RESuperTV.PopupOverlay" parent="Theme.App.PopupOverlay" />
+
 </resources>
