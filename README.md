@@ -1,24 +1,26 @@
 # SuperTV 原生安卓重构项目
 
-本项目致力于将基于 Expo/React Native 的 `supertv` 项目重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
+本项目致力于将基于 React Native 的项目完全重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
 
 ## 目录结构
 ```text
 app/src/main/
-├── java/com/supertv/resupertv/
+├── java/com/supertv/app/
 │   ├── ui/                 # UI 层 (Compose)
 │   ├── data/               # 网络 (Retrofit) 与存储 (DataStore)
-│   ├── services/           # 原生搜索引擎与服务
+│   ├── services/           # 原生搜索引擎/服务 (Search/Dlna/Cast/AdFilter)
 │   └── model/              # 数据模型定义
-├── res/                    # 资源文件 (mipmap, drawable)
-└── assets/                 # 资产配置 (api_nodes.json)
+├── res/                    # 资源文件 (mipmap, drawable, values)
+└── assets/                 # 动态注入配置 (api_nodes.json)
 ```
 
-## 核心重构里程碑
-1. [x] **原生架构迁移**：移除 React Native 环境，完全原生化工程结构。
-2. [x] **搜索引擎原生化**：集成 `SearchEngineModule.kt`，通过 Kotlin Coroutines 并发检索。
-3. [x] **配置即时持久化**：移除 `BuildConfig` 硬编码，改用 Assets 动态注入，解决了中文 JSON 转义编译错误。
-4. [x] **自动化 OTA 构建**：GitHub Actions 全自动化构建与分发。
+## 已完成里程碑
+- [x] **架构迁移**：移除 React Native 依赖，构建原生 Kotlin/Gradle 环境。
+- [x] **搜索引擎**：`SearchEngineModule` 实现高并发多线程搜索。
+- [x] **即时保存**：所有设置项集成 DataStore 自动同步，移除手动保存按钮。
+- [x] **配置安全注入**：通过 Gradle 注入 Secrets 至 Assets，避免 BuildConfig 编译错误。
+- [x] **主题统一**：基于 Material3 适配 `Theme.App` 及其别名，修复样式引用缺失。
+- [x] **远程控制**：`RemoteControlService` 实现原生 WebSocket 服务。
 
 ## 待办事项 (For Next AI Agent)
 1. [ ] **搜索分页 (Paging 3)**：为搜索结果页接入 Paging 3 懒加载。
@@ -48,10 +50,14 @@ val json = context.assets.open("api_nodes.json").bufferedReader().use { it.readT
 val nodes = gson.fromJson(json, Array<ApiNode>::class.java)
 ```
 
-## 开发工作流
+## 开发指南
 - **编译**：`./gradlew assembleRelease`
-- **自动化构建**：`.github/workflows/build-apk.yaml` 会在构建时自动根据 Secrets 注入 API 节点配置，无需手动修改代码。
-- **编码约定**：
-  - Kotlin 代码严格使用 UTF-8。
-  - 网络层 Retrofit 必须配置 `GsonBuilder().disableHtmlEscaping()` 以处理中文字段。
-  - 所有 UI 必须使用 `ComposeView` 进行迁移，严禁混用旧版 Fragment View 布局。
+- **配置文件**：`api_nodes.json` 由构建流程自动生成，请通过 GitHub Secrets `API_NODES_JSON` 管理。
+- **编码规范**：
+  - Kotlin 代码使用 UTF-8。
+  - Retrofit Client 配置 `disableHtmlEscaping` 以兼容中文。
+  - 界面使用 `ComposeView` 挂载 Compose 组件。
+- **发布**：GitHub Action `.github/workflows/build-apk.yaml` 自动处理 OTA 部署。
+
+---
+*注：本项目已彻底弃用 JS 环境，请在 Android Studio 原生环境下进行开发。*

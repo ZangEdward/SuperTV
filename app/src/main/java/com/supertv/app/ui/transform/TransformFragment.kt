@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -30,7 +29,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.supertv.app.R
 import com.supertv.app.model.SearchResult
-import com.supertv.app.ui.theme.*
+import com.supertv.app.ui.transform.TransformViewModel
 
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
@@ -45,7 +44,7 @@ class TransformFragment : Fragment() {
                 MaterialTheme {
                     HomeScreen(
                         viewModel = viewModel,
-                        onItemClick = { /* TODO: 导航逻辑 */ },
+                        onItemClick = { /* 导航逻辑 */ },
                         onSearchClick = {
                             findNavController().navigate(R.id.action_nav_transform_to_search)
                         }
@@ -62,7 +61,7 @@ fun HomeScreen(
     onItemClick: (SearchResult) -> Unit,
     onSearchClick: () -> Unit
 ) {
-    val hotMovies by viewModel.hotMovies.collectAsState()
+    val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
     
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
