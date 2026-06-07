@@ -7,11 +7,6 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.supertv.app.model.DLNADevice
 
-/**
- * 投屏通知服务 - 对应原项目的 services/castNotificationService.ts
- *
- * 在系统通知栏显示投屏控制通知，支持从通知直接启动控制页面
- */
 class CastNotificationService(private val context: Context) {
 
     companion object {
@@ -44,9 +39,6 @@ class CastNotificationService(private val context: Context) {
         }
     }
 
-    /**
-     * 显示投屏控制通知
-     */
     fun showCastNotification(device: DLNADevice, title: String) {
         val openIntent = Intent(ACTION_OPEN).apply {
             setPackage(context.packageName)
@@ -67,8 +59,8 @@ class CastNotificationService(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("投屏�?)
-            .setContentText("正在投屏�?${device.name}: $title")
+            .setContentTitle("投屏中")
+            .setContentText("正在投屏到 ${device.name}: $title")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(
@@ -94,9 +86,6 @@ class CastNotificationService(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    /**
-     * 更新投屏进度
-     */
     fun updateProgress(position: Long, duration: Long) {
         val minutes = position / 60000
         val seconds = (position % 60000) / 1000
@@ -104,7 +93,7 @@ class CastNotificationService(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("投屏�?)
+            .setContentTitle("投屏中")
             .setContentText(progressText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -115,9 +104,6 @@ class CastNotificationService(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    /**
-     * 取消投屏通知
-     */
     fun cancelNotification() {
         notificationManager.cancel(NOTIFICATION_ID)
     }

@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme - 深色模式 -->
-    <style name="Theme.RESuperTV" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.App" parent="Theme.Material3.Dark.NoActionBar">
         <!-- Primary brand colors -->
         <item name="colorPrimary">@color/accent_purple</item>
         <item name="colorOnPrimary">@color/white</item>
@@ -21,4 +21,6 @@
         <item name="android:statusBarColor">@color/background_dark</item>
         <item name="android:navigationBarColor">@color/background_dark</item>
     </style>
+
+    <style name="Theme.RESuperTV" parent="Theme.App" />
 </resources>

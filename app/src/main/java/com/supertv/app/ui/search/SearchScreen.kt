@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,13 +32,8 @@ import com.supertv.app.ui.components.VideoCard
 import com.supertv.app.ui.theme.*
 import com.supertv.app.viewmodel.SearchViewModel
 
-// ─── Selene 颜色常量 ───
 private val SeleneHistoryBg = Color(0xFF1e1e1e)
 private val SeleneHistoryText = Color(0xFFffffff)
-private val SeleneHistoryBorder = Color(0xFF333333)
-private val SeleneHistoryHoverBg = Color(0xFF1e3a28)
-private val SeleneHistoryHoverText = Color(0xFF27ae60)
-private val SeleneHistoryHoverBorder = Color(0xFF52c77a)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -61,7 +55,6 @@ fun SearchScreen(
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // ─── 搜索�?�?�?Selene ───
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = BackgroundDark
@@ -97,16 +90,14 @@ fun SearchScreen(
             )
         }
 
-        // ─── 主体内容 ───
         when {
             isSearching -> {
                 Box(modifier = Modifier.padding(16.dp)) { ShimmerGrid(columns = 3) }
             }
 
             results.isNotEmpty() -> {
-                // 搜索结果
                 Text(
-                    text = "找到 ${results.size} 个结�?,
+                    text = "找到 ${results.size} 个结果",
                     fontSize = 13.sp,
                     color = TextTertiary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -118,14 +109,13 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(results, key = { it.id + it.source }) { item ->
+                    items(results, key = { "${it.id}${it.source}" }) { item ->
                         VideoCard(result = item, onClick = { onResultClick(item) })
                     }
                 }
             }
 
             else -> {
-                // ——�?搜索历史 / 空状�?——�?�?Selene ───
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -133,7 +123,6 @@ fun SearchScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     if (searchHistory.isNotEmpty()) {
-                        // Selene 风格搜索历史：标题行 + 圆角药丸芯片
                         Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
@@ -149,8 +138,7 @@ fun SearchScreen(
                                 color = TextPrimary
                             )
                             TextButton(
-                                onClick = { showClearDialog = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                onClick = { showClearDialog = true }
                             ) {
                                 Text(
                                     text = "清空",
@@ -160,7 +148,6 @@ fun SearchScreen(
                             }
                         }
 
-                        // 历史标签 �?Wrap 流式布局
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -174,7 +161,6 @@ fun SearchScreen(
                             }
                         }
                     } else {
-                        // ——�?空状态：历史图标 + 提示文字 ——�?�?Selene ───
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -205,7 +191,6 @@ fun SearchScreen(
                         }
                     }
 
-                    // 搜索建议（如果有关联词）
                     if (query.isNotBlank() && suggestions.isNotEmpty()) {
                         Spacer(Modifier.height(16.dp))
                         Text(
@@ -226,7 +211,6 @@ fun SearchScreen(
         }
     }
 
-    // ─── 清空确认弹窗 �?�?Selene ───
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
@@ -262,7 +246,7 @@ fun SearchScreen(
             },
             text = {
                 Text(
-                    text = "确定要清空所有搜索历史吗？此操作无法撤销�?,
+                    text = "确定要清空所有搜索历史吗？此操作无法撤销。",
                     fontSize = 14.sp,
                     color = TextSecondary,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -292,7 +276,6 @@ fun SearchScreen(
     }
 }
 
-// ─── 历史标签 �?圆角药丸芯片（仿 Selene�?───
 @Composable
 private fun HistoryChip(
     text: String,
@@ -324,7 +307,6 @@ private fun HistoryChip(
     }
 }
 
-// ─── 建议词条（带搜索图标�?───
 @Composable
 private fun SuggestionPill(
     text: String,
