@@ -145,8 +145,9 @@ fun TVPlayerScreen(
     var curPos by remember { mutableLongStateOf(0L) }
     var dur by remember { mutableLongStateOf(0L) }
 
+    val ctx = LocalContext.current
     val exoPlayer = remember {
-        ExoPlayer.Builder(LocalContext.current).build().apply {
+        ExoPlayer.Builder(ctx).build().apply {
             setMediaItem(MediaItem.Builder().setUri(Uri.parse(url)).build())
             prepare(); playWhenReady = true
             addListener(object : Player.Listener {
@@ -260,8 +261,9 @@ fun MobilePlayerScreen(
     var curPos by remember { mutableLongStateOf(0L) }
     var dur by remember { mutableLongStateOf(0L) }
 
+    val mCtx = LocalContext.current
     val exo = remember {
-        ExoPlayer.Builder(LocalContext.current).build().apply {
+        ExoPlayer.Builder(mCtx).build().apply {
             setMediaItem(MediaItem.Builder().setUri(Uri.parse(url)).build())
             prepare(); playWhenReady = true
             addListener(object : Player.Listener {
