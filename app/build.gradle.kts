@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.supertv.resupertv"
+    namespace = "com.supertv.app"
     compileSdk = 36
 
     signingConfigs {
@@ -19,19 +19,31 @@ android {
 
     defaultConfig {
         applicationId = "com.supertv.app"
-        minSdk = 24                     // Android 7.0，兼容老电视
+        minSdk = 24                     // Android 7.0，兼容老电�?
         targetSdk = 36
-        versionCode = 2                 // 递增，原为1
+        versionCode = 2                 // 递增，原�?
         versionName = "6.0.0.0"         // 新版本号
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    
+    // 确保 API 配置目录存在
+    val assetsDir = layout.projectDirectory.dir("src/main/assets")
+    
+    // 构建任务：将传入�?Secrets 注入�?assets/api_nodes.json
+    tasks.register("generateApiNodesAsset") {
+        val jsonString = project.findProperty("API_NODES_JSON") as? String ?: """[{"key":"default","label":"演示节点","url":"https://api.example.com"}]"""
+        
+        doLast {
+            assetsDir.asFile.mkdirs()
+            val file = assetsDir.file("api_nodes.json").asFile
+            file.writeText(jsonString)
+        }
+    }
 
-        // API 节点列表 JSON — 构建时由 CI/Secrets 注入
-        buildConfigField(
-            "String",
-            "API_NODES_JSON",
-            "\"${project.findProperty("API_NODES_JSON") ?: "[]"}\""
-        )
+    // 绑定�?preBuild 任务
+    tasks.named("preBuild") {
+        dependsOn("generateApiNodesAsset")
     }
 
     buildTypes {
@@ -89,7 +101,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.10.1")
     implementation("androidx.media3:media3-ui:1.10.1")
 
-    // Coil (图片加载库)
+    // Coil (图片加载�?
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     // Lifecycle ViewModel Compose

@@ -7,7 +7,7 @@
 
     <fragment
         android:id="@+id/nav_transform"
-        android:name="com.supertv.resupertv.ui.transform.TransformFragment"
+        android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="@string/menu_transform"
         tools:layout="@layout/fragment_transform" >
         <action
@@ -17,25 +17,25 @@
 
     <fragment
         android:id="@+id/nav_reflow"
-        android:name="com.supertv.resupertv.ui.reflow.ReflowFragment"
+        android:name="com.supertv.app.ui.reflow.ReflowFragment"
         android:label="@string/menu_reflow"
         tools:layout="@layout/fragment_reflow" />
 
     <fragment
         android:id="@+id/nav_slideshow"
-        android:name="com.supertv.resupertv.ui.slideshow.SlideshowFragment"
+        android:name="com.supertv.app.ui.slideshow.SlideshowFragment"
         android:label="@string/menu_slideshow"
         tools:layout="@layout/fragment_slideshow" />
 
     <fragment
         android:id="@+id/nav_settings"
-        android:name="com.supertv.resupertv.ui.settings.SettingsFragment"
+        android:name="com.supertv.app.ui.settings.SettingsFragment"
         android:label="@string/menu_settings"
         tools:layout="@layout/fragment_settings" />
 
     <fragment
         android:id="@+id/nav_search"
-        android:name="com.supertv.resupertv.ui.search.SearchFragment"
+        android:name="com.supertv.app.ui.search.SearchFragment"
         android:label="搜索"
         tools:layout="@layout/fragment_search" />
 </navigation>

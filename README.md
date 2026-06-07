@@ -1,45 +1,57 @@
-# RESuperTV 原生安卓重构项目
+# SuperTV 原生安卓重构项目
 
-本项目致力于将基于 Expo/React Native 的 `supertv` 项目功能完全迁移并重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
+本项目致力于将基于 Expo/React Native 的 `supertv` 项目重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
 
-## 核心重构与功能迁移对照表
+## 目录结构
+```text
+app/src/main/
+├── java/com/supertv/resupertv/
+│   ├── ui/                 # UI 层 (Compose)
+│   ├── data/               # 网络 (Retrofit) 与存储 (DataStore)
+│   ├── services/           # 原生搜索引擎与服务
+│   └── model/              # 数据模型定义
+├── res/                    # 资源文件 (mipmap, drawable)
+└── assets/                 # 资产配置 (api_nodes.json)
+```
 
-| 原项目模块 (TS/TSX) | 原生迁移模块 (Kotlin/Compose) | 状态 |
-| :--- | :--- | :--- |
-| **API/ApiNodes** | `ApiService` + `RetrofitClient` | 已完成 |
-| **Search/Suggestions** | `SearchViewModel` + `SearchEngineModule` | 已完成 |
-| **Player/ExoPlayer** | `PlayerActivity` + Media3 | 已完成 |
-| **DLNA/Cast** | `DlnaService` + `CastNotificationService` | 已完成 |
-| **TcpHttpServer** | `TcpHttpServer` (原生Socket) | 已完成 |
-| **Cache/Storage** | `CacheService` + `DataStore` | 已完成 |
-| **M3U/M3U8 解析** | `M3uService` + `AdFilterService` | 已完成 |
-| **Settings** | `SettingsScreen` + `AutoSave` | 已完成 |
-| **Remote Control** | `RemoteControlService` (原生WebSocket) | 已完成 |
+## 核心重构里程碑
+1. [x] **原生架构迁移**：移除 React Native 环境，完全原生化工程结构。
+2. [x] **搜索引擎原生化**：集成 `SearchEngineModule.kt`，通过 Kotlin Coroutines 并发检索。
+3. [x] **配置即时持久化**：移除 `BuildConfig` 硬编码，改用 Assets 动态注入，解决了中文 JSON 转义编译错误。
+4. [x] **自动化 OTA 构建**：GitHub Actions 全自动化构建与分发。
 
-## 已完成的重构里程碑
+## 待办事项 (For Next AI Agent)
+1. [ ] **搜索分页 (Paging 3)**：为搜索结果页接入 Paging 3 懒加载。
+2. [ ] **直播流解析**：基于 `Media3` 实现直播/点播流的解析与广告过滤。
+3. [ ] **缓存管理**：实现原生缓存任务管理界面。
+4. [ ] **功能迁移**：完成其余 `ui/` 下所有 Fragment 的 Compose 迁移。
 
-### 1. 全局架构与工程化
-- [x] **Gradle工程原生化**：移除所有 React Native/Expo 依赖，清理无用 JS 脚本。
-- [x] **Material Design 3**：统一视觉风格，适配 Android TV 及移动端。
-- [x] **配置自动保存**：实现各 SettingsSection 的实时持久化 (`DataStore`)，废除手动保存按钮。
+## 配置与部署说明
 
-### 2. 原生核心引擎 (Kotlin)
-- [x] **高性能搜索引擎**：`SearchEngineModule.kt` 实现多线程协程并发检索，解决 UI 卡顿。
-- [x] **原生远程控制**：`RemoteControlService.kt` 实现 WebSocket 服务，支持 TV 端与手机端的实时文本同步。
-- [x] **JSON 编码修复**：`RetrofitClient` 配置 `disableHtmlEscaping`，彻底解决中文解析编译错误。
+### GitHub Actions 节点配置
+为了保障 API 节点的安全性与构建自动化，请在 **GitHub 仓库设置 -> Settings -> Secrets and variables -> Actions** 中添加以下 Secret：
 
-### 3. UI 原生化 (Jetpack Compose)
-- [x] **搜索页面 UI**：构建了基于 Compose 的 `SearchView`，解耦原有的 UI 渲染逻辑。
-- [x] **首页分区布局**：完成了 `TransformFragment` 的 Compose 布局迁移。
+- **Name**: `API_NODES_JSON`
+- **Value**: JSON 格式的节点数组。
+  ```json
+  [
+    { "key": "node1", "label": "服务器A", "url": "https://api.example.com" },
+    { "key": "node2", "label": "服务器B", "url": "https://api.backup.com" }
+  ]
+  ```
 
-## 待办事项与接手建议 (For Next AI Agent)
+### API 节点安全读取规范
+本项目通过编译任务自动将 `API_NODES_JSON` 注入至 `assets/api_nodes.json`，严禁在 `build.gradle.kts` 中使用 `buildConfigField` 存储复杂 JSON 字符串。
+**读取代码示例**：
+```kotlin
+val json = context.assets.open("api_nodes.json").bufferedReader().use { it.readText() }
+val nodes = gson.fromJson(json, Array<ApiNode>::class.java)
+```
 
-1. [x] **搜索页面 UI 原生化**：已完成基础架构迁移。
-2. [ ] **搜索结果分页 (Paging 3)**：当前结果展示为简单列表，需接入 `Paging 3` 库以支持大批量搜索结果的懒加载。
-3. [x] **远程输入原生化**：已部署 WebSocket 服务，需进一步完善 `SearchViewModel` 的交互绑定。
-4. [ ] **离线缓存 UI 重构**：需仿照原 `cache-management.tsx` 实现原生缓存文件管理视图。
-5. [ ] **直播功能 (Media3)**：在 Kotlin 侧实现基于 `Media3` 的直播流解析与播放管理。
-6. [ ] **CI/CD 维护**：目前的 `build-apk.yaml` 已配置好自动编译与 OTA 分发，请监控其构建状态。
-
----
-*注：本项目已彻底完成 RN 向 Native Kotlin 的重构，后续开发请直接操作 `app/src/main/java/com/supertv/resupertv/` 下的原生源文件。*
+## 开发工作流
+- **编译**：`./gradlew assembleRelease`
+- **自动化构建**：`.github/workflows/build-apk.yaml` 会在构建时自动根据 Secrets 注入 API 节点配置，无需手动修改代码。
+- **编码约定**：
+  - Kotlin 代码严格使用 UTF-8。
+  - 网络层 Retrofit 必须配置 `GsonBuilder().disableHtmlEscaping()` 以处理中文字段。
+  - 所有 UI 必须使用 `ComposeView` 进行迁移，严禁混用旧版 Fragment View 布局。
