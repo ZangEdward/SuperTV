@@ -28,13 +28,16 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _newContent = MutableStateFlow<List<SearchResult>>(emptyList())
     val newContent: StateFlow<List<SearchResult>> = _newContent.asStateFlow()
 
-    /** 动画每日更新 �?�?Selene 每日放�?*/
+    /** 动画每日更新 �?�?Selene 每日放�?*/
     private val _animeUpdates = MutableStateFlow<List<SearchResult>>(emptyList())
     val animeUpdates: StateFlow<List<SearchResult>> = _animeUpdates.asStateFlow()
 
-    /** 最近播放记录（动画分区内也用） */
-    private val _recentPlayRecords = MutableStateFlow<List<PlayRecord>>(emptyList())
-    val recentPlayRecords: StateFlow<List<PlayRecord>> = _recentPlayRecords.asStateFlow()
+    /** 短剧分类 */
+    private val _shortDramas = MutableStateFlow<List<SearchResult>>(emptyList())
+    val shortDramas: StateFlow<List<SearchResult>> = _shortDramas.asStateFlow()
+
+    private val _selectedCategory = MutableStateFlow("热门")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -43,39 +46,44 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         loadData()
     }
 
+    fun selectCategory(category: String) {
+        _selectedCategory.value = category
+    }
+
     private fun loadData() {
         viewModelScope.launch {
             _isLoading.value = true
 
-            // Load local data
-            val allRecords = store.getPlayRecords().reversed()
-            _playRecords.value = allRecords.take(20)
-            _recentPlayRecords.value = allRecords.take(20)
-
             // Load remote data in parallel
             try {
-                val hotResult = apiService.getDoubanHot()
-                if (hotResult.isSuccessful) {
-                    _hotMovies.value = hotResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                launch {
+                    val hotResult = apiService.getDoubanHot()
+                    if (hotResult.isSuccessful) {
+                        _hotMovies.value = hotResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    }
                 }
 
-                val recommendResult = apiService.getDoubanRecommend()
-                if (recommendResult.isSuccessful) {
-                    _recommended.value = recommendResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                launch {
+                    val recommendResult = apiService.getDoubanRecommend()
+                    if (recommendResult.isSuccessful) {
+                        _recommended.value = recommendResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    }
                 }
 
-                val newResult = apiService.getDoubanNew()
-                if (newResult.isSuccessful) {
-                    _newContent.value = newResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                launch {
+                    val animeResult = apiService.getDoubanCategory("anime", 1)
+                    if (animeResult.isSuccessful) {
+                        _animeUpdates.value = animeResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    }
                 }
 
-                // 加载动画分类 �?豆瓣动画每日更新
-                val animeResult = apiService.getDoubanCategory("anime", 1)
-                if (animeResult.isSuccessful) {
-                    _animeUpdates.value = animeResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                launch {
+                    val shortDramaResult = apiService.getShortDramaHot(1)
+                    if (shortDramaResult.isSuccessful) {
+                        _shortDramas.value = shortDramaResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
+                    }
                 }
             } catch (_: Exception) {
-                // Network error �?keep existing data
             }
 
             _isLoading.value = false

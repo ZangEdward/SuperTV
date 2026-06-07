@@ -72,7 +72,7 @@ interface ApiService {
     @GET("api/v1/sites")
     suspend fun getSites(): Response<List<ApiSite>>
 
-    // ==================== 服务器配�?====================
+    // ==================== 服务器配�?====================
 
     @GET("api/v1/config")
     suspend fun getServerConfig(): Response<ServerConfig>
@@ -84,7 +84,7 @@ interface ApiService {
         @Query("q") query: String
     ): Response<List<NetDiskItem>>
 
-    // ==================== 测�?====================
+    // ==================== 测�?====================
 
     @POST("api/v1/speedtest")
     suspend fun speedTest(
@@ -145,6 +145,21 @@ interface ApiService {
 
     @POST("api/v1/searchhistory/clear")
     suspend fun clearSearchHistory(): Response<Map<String, Any>>
+
+    // ==================== LunaTV 增强功能 ====================
+
+    @GET("api/v1/shortdrama/hot")
+    suspend fun getShortDramaHot(
+        @Query("page") page: Int = 1
+    ): Response<DoubanResponse>
+
+    @GET("api/v1/ai/recommend")
+    suspend fun getAIRecommend(
+        @Query("context") context: String = ""
+    ): Response<AIRecommendResponse>
+
+    @GET("api/v1/calendar/release")
+    suspend fun getReleaseCalendar(): Response<ReleaseCalendarResponse>
 }
 
 data class LoginResponse(
@@ -170,7 +185,7 @@ data class PlayUrlResponse(
 )
 
 /**
- * 测速结�?
+ * 测速结�?
  */
 data class SpeedTestResult(
     val url: String = "",

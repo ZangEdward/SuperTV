@@ -2,8 +2,7 @@ package com.supertv.app.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,12 +18,12 @@ sealed class Screen(
     val title: String,
     val icon: ImageVector
 ) {
-    data object Home : Screen("home", "首页", Icons.Rounded.Home)
-    data object Movie : Screen("movie", "电影", Icons.Rounded.Movie)
-    data object Tv : Screen("tv", "剧集", Icons.Rounded.LiveTv)
-    data object Anime : Screen("anime", "动漫", Icons.Rounded.Pets)
-    data object Show : Screen("show", "综艺", Icons.Rounded.TheaterComedy)
-    data object Live : Screen("live", "直播", Icons.Rounded.Radio)
+    data object Home : Screen("home", "首页", Icons.Outlined.Home)
+    data object Movie : Screen("movie", "电影", Icons.Outlined.Movie)
+    data object Tv : Screen("tv", "剧集", Icons.Outlined.Tv)
+    data object Anime : Screen("anime", "动漫", Icons.Outlined.CrueltyFree)
+    data object Show : Screen("show", "综艺", Icons.Outlined.Face) 
+    data object Live : Screen("live", "直播", Icons.Outlined.LiveTv)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,12 +60,12 @@ fun AppNavigation(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateToSearch) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextPrimary)
+                        Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = TextPrimary)
                     }
                 },
                 actions = {
                     IconButton(onClick = { /* 用户菜单 */ }) {
-                        Icon(Icons.Default.AccountCircle, contentDescription = "用户", tint = TextPrimary)
+                        Icon(Icons.Outlined.AccountCircle, contentDescription = "用户", tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -78,30 +77,38 @@ fun AppNavigation(
         bottomBar = {
             NavigationBar(
                 containerColor = BackgroundNav,
-                tonalElevation = 0.dp
+                tonalElevation = 8.dp,
+                windowInsets = WindowInsets.navigationBars,
+                modifier = Modifier.height(72.dp)
             ) {
                 screens.forEach { screen ->
                     val isSelected = selectedScreen == screen
                     NavigationBarItem(
                         icon = {
                             Icon(
-                                screen.icon,
+                                imageVector = screen.icon,
                                 contentDescription = screen.title,
-                                tint = if (isSelected) PrimaryGreen else TextTertiary
+                                tint = if (isSelected) PrimaryGreen else TextSecondary,
+                                modifier = Modifier.size(24.dp)
                             )
                         },
                         label = {
                             Text(
                                 screen.title,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) PrimaryGreen else TextTertiary
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.W600 else FontWeight.W400,
+                                color = if (isSelected) PrimaryGreen else TextSecondary
                             )
                         },
                         selected = isSelected,
                         onClick = { selectedScreen = screen },
+                        alwaysShowLabel = true,
                         colors = NavigationBarItemDefaults.colors(
-                            indicatorColor = Color.Transparent
+                            indicatorColor = Color.Transparent,
+                            selectedIconColor = PrimaryGreen,
+                            selectedTextColor = PrimaryGreen,
+                            unselectedIconColor = TextSecondary,
+                            unselectedTextColor = TextSecondary
                         )
                     )
                 }

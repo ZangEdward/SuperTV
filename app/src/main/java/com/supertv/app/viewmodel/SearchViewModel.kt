@@ -7,8 +7,7 @@ import com.supertv.app.api.ApiService
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.SearchRepository
 import com.supertv.app.data.Store
-import com.supertv.app.model.SearchResult
-import com.supertv.app.model.VideoDetail
+import com.supertv.app.model.*
 import com.supertv.app.services.SearchEngine
 import com.supertv.app.services.SpeedTestService
 import androidx.paging.Pager
@@ -37,6 +36,19 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _results = MutableStateFlow<List<SearchResult>>(emptyList())
     val results: StateFlow<List<SearchResult>> = _results.asStateFlow()
 
+    // TV 搜索结果（去重处理）
+    val tvResults: StateFlow<List<SearchResult>> = _results.map { list ->
+        val map = mutableMapOf<String, SearchResult>()
+        list.forEach { item ->
+            val key = item.title.replace("\\s+".toRegex(), "")
+            val existing = map[key]
+            if (existing == null || (item.episodes.size > existing.episodes.size)) {
+                map[key] = item
+            }
+        }
+        map.values.toList()
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     // Paging 3 搜索结果
     private val _searchQuery = MutableStateFlow("")
     val searchPagingData: Flow<PagingData<SearchResult>> = _searchQuery
@@ -48,6 +60,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             ).flow.cachedIn(viewModelScope)
         }
 
+    // 网盘搜索结果
+    private val _netDiskResults = MutableStateFlow<List<NetDiskItem>>(emptyList())
+    val netDiskResults: StateFlow<List<NetDiskItem>> = _netDiskResults.asStateFlow()
+
     // 搜索建议
     private val _suggestions = MutableStateFlow<List<String>>(emptyList())
     val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
@@ -56,15 +72,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
-    // 搜索状�?
+    // 搜索状态
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    private val _searchMode = MutableStateFlow(0) // 0: 聚合, 1: 网盘
+    val searchMode: StateFlow<Int> = _searchMode.asStateFlow()
 
     // 详情
     private val _detail = MutableStateFlow<VideoDetail?>(null)
     val detail: StateFlow<VideoDetail?> = _detail.asStateFlow()
 
-    // 详情加载�?
+    // 详情加载
     private val _isLoadingDetail = MutableStateFlow(false)
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
@@ -73,6 +92,36 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val error: StateFlow<String?> = _error.asStateFlow()
 
     init {
+        loadSearchHistory()
+    }
+
+    fun setSearchMode(mode: Int) {
+        _searchMode.value = mode
+    }
+
+    /**
+     * 执行 TV 搜索
+     */
+    fun searchTV(query: String) {
+        if (query.isBlank()) return
+        _query.value = query
+        _isSearching.value = true
+        _error.value = null
+        
+        viewModelScope.launch {
+            try {
+                val response = apiService.search(query)
+                if (response.isSuccessful) {
+                    _results.value = response.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _error.value = "搜索失败: ${e.message}"
+            } finally {
+                _isSearching.value = false
+            }
+        }
+        
+        store.addSearchHistory(query)
         loadSearchHistory()
     }
 
@@ -94,13 +143,33 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun search(query: String) {
         if (query.isBlank()) return
         _query.value = query
-        _searchQuery.value = query
         _isSearching.value = true
         _error.value = null
+
+        if (_searchMode.value == 0) {
+            _searchQuery.value = query
+        } else {
+            performNetDiskSearch(query)
+        }
 
         // 保存搜索历史
         store.addSearchHistory(query)
         loadSearchHistory()
+    }
+
+    private fun performNetDiskSearch(query: String) {
+        viewModelScope.launch {
+            try {
+                val response = apiService.netDiskSearch(query)
+                if (response.isSuccessful) {
+                    _netDiskResults.value = response.body() ?: emptyList()
+                }
+            } catch (e: Exception) {
+                _error.value = "网盘搜索失败: ${e.message}"
+            } finally {
+                _isSearching.value = false
+            }
+        }
     }
 
     /**
@@ -147,7 +216,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 测速节�?
+     * 测速节点
      */
     fun testLatency(urls: Map<String, String>) {
         viewModelScope.launch {
@@ -156,7 +225,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 获取最佳节�?
+     * 获取最佳节点
      */
     fun getBestNode(): String? = speedTestService.getBestNode()
 

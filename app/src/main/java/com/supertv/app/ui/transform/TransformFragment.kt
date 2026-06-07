@@ -1,5 +1,6 @@
 package com.supertv.app.ui.transform
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,8 +10,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,11 +39,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.supertv.app.R
 import com.supertv.app.model.SearchResult
-import com.supertv.app.ui.transform.TransformViewModel
-
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Search
+import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.theme.*
 
 class TransformFragment : Fragment() {
@@ -48,15 +54,128 @@ class TransformFragment : Fragment() {
             setContent {
                 MaterialTheme {
                     Surface(color = BackgroundDark) {
-                        HomeScreen(
-                            viewModel = viewModel,
-                            onItemClick = { /* 导航逻辑 */ },
-                            onSearchClick = {
-                                findNavController().navigate(R.id.action_nav_transform_to_search)
-                            }
-                        )
+                        val configuration = LocalConfiguration.current
+                        val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+                        
+                        var showUserMenu by remember { mutableStateOf(false) }
+
+                        if (showUserMenu) {
+                            UserMenu(onClose = { showUserMenu = false })
+                        }
+
+                        if (isTv) {
+                            TVHomeScreen(
+                                viewModel = viewModel,
+                                onItemClick = { /* 导航 */ },
+                                onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
+                                onUserClick = { showUserMenu = true }
+                            )
+                        } else {
+                            HomeScreen(
+                                viewModel = viewModel,
+                                onItemClick = { /* 导航逻辑 */ },
+                                onSearchClick = {
+                                    findNavController().navigate(R.id.action_nav_transform_to_search)
+                                },
+                                onUserClick = { showUserMenu = true }
+                            )
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun TVHomeScreen(
+    viewModel: TransformViewModel,
+    onItemClick: (SearchResult) -> Unit,
+    onSearchClick: () -> Unit,
+    onUserClick: () -> Unit
+) {
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
+    val recommended by viewModel.recommended.collectAsState(initial = emptyList())
+    val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
+    val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
+    
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+
+    Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+        // TV Header (SuperTV_old style)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(
+                    text = "视频",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.clickable { }
+                )
+                Spacer(Modifier.width(20.dp))
+                Text(
+                    text = "直播",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray,
+                    modifier = Modifier.clickable { /* 跳转直播 */ }
+                )
+            }
+            
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                IconButton(onClick = { /* 收藏 */ }) { Icon(Icons.Outlined.Favorite, null, tint = Color.White) }
+                IconButton(onClick = onSearchClick) { Icon(Icons.Outlined.Search, null, tint = Color.White) }
+                IconButton(onClick = { /* 设置 */ }) { Icon(Icons.Outlined.Settings, null, tint = Color.White) }
+                IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = Color.White) }
+            }
+        }
+
+        // Category Bar
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(categories) { category ->
+                val isSelected = category == selectedCategory
+                Surface(
+                    onClick = { viewModel.selectCategory(category) },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) PrimaryGreen else Color.Transparent,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = category,
+                        color = if (isSelected) Color.White else Color.Gray,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // Content Grid
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(5),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val content = when (selectedCategory) {
+                "热门" -> hotMovies
+                "电影" -> recommended
+                "剧集" -> animeUpdates
+                "短剧" -> shortDramas
+                else -> emptyList()
+            }
+            items(content) { item ->
+                PosterCard(result = item, onClick = { onItemClick(item) })
             }
         }
     }
@@ -66,36 +185,88 @@ class TransformFragment : Fragment() {
 fun HomeScreen(
     viewModel: TransformViewModel,
     onItemClick: (SearchResult) -> Unit,
-    onSearchClick: () -> Unit
+    onSearchClick: () -> Unit,
+    onUserClick: () -> Unit
 ) {
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
     val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
     val recommended by viewModel.recommended.collectAsState(initial = emptyList())
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
+    val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+
     Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
         // Selene Style Header
-        SeleneHeader(onSearchClick = onSearchClick)
+        SeleneHeader(onSearchClick = onSearchClick, onUserClick = onUserClick)
+
+        // Category Navigation
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(categories) { category ->
+                val isSelected = category == selectedCategory
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { viewModel.selectCategory(category) },
+                    label = { Text(category) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryGreen,
+                        selectedLabelColor = Color.White,
+                        containerColor = BackgroundCard,
+                        labelColor = TextSecondary
+                    ),
+                    border = null
+                )
+            }
+        }
         
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            item {
-                SectionHeader("豆瓣热播")
-                VideoCardRow(items = hotMovies, onClick = onItemClick)
+            when (selectedCategory) {
+                "热门" -> {
+                    item {
+                        SectionHeader("豆瓣热播")
+                        VideoCardRow(items = hotMovies, onClick = onItemClick)
+                    }
+                    item {
+                        SectionHeader("精品推荐")
+                        VideoCardRow(items = recommended, onClick = onItemClick)
+                    }
+                    item {
+                        SectionHeader("动漫更新")
+                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                    }
+                    item {
+                        SectionHeader("热门短剧")
+                        VideoCardRow(items = shortDramas, onClick = onItemClick)
+                    }
+                }
+                else -> {
+                    item {
+                        SectionHeader(selectedCategory)
+                        val content = when (selectedCategory) {
+                            "电影" -> recommended
+                            "剧集" -> animeUpdates
+                            "短剧" -> shortDramas
+                            else -> emptyList()
+                        }
+                        if (content.isEmpty()) {
+                            Text("更多 $selectedCategory 内容正在加载...", modifier = Modifier.padding(16.dp), color = TextTertiary)
+                        } else {
+                            VideoCardRow(items = content, onClick = onItemClick)
+                        }
+                    }
+                }
             }
-            item {
-                SectionHeader("精品推荐")
-                VideoCardRow(items = recommended, onClick = onItemClick)
-            }
-            item {
-                SectionHeader("动漫更新")
-                VideoCardRow(items = animeUpdates, onClick = onItemClick)
-            }
-            item { Spacer(modifier = Modifier.height(20.dp)) }
+            item { Spacer(modifier = Modifier.height(80.dp)) }
         }
     }
 }
 
 @Composable
-fun SeleneHeader(onSearchClick: () -> Unit) {
+fun SeleneHeader(onSearchClick: () -> Unit, onUserClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -105,7 +276,7 @@ fun SeleneHeader(onSearchClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         IconButton(onClick = onSearchClick) {
-            Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextPrimary)
+            Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = TextPrimary)
         }
         
         Text(
@@ -116,8 +287,8 @@ fun SeleneHeader(onSearchClick: () -> Unit) {
             letterSpacing = 1.5.sp
         )
         
-        IconButton(onClick = { /* TODO: User Profile */ }) {
-            Icon(Icons.Default.AccountCircle, contentDescription = "用户", tint = TextPrimary)
+        IconButton(onClick = onUserClick) {
+            Icon(Icons.Outlined.AccountCircle, contentDescription = "用户", tint = TextPrimary)
         }
     }
 }
@@ -176,7 +347,6 @@ fun PosterCard(result: SearchResult, onClick: () -> Unit) {
                     .clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
-            // Rating or Label overlay could go here
         }
         Text(
             text = result.title,

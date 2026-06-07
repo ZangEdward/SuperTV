@@ -8,9 +8,9 @@ import com.supertv.app.model.PlayRecord
 import com.supertv.app.model.SearchResult
 
 /**
- * 本地存储管理�?- 对应原项目的 stores �?services/storage.ts
+ * 本地存储管理�?- 对应原项目的 stores �?services/storage.ts
  *
- * 使用 SharedPreferences 实现轻量�?KV 存储
+ * 使用 SharedPreferences 实现轻量�?KV 存储
  */
 class Store(private val context: Context) {
 
@@ -23,6 +23,7 @@ class Store(private val context: Context) {
         private const val KEY_SEARCH_HISTORY = "search_history"
         private const val KEY_LAST_PLAYED = "last_played"
         private const val KEY_CACHED_EPISODES = "cached_episodes"
+        private const val KEY_API_BASE_URL = "api_base_url"
 
         @Volatile
         private var instance: Store? = null
@@ -66,7 +67,7 @@ class Store(private val context: Context) {
         saveFavorites(list)
     }
 
-    /** 批量替换收藏（用于服务器同步�?*/
+    /** 批量替换收藏（用于服务器同步�?*/
     fun replaceFavorites(favorites: List<Favorite>) {
         saveFavorites(favorites)
     }
@@ -103,7 +104,7 @@ class Store(private val context: Context) {
         }
     }
 
-    /** 批量替换播放记录（用于服务器同步�?*/
+    /** 批量替换播放记录（用于服务器同步�?*/
     fun replacePlayRecords(records: List<PlayRecord>) {
         savePlayRecords(records)
     }
@@ -132,7 +133,7 @@ class Store(private val context: Context) {
         prefs.edit().remove(KEY_SEARCH_HISTORY).apply()
     }
 
-    /** 批量替换搜索历史（用于服务器同步�?*/
+    /** 批量替换搜索历史（用于服务器同步�?*/
     fun replaceSearchHistory(history: List<String>) {
         prefs.edit().putString(KEY_SEARCH_HISTORY, gson.toJson(history)).apply()
     }
@@ -150,6 +151,16 @@ class Store(private val context: Context) {
 
     fun saveLastPlayed(record: PlayRecord) {
         prefs.edit().putString(KEY_LAST_PLAYED, gson.toJson(record)).apply()
+    }
+
+    // ==================== API 节点管理 ====================
+
+    fun getApiBaseUrl(): String? {
+        return prefs.getString(KEY_API_BASE_URL, null)
+    }
+
+    fun saveApiBaseUrl(url: String) {
+        prefs.edit().putString(KEY_API_BASE_URL, url).apply()
     }
 
     // ==================== 缓存管理 ====================

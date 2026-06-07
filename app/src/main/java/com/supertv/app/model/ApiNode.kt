@@ -20,7 +20,7 @@ data class ApiNode(
 )
 
 /**
- * 视频搜索结果�?
+ * 视频搜索结果�?
  */
 data class SearchResult(
     val title: String = "",
@@ -84,7 +84,7 @@ data class DoubanResponse(
 )
 
 /**
- * 收藏�?
+ * 收藏�?
  */
 data class Favorite(
     val cover: String = "",
@@ -122,7 +122,7 @@ data class ApiSite(
 )
 
 /**
- * 服务器配�?
+ * 服务器配�?
  */
 data class ServerConfig(
     val SiteName: String = "",
@@ -142,7 +142,7 @@ data class DLNADevice(
 )
 
 /**
- * 网盘搜索�?
+ * 网盘搜索�?
  */
 data class NetDiskItem(
     val source: String = "",
@@ -171,3 +171,29 @@ data class SearchSuggestion(
     val keyword: String = "",
     val type: String = "history"
 )
+
+/**
+ * AI 推荐响应
+ */
+data class AIRecommendResponse(
+    val content: String = "",
+    val status: String = "success"
+)
+
+/**
+ * 上映日历项
+ */
+data class ReleaseItem(
+    val date: String = "",
+    val title: String = "",
+    val type: String = "",
+    val id: String = ""
+)
+
+/**
+ * 上映日历响应
+ */
+data class ReleaseCalendarResponse(
+    val items: List<ReleaseItem> = emptyList()
+)
+

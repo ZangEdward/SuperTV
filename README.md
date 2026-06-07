@@ -1,4 +1,4 @@
-# SuperTV 原生安卓重构项目
+# SuperTV 原生安卓重构项目 (LunaTV & Selene 增强版)
 
 本项目致力于将基于 Expo/React Native 的 `supertv` 项目重构为**现代 Android 原生应用 (Kotlin + Jetpack Compose + Material3)**。
 
@@ -7,54 +7,52 @@
 app/src/main/
 ├── java/com/supertv/app/
 │   ├── ui/                 # UI 层 (Compose)
-│   │   ├── components/     # 共享 UI 组件 (已实现 Paging 3 适配)
-│   │   ├── transform/      # 首页分区布局 (包含 Selene 风格 Header)
-│   │   ├── search/         # 搜索界面 (已实现手机/TV 双端 Paging 3 懒加载)
+│   │   ├── components/     # 共享 UI 组件 (已实现 Paging 3, UserMenu, AI对话框)
+│   │   ├── transform/      # 首页分区布局 (带 Lucide 分类导航)
+│   │   ├── search/         # 搜索界面 (双模式：聚合 & 网盘)
 │   │   ├── detail/         # 详情界面
-│   │   ├── player/         # 播放器界面 (已实现手势控制与选集弹窗)
-│   │   └── slideshow/      # 缓存管理界面 (已实现原生任务列表)
-│   ├── data/               # 数据层 (Retrofit, DataStore, Store, PagingSource)
-│   ├── services/           # 原生业务逻辑服务 (Search/M3U/AdFilter/Dlna/CrashHandler)
-│   └── model/              # 数据模型定义
-├── res/                    # 资源文件 (mipmap, drawable, values, layout)
+│   │   ├── player/         # 播放器界面 (手势控制与选集弹窗)
+│   │   └── slideshow/      # 缓存管理界面 (原生任务列表)
+│   ├── data/               # 数据层 (Retrofit, Store, ApiNodeService)
+│   ├── services/           # 原生业务逻辑服务 (Search/M3U/AdFilter/Dlna/AI/CrashHandler)
+│   └── model/              # 数据模型定义 (集成 LunaTV 增强模型)
+├── res/                    # 资源文件 (基于 Lucide 风格重制的图标系统)
 └── assets/                 # 动态注入配置 (api_nodes.json)
 ```
 
 ## 已完成里程碑
 - [x] **架构迁移**：完全移除 React Native/Expo 依赖，建立纯原生 Kotlin 工程。
-- [x] **SDK 兼容性适配**：设置 `minSdk 24` (Android 7.0+)，并将 `core-ktx` 降级至 `1.15.0` 以完美适配 `compileSdk 35`。
-- [x] **权限与 TV 特性**：补全了网络、多播、存储、前台服务等权限，并添加了电视端 `LEANBACK_LAUNCHER` 支持。
-- [x] **UI 风格全面重构 (Selene Style)**：
-    - **图标还原**：还原了原始项目的 `icon.png` 和启动图 `icon-boot.png`。
-    - **主题变色**：全量移除紫色，切换为**原生绿色主题 (#00BB5E)**，背景采用纯黑/深灰。
-    - **导航重组**：底部入口更新为：**首页、电影、剧集、动漫、综艺、直播**。
-    - **Header 定制**：首页实现 Selene 风格 Header（左搜索、中 Logo、右用户）。
-- [x] **包名重构**：统一全项目包名为 `com.supertv.app`。
-- [x] **UI 原生化**：核心页面已全面迁移至 Jetpack Compose。
-- [x] **搜索引擎**：`SearchEngineModule` 实现高并发多线程协程检索。
-- [x] **搜索分页 (Paging 3)**：搜索结果页（手机 & TV）已成功接入 Paging 3 库。
-- [x] **播放器增强**：基于 `Media3` 实现播放功能，并集成水平滑动进度调节、垂直滑动控制（左亮度/右音量）及选集列表底部弹窗。
-- [x] **TV 导航优化**：完善了 TV 端的 `FocusRequester` 链，确保键盘、建议列表与搜索结果间跳转顺滑。
-- [x] **缓存管理器 UI**：在 `SlideshowFragment` 中实现原生下载任务管理视图。
-- [x] **配置安全注入**：通过 Gradle 任务将 Secrets 注入 Assets，彻底解决 `BuildConfig` 编译错误。
+- [x] **SDK 兼容性适配**：支持 Android 7.0+ (`minSdk 24`)。
+- [x] **UI 图标系统深度还原 (Official Material Symbols Style)**：
+    - 完全同步 **Google Fonts Icons** (Material Symbols Rounded) 官方原始路径，拒绝自绘。
+    - 解决了图标“抽象”和风格不统一的问题，确保 100% 还原专业级视觉质感。
+    - 底部导航栏大幅增强：对齐 Selene 交互体验，增加图标尺寸 (26dp)，补全文字说明 (12sp)。
+- [x] **TV 端布局重构 (SuperTV_old Style)**：
+    - 针对电视端实现全新的交互布局：顶部大字号分类导航 + 侧边功能入口 + 高清内容网格。
+- [x] **内容生态扩展 (LunaTV Integration)**：
+    - **短剧分类**：接入专用的短剧 API，支持首页分类快速切换。
+    - **AI 智能推荐**：集成 GPT 级 AI 推荐系统，打字机式交互体验。
+    - **即将上映 (发布日历)**：实时展示影视上线动态。
+- [x] **搜索系统升级**：
+    - **双模式切换**：支持“全网聚合”与“网盘资源 (PanSou)”双 Tab 搜索。
+- [x] **导航交互优化**：
+    - **首页分类 Chip**：参考 `SuperTV_old` 实现横向分类导航，一键直达分区。
+    - **增强型用户菜单**：点击头像弹出丰富的功能中心。
 
-## 待办事项 (For Next AI Agent)
-1. [ ] **播放器控制 UI 进一步美化**：根据绿色主题深度定制播放器内部控件。
-2. [ ] **直播流稳定性优化**：针对直播流增加自动切换备用源逻辑（需对接 SearchViewModel）。
-3. [ ] **数据源接入**：当前分类入口（电影、剧集等）需进一步对接具体的后端 API。
-4. [ ] **UI 测试**：编写关键页面的 Compose UI 测试用例。
+## 待办事项
+1. [ ] **播放器控制进一步优化**：针对绿色主题进行微调。
+2. [ ] **多源负载均衡**：对接更多的备用 API 自动切换逻辑。
 
 ## 配置与部署说明
 
 ### GitHub Actions 节点配置
 请在 **GitHub 仓库设置 -> Settings -> Secrets and variables -> Actions** 中添加 Secret：
 - **Name**: `API_NODES_JSON`
-- **Value**: JSON 格式节点数组（如 `[{"key":"n1","label":"A","url":"..."}]`）。
+- **Value**: JSON 格式节点数组。
 
 ### 开发指南
 - **编译**：`./gradlew assembleRelease`
 - **环境要求**：Android Studio 最新稳定版，JDK 17。
-- **SDK 版本**：`minSdk 24` (支持 Android 7.0+), `compileSdk 35`, `targetSdk 34`。
 
 ---
-*注：本项目目前编译环境已全量跑通，已解决 compileSdk 36 与 core-ktx 1.18.0 的依赖冲突。*
+*注：本项目目前已完美集成 LunaTV 的强大后端能力与 Selene 的精致视觉体验。*

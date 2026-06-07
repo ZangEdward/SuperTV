@@ -1,43 +1,56 @@
 package com.supertv.app.ui.search
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.automirrored.outlined.Backspace
+import androidx.compose.material.icons.outlined.RadioButtonChecked
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.automirrored.outlined.ArrowRight
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
 import com.supertv.app.model.SearchResult
 import com.supertv.app.services.PinyinSuggestionsFetcher
-import com.supertv.app.ui.components.ShimmerGrid
-import com.supertv.app.ui.components.VideoCard
 import com.supertv.app.ui.theme.*
 import com.supertv.app.viewmodel.SearchViewModel
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -51,10 +64,15 @@ private val KEY_ROWS = listOf(
     listOf("4","5","6","7","8","9"),
 )
 
-private const val HISTORY_KEY = "tv_search_history"
 private const val MAX_HISTORY = 15
 
-@OptIn(ExperimentalMaterial3Api::class)
+// TV 专用颜色 (同步 TVSearchView.tsx)
+private val TV_BG = Color(0xFF121212)
+private val TV_INPUT_BG = Color(0xFF1C1C1E)
+private val TV_BTN_BG = Color(0xFF2A2A2E)
+private val TV_FOCUSED_BG = Color(0xFF0A2A0A)
+private val TV_FOCUSED_BORDER = Color(0xFF00BB5E)
+
 @Composable
 fun TVSearchScreen(
     viewModel: SearchViewModel,
@@ -62,470 +80,467 @@ fun TVSearchScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val store = remember { Store.getInstance(context) }
     val apiService = remember { RetrofitClient.getApiService() }
 
+    val results by viewModel.tvResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    val viewModelQuery by viewModel.query.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     var trending by remember { mutableStateOf<List<String>>(emptyList()) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var showHistory by remember { mutableStateOf(false) }
-    var isExactMode by remember { mutableStateOf(true) }
+    var isExactMode by remember { mutableStateOf(store.getBoolean("tv_search_mode_is_exact", true)) }
     var focusedKey by remember { mutableStateOf<String?>(null) }
     var debounceJob by remember { mutableStateOf<Job?>(null) }
     
-    val keyboardFocusRequester = remember { FocusRequester() }
-    val suggestionFocusRequester = remember { FocusRequester() }
-    val resultFocusRequester = remember { FocusRequester() }
+    val inputFocusRequester = remember { FocusRequester() }
 
+    // 初始化加载
     LaunchedEffect(Unit) {
-        keyboardFocusRequester.requestFocus()
+        inputFocusRequester.requestFocus()
+        
+        // 加载历史
+        searchHistory = store.getSearchHistory().take(MAX_HISTORY)
 
-        val saved = store.getString(HISTORY_KEY, "")
-        if (saved.isNotBlank()) {
-            try {
-                val gson = com.google.gson.Gson()
-                val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
-                searchHistory = gson.fromJson(saved, type) ?: emptyList()
-            } catch (_: Exception) {}
-        }
+        // 加载热搜/建议
         try {
             val resp = apiService.getSuggestions("")
             if (resp.isSuccessful) {
-                trending = resp.body()?.filter { it.isNotBlank() }?.distinct() ?: emptyList()
+                trending = resp.body()?.filter { it.isNotBlank() } ?: emptyList()
             }
         } catch (_: Exception) {}
     }
 
-    LaunchedEffect(query) {
+    // 拼音联想逻辑
+    LaunchedEffect(query, isExactMode) {
         debounceJob?.cancel()
         if (query.length < 2) {
             suggestions = emptyList()
             return@LaunchedEffect
         }
-        delay(200)
-        suggestions = if (isExactMode) {
-            PinyinSuggestionsFetcher.exactSuggest(query, apiService)
-        } else {
-            PinyinSuggestionsFetcher.fastSuggest(query)
+        debounceJob = launch {
+            delay(200)
+            suggestions = if (isExactMode) {
+                PinyinSuggestionsFetcher.exactSuggest(query, apiService)
+            } else {
+                PinyinSuggestionsFetcher.fastSuggest(query)
+            }
         }
     }
 
-    fun saveHistory(term: String) {
-        val updated = listOf(term) + searchHistory.filter { it != term }
-        val trimmed = updated.take(MAX_HISTORY)
-        searchHistory = trimmed
-        scope.launch {
-            store.putString(HISTORY_KEY, com.google.gson.Gson().toJson(trimmed))
-        }
-    }
-
-    fun doSearch(term: String) {
+    fun doSearch(term: String = query) {
         if (term.isBlank()) return
-        saveHistory(term)
-        suggestions = emptyList()
-        viewModel.search(term)
+        viewModel.searchTV(term)
+        // 更新历史
+        val updated = (listOf(term) + searchHistory.filter { it != term }).take(MAX_HISTORY)
+        searchHistory = updated
+        store.addSearchHistory(term)
     }
 
-    val currentWords = when {
-        showHistory -> searchHistory
-        suggestions.isNotEmpty() -> suggestions
-        else -> trending
-    }
-    val wordLabel = when {
-        showHistory -> "搜索历史"
-        suggestions.isNotEmpty() -> "拼音联想"
-        else -> "热门推荐"
-    }
+    val currentWords = if (showHistory) searchHistory else (suggestions.ifEmpty { trending })
+    val wordLabel = if (showHistory) "历史" else (if (suggestions.isNotEmpty()) "拼音联想" else "建议")
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(TV_BG)
     ) {
-        TopAppBar(
-            title = { Text("TV 搜索", fontWeight = FontWeight.Bold, color = TextPrimary) },
-            navigationIcon = {
-                TextButton(onClick = onBack) { Text(" 返回", color = PrimaryGreen) }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
-        )
+        // Close Button
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.padding(16.dp).align(Alignment.TopEnd)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+        }
 
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(12.dp)
         ) {
-            LeftKeyboardPane(
-                query = query,
-                onQueryChange = { query = it; viewModel.updateQuery(it) },
-                onSearch = { doSearch(query) },
-                onBackspace = { if (query.isNotEmpty()) query = query.dropLast(1) },
-                focusedKey = focusedKey,
-                onFocusChange = { focusedKey = it },
-                keyboardFocusRequester = keyboardFocusRequester
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            MiddleSuggestionPane(
-                words = currentWords,
-                label = wordLabel,
-                showHistory = showHistory,
-                onToggleMode = { isExactMode = !isExactMode },
-                onClearHistory = {
-                    searchHistory = emptyList()
-                    scope.launch { store.putString(HISTORY_KEY, "[]") }
-                },
-                onWordClick = { word -> doSearch(word) },
-                focusedKey = focusedKey,
-                onFocusChange = { focusedKey = it },
-                suggestionFocusRequester = suggestionFocusRequester
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            RightResultsPane(
-                viewModel = viewModel,
-                isSearching = isSearching,
-                query = query,
-                onResultClick = onResultClick,
-                modifier = Modifier.weight(1f),
-                resultFocusRequester = resultFocusRequester
-            )
-        }
-    }
-}
-
-@Composable
-private fun LeftKeyboardPane(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSearch: () -> Unit,
-    onBackspace: () -> Unit,
-    focusedKey: String?,
-    onFocusChange: (String?) -> Unit,
-    keyboardFocusRequester: FocusRequester
-) {
-    Column(
-        modifier = Modifier.width(280.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(8.dp),
-            color = BackgroundCard
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                val displayText = if (query.isEmpty()) "输入拼音首字母" else query
-                val displayColor = if (query.isEmpty()) TextTertiary else TextPrimary
-                Text(
-                    text = displayText,
-                    fontSize = 18.sp,
-                    color = displayColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TVFuncButton(
-                text = "搜索",
-                icon = Icons.Default.Search,
-                onClick = onSearch,
-                isFocused = focusedKey == "__search",
-                onFocus = { onFocusChange("__search") },
-                onBlur = { onFocusChange(null) },
-                modifier = Modifier.weight(1f),
-                color = PrimaryGreen
-            )
-            TVFuncButton(
-                text = "退格",
-                icon = Icons.AutoMirrored.Filled.Backspace,
-                onClick = onBackspace,
-                isFocused = focusedKey == "__backspace",
-                onFocus = { onFocusChange("__backspace") },
-                onBlur = { onFocusChange(null) },
-                modifier = Modifier.weight(1f),
-                color = FavoriteRed
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        KEY_ROWS.forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                row.forEach { key ->
-                    val modifier = if (key == "A") Modifier.focusRequester(keyboardFocusRequester) else Modifier
-                    TVKeyButton(
-                        key = key,
-                        isFocused = focusedKey == key,
-                        onFocus = { onFocusChange(key) },
-                        onBlur = { onFocusChange(null) },
-                        onClick = {
-                            if (query.length < 20) onQueryChange(query + key.lowercase())
-                        },
-                        modifier = modifier
-                    )
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-        }
-    }
-}
-
-@Composable
-private fun TVKeyButton(
-    key: String,
-    isFocused: Boolean,
-    onFocus: () -> Unit,
-    onBlur: () -> Unit,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val bgColor = if (isFocused) PrimaryGreen else BackgroundCard
-    val borderColor = if (isFocused) PrimaryGreen else Color(0xFF2A2A3E)
-
-    Surface(
-        modifier = modifier
-            .aspectRatio(1f)
-            .focusable()
-            .onFocusChanged { if (it.isFocused) onFocus() else onBlur() }
-            .clickable(onClick = onClick)
-            .border(1.dp, borderColor, RoundedCornerShape(8.dp)),
-        shape = RoundedCornerShape(8.dp),
-        color = bgColor
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = key,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isFocused) Color.White else TextPrimary,
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-private fun TVFuncButton(
-    text: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    isFocused: Boolean,
-    onFocus: () -> Unit,
-    onBlur: () -> Unit,
-    modifier: Modifier = Modifier,
-    color: Color = PrimaryGreen
-) {
-    val bgColor = if (isFocused) color else BackgroundCard
-
-    Surface(
-        modifier = modifier
-            .height(44.dp)
-            .focusable()
-            .onFocusChanged { if (it.isFocused) onFocus() else onBlur() }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(8.dp),
-        color = bgColor
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = if (isFocused) Color.White else color, modifier = Modifier.size(18.dp))
-            if (text.isNotEmpty()) {
-                Spacer(Modifier.width(4.dp))
-                Text(text = text, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (isFocused) Color.White else color)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiddleSuggestionPane(
-    words: List<String>,
-    label: String,
-    showHistory: Boolean,
-    onToggleMode: () -> Unit,
-    onClearHistory: () -> Unit,
-    onWordClick: (String) -> Unit,
-    focusedKey: String?,
-    onFocusChange: (String?) -> Unit,
-    suggestionFocusRequester: FocusRequester
-) {
-    Column(modifier = Modifier.width(240.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, fontSize = 13.sp, color = TextTertiary)
-            Spacer(Modifier.weight(1f))
-
-            if (showHistory && words.isNotEmpty()) {
-                TVSmallButton(
-                    icon = Icons.Default.Delete,
-                    onClick = onClearHistory,
-                    isFocused = focusedKey == "__clearHistory",
-                    onFocus = { onFocusChange("__clearHistory") },
-                    onBlur = { onFocusChange(null) }
-                )
-            }
-
-            TVSmallButton(
-                text = "模式",
-                icon = null,
-                onClick = onToggleMode,
-                isFocused = focusedKey == "__mode",
-                onFocus = { onFocusChange("__mode") },
-                onBlur = { onFocusChange(null) }
-            )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(words.distinct().take(9)) { word ->
-                val wordFocusKey = "__word_${word.hashCode()}"
-                val modifier = if (words.isNotEmpty() && words.first() == word) Modifier.focusRequester(suggestionFocusRequester) else Modifier
-                
-                Surface(
-                    modifier = modifier
-                        .fillMaxWidth()
-                        .focusable()
-                        .onFocusChanged {
-                            if (it.isFocused) onFocusChange(wordFocusKey)
-                            else if (focusedKey == wordFocusKey) onFocusChange(null)
+            // Left Pane (30%)
+            Column(modifier = Modifier.weight(0.3f).padding(horizontal = 10.dp)) {
+                // Input Box
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                    TVBoxItem(
+                        isFocused = focusedKey == "__input",
+                        onFocus = { focusedKey = "__input" },
+                        modifier = Modifier.weight(1f).height(52.dp).focusRequester(inputFocusRequester),
+                        onClick = { /* 默认聚焦不执行操作 */ }
+                    ) {
+                        Text(
+                            text = query.ifEmpty { "输入拼音首字母" },
+                            color = if (query.isEmpty()) Color(0xFF888888) else Color.White,
+                            fontSize = 18.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp)
+                        )
+                    }
+                    
+                    if (query.isNotEmpty()) {
+                        Spacer(Modifier.width(6.dp))
+                        TVBoxItem(
+                            isFocused = focusedKey == "__clear",
+                            onFocus = { focusedKey = "__clear" },
+                            modifier = Modifier.size(52.dp),
+                            onClick = { 
+                                query = ""
+                                viewModel.clearResults()
+                                suggestions = emptyList()
+                            }
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(20.dp))
+                            }
                         }
-                        .clickable { onWordClick(word) },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (focusedKey == wordFocusKey) BackgroundSurface else Color.Transparent
-                ) {
-                    Text(
-                        text = word,
-                        fontSize = 14.sp,
-                        color = TextPrimary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    }
+                }
+
+                // Function Buttons
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TVFuncBtn(
+                        text = "搜索",
+                        icon = Icons.Outlined.Search,
+                        isFocused = focusedKey == "__search",
+                        onFocus = { focusedKey = "__search" },
+                        onClick = { doSearch() },
+                        modifier = Modifier.weight(1f)
+                    )
+                    TVFuncBtn(
+                        text = "退格",
+                        icon = Icons.AutoMirrored.Outlined.Backspace,
+                        isFocused = focusedKey == "__backspace",
+                        onFocus = { focusedKey = "__backspace" },
+                        onClick = { if (query.isNotEmpty()) query = query.dropLast(1) },
+                        modifier = Modifier.weight(1f),
+                        contentColor = Color(0xFFFF6B6B)
                     )
                 }
+
+                // Keyboard
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    KEY_ROWS.forEach { row ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { key ->
+                                TVKeyItem(
+                                    text = key,
+                                    isFocused = focusedKey == key,
+                                    onFocus = { focusedKey = key },
+                                    onClick = { if (query.length < 20) query += key.lowercase() },
+                                    modifier = Modifier.weight(1f).height(52.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Remote Button
+                TVBoxItem(
+                    isFocused = focusedKey == "__remote",
+                    onFocus = { focusedKey = "__remote" },
+                    onClick = { /* TODO: Remote Input Modal */ },
+                    modifier = Modifier.fillMaxWidth().height(52.dp).padding(top = 6.dp),
+                    backgroundColor = Color(0xFF1A2A1A),
+                    borderColor = Color(0xFF2A4A2A)
+                ) {
+                    Text("远程输入", color = PrimaryGreen, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                }
             }
-        }
-    }
-}
 
-@Composable
-private fun TVSmallButton(
-    text: String? = null,
-    icon: ImageVector? = null,
-    onClick: () -> Unit,
-    isFocused: Boolean,
-    onFocus: () -> Unit,
-    onBlur: () -> Unit
-) {
-    val bgColor = if (isFocused) PrimaryGreen.copy(alpha = 0.2f) else Color.Transparent
+            // Middle Pane (22%)
+            Column(modifier = Modifier.weight(0.22f).padding(horizontal = 8.dp).border(width = (0.5).dp, color = Color(0xFF222222), shape = RoundedCornerShape(0.dp))) {
+                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(wordLabel, color = Color(0xFFAAAAAA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TVSmallBtn(
+                            text = if (isExactMode) "精准" else "快速",
+                            isFocused = focusedKey == "__mode",
+                            onFocus = { focusedKey = "__mode" },
+                            onClick = { 
+                                isExactMode = !isExactMode
+                                store.putBoolean("tv_search_mode_is_exact", isExactMode)
+                            }
+                        )
+                        
+                        if (showHistory && searchHistory.isNotEmpty()) {
+                            TVSmallBtn(
+                                icon = Icons.Default.Delete,
+                                isFocused = focusedKey == "__clearHistory",
+                                onFocus = { focusedKey = "__clearHistory" },
+                                onClick = { 
+                                    searchHistory = emptyList()
+                                    store.clearSearchHistory()
+                                }
+                            )
+                        }
 
-    Surface(
-        modifier = Modifier
-            .focusable()
-            .onFocusChanged { if (it.isFocused) onFocus() else onBlur() }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(6.dp),
-        color = bgColor
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp))
-            }
-            if (text != null) {
-                if (icon != null) Spacer(Modifier.width(3.dp))
-                Text(text = text, fontSize = 12.sp, color = if (isFocused) PrimaryGreen else TextSecondary)
-            }
-        }
-    }
-}
+                        TVSmallBtn(
+                            text = if (showHistory) "联想" else "历史",
+                            icon = Icons.AutoMirrored.Outlined.ArrowRight,
+                            isFocused = focusedKey == "__switch",
+                            onFocus = { focusedKey = "__switch" },
+                            onClick = { showHistory = !showHistory }
+                        )
+                    }
+                }
 
-@Composable
-private fun RightResultsPane(
-    viewModel: SearchViewModel,
-    isSearching: Boolean,
-    query: String,
-    onResultClick: (SearchResult) -> Unit,
-    modifier: Modifier = Modifier,
-    resultFocusRequester: FocusRequester
-) {
-    val pagingItems = viewModel.searchPagingData.collectAsLazyPagingItems()
-
-    Column(modifier = modifier) {
-        if (isSearching) {
-            ShimmerGrid(columns = 3)
-        } else if (pagingItems.itemCount > 0) {
-            Text(
-                text = "找到结果",
-                fontSize = 13.sp,
-                color = TextTertiary,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(
-                    count = pagingItems.itemCount,
-                    key = pagingItems.itemKey { "${it.id}${it.source}" }
-                ) { index ->
-                    val itemModifier = if (index == 0) Modifier.focusRequester(resultFocusRequester) else Modifier
-                    pagingItems[index]?.let { item ->
-                        VideoCard(
-                            result = item, 
-                            onClick = { onResultClick(item) },
-                            modifier = itemModifier
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val words = currentWords.map { it.replace("\\s+".toRegex(), "") }.distinct().take(9)
+                    itemsIndexed(words) { index, word ->
+                        val key = "__word_$index"
+                        TVWordItem(
+                            text = word,
+                            isFocused = focusedKey == key,
+                            onFocus = { focusedKey = key },
+                            onClick = { query = word; doSearch(word) }
                         )
                     }
                 }
             }
-        } else if (query.isNotEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("无搜索结果", color = TextTertiary, fontSize = 14.sp)
-            }
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("输入关键词开始搜索", color = TextTertiary, fontSize = 14.sp)
+
+            // Right Pane (Remaining)
+            Box(modifier = Modifier.weight(0.48f).padding(horizontal = 10.dp)) {
+                if (isSearching) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryGreen)
+                } else if (results.isNotEmpty()) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        itemsIndexed(results) { _, item ->
+                            TVVideoCard(
+                                result = item,
+                                onClick = { onResultClick(item) }
+                            )
+                        }
+                    }
+                } else if (viewModelQuery.isNotEmpty()) {
+                    Text(
+                        "未找到 \"$viewModelQuery\" 相关内容",
+                        color = Color(0xFF888888),
+                        fontSize = 16.sp,
+                        modifier = Modifier.align(Alignment.Center),
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+fun TVVideoCard(
+    result: SearchResult,
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f, label = "scale")
+
+    Column(
+        modifier = Modifier
+            .width(160.dp)
+            .scale(scale)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.67f)
+                .clip(RoundedCornerShape(8.dp))
+                .border(
+                    width = if (isFocused) 3.dp else 0.dp,
+                    color = if (isFocused) PrimaryGreen else Color.Transparent,
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .background(Color(0xFF222222))
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(result.cover)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = result.title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Year Badge (Top-Left)
+            if (result.year.isNotBlank() && result.year != "unknown") {
+                Surface(
+                    color = Color(0xCC2C3E50),
+                    shape = RoundedCornerShape(5.dp),
+                    modifier = Modifier.padding(4.dp).align(Alignment.TopStart)
+                ) {
+                    Text(
+                        result.year,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Episode Badge (Top-Right)
+            if (result.episodes.size > 1) {
+                Surface(
+                    color = Color(0xFF27AE60),
+                    shape = RoundedCornerShape(5.dp),
+                    modifier = Modifier.padding(4.dp).align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        result.episodes.size.toString(),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Text(
+            text = result.title,
+            color = if (isFocused) PrimaryGreen else Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun TVBoxItem(
+    isFocused: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = TV_INPUT_BG,
+    borderColor: Color = Color(0xFF333333),
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .shadow(if (isFocused) 10.dp else 0.dp, shape = RoundedCornerShape(10.dp), spotColor = TV_FOCUSED_BORDER)
+            .background(if (isFocused) TV_FOCUSED_BG else backgroundColor, shape = RoundedCornerShape(10.dp))
+            .border(if (isFocused) 3.dp else 2.dp, if (isFocused) TV_FOCUSED_BORDER else borderColor, shape = RoundedCornerShape(10.dp))
+            .focusable()
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .clickable { onClick() },
+        contentAlignment = Alignment.CenterStart,
+        content = content
+    )
+}
+
+@Composable
+fun TVKeyItem(
+    text: String,
+    isFocused: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .background(if (isFocused) TV_FOCUSED_BG else TV_BTN_BG, shape = RoundedCornerShape(10.dp))
+            .border(if (isFocused) 3.dp else 2.dp, if (isFocused) TV_FOCUSED_BORDER else Color(0xFF3A3A3E), shape = RoundedCornerShape(10.dp))
+            .focusable()
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun TVFuncBtn(
+    text: String,
+    icon: ImageVector,
+    isFocused: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentColor: Color = Color.White
+) {
+    Row(
+        modifier = modifier
+            .height(54.dp)
+            .background(if (isFocused) TV_FOCUSED_BG else TV_BTN_BG, shape = RoundedCornerShape(12.dp))
+            .border(if (isFocused) 3.dp else 2.dp, if (isFocused) TV_FOCUSED_BORDER else Color(0xFF3A3A3E), shape = RoundedCornerShape(12.dp))
+            .focusable()
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .clickable { onClick() },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = contentColor, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+fun TVSmallBtn(
+    text: String? = null,
+    icon: ImageVector? = null,
+    isFocused: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .background(TV_BTN_BG, shape = RoundedCornerShape(8.dp))
+            .border(if (isFocused) 2.dp else 0.dp, if (isFocused) TV_FOCUSED_BORDER else Color.Transparent, shape = RoundedCornerShape(8.dp))
+            .padding(8.dp)
+            .focusable()
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .clickable { onClick() },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        icon?.let { Icon(it, contentDescription = null, tint = if (isFocused) TV_FOCUSED_BORDER else Color(0xFF888888), modifier = Modifier.size(14.dp)) }
+        if (text != null && icon != null) Spacer(Modifier.width(4.dp))
+        text?.let { Text(it, color = if (isFocused) TV_FOCUSED_BORDER else Color(0xFF888888), fontSize = 14.sp) }
+    }
+}
+
+@Composable
+fun TVWordItem(
+    text: String,
+    isFocused: Boolean,
+    onFocus: () -> Unit,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (isFocused) TV_FOCUSED_BG else TV_BTN_BG, shape = RoundedCornerShape(8.dp))
+            .border(if (isFocused) 3.dp else 2.dp, if (isFocused) TV_FOCUSED_BORDER else Color(0xFF3A3A3E), shape = RoundedCornerShape(8.dp))
+            .padding(vertical = 12.dp)
+            .focusable()
+            .onFocusChanged { if (it.isFocused) onFocus() }
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFFDDDDDD),
+            fontSize = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
     }
 }
