@@ -208,6 +208,23 @@ fun HomeScreen(
 
             item { Spacer(Modifier.height(32.dp)) }
         }
+
+        // ——— 服务器切换弹窗（在 LazyColumn 外，@Composable 上下文中） ———
+        if (showServerSwitch) {
+            ServerSwitchDialog(onDismiss = { showServerSwitch = false })
+        }
+
+        // ——— 用户菜单弹窗 ———
+        if (showUserMenu) {
+            UserMenuDialog(
+                currentNodeLabel = currentNodeLabel,
+                onSwitchServer = {
+                    showUserMenu = false
+                    showServerSwitch = true
+                },
+                onDismiss = { showUserMenu = false }
+            )
+        }
     }
 }
 
