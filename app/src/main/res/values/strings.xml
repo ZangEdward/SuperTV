@@ -15,6 +15,8 @@
     <string name="menu_live">直播</string>
     <string name="menu_favorites">收藏</string>
     <string name="menu_cache">下载</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_search">搜索</string>
 
     <string name="fab_content_description">发送邮件</string>
     <string name="image_view_item_transform_content_description">图片</string>
