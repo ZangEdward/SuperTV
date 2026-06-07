@@ -1,17 +1,16 @@
 package com.supertv.app.services
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import com.supertv.app.MainActivity
 import com.supertv.app.model.DLNADevice
 
-/**
- * 投屏通知服务 - 对应原项目的 services/castNotificationService.ts
- *
- * 在系统通知栏显示投屏控制通知，支持从通知直接启动控制页面
- */
 class CastNotificationService(private val context: Context) {
 
     companion object {
@@ -20,7 +19,6 @@ class CastNotificationService(private val context: Context) {
         private const val ACTION_PLAY = "com.supertv.action.CAST_PLAY"
         private const val ACTION_PAUSE = "com.supertv.action.CAST_PAUSE"
         private const val ACTION_STOP = "com.supertv.action.CAST_STOP"
-        private const val ACTION_OPEN = "com.supertv.action.CAST_OPEN"
     }
 
     private var notificationManager: NotificationManager =
@@ -44,14 +42,18 @@ class CastNotificationService(private val context: Context) {
         }
     }
 
-    /**
-     * 显示投屏控制通知
-     */
+    @SuppressLint("MissingPermission")
     fun showCastNotification(device: DLNADevice, title: String) {
-        val openIntent = Intent(ACTION_OPEN).apply {
-            setPackage(context.packageName)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        // 内容点击：打开主页
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("device_name", device.name)
-            putExtra("device_host", device.host)
             putExtra("media_title", title)
         }
 
@@ -59,20 +61,16 @@ class CastNotificationService(private val context: Context) {
         val pauseIntent = Intent(ACTION_PAUSE).apply { setPackage(context.packageName) }
         val stopIntent = Intent(ACTION_STOP).apply { setPackage(context.packageName) }
 
-        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
+        val pendingFlags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("投屏�?)
-            .setContentText("正在投屏�?${device.name}: $title")
+            .setContentTitle("投屏中")
+            .setContentText("正在投屏到 ${device.name}: $title")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(
-                PendingIntent.getBroadcast(context, 0, openIntent, pendingFlags)
+                PendingIntent.getActivity(context, 0, openIntent, pendingFlags)
             )
             .addAction(
                 android.R.drawable.ic_media_play,
@@ -94,17 +92,21 @@ class CastNotificationService(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    /**
-     * 更新投屏进度
-     */
+    @SuppressLint("MissingPermission")
     fun updateProgress(position: Long, duration: Long) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
         val minutes = position / 60000
         val seconds = (position % 60000) / 1000
-        val progressText = "%02d:%02d".format(minutes, seconds)
+        val progressText = String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("投屏�?)
+            .setContentTitle("投屏中")
             .setContentText(progressText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -115,9 +117,6 @@ class CastNotificationService(private val context: Context) {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    /**
-     * 取消投屏通知
-     */
     fun cancelNotification() {
         notificationManager.cancel(NOTIFICATION_ID)
     }

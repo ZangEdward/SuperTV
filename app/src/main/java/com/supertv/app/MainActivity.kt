@@ -1,8 +1,8 @@
 package com.supertv.app
 
 import android.os.Bundle
-import android.view.KeyEvent
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
@@ -47,20 +47,19 @@ class MainActivity : AppCompatActivity() {
         // 设置底部导航与抽屉
         binding.appBarMain.contentMain?.bottomNavView?.setupWithNavController(navController)
         binding.navView?.setupWithNavController(navController)
-    }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastBackPressTime < 2000) {
-                finishAffinity()
-                return true
+        // 处理双击返回退出
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime < 2000) {
+                    finishAffinity()
+                } else {
+                    lastBackPressTime = currentTime
+                    Toast.makeText(this@MainActivity, "再按一次返回键退出", Toast.LENGTH_SHORT).show()
+                }
             }
-            lastBackPressTime = currentTime
-            Toast.makeText(this, "再按一次返回键退出", Toast.LENGTH_SHORT).show()
-            return true
-        }
-        return super.onKeyDown(keyCode, event)
+        })
     }
 
     override fun onSupportNavigateUp(): Boolean {

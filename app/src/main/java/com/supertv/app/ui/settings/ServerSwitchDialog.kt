@@ -1,6 +1,5 @@
 package com.supertv.app.ui.settings
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,11 +31,6 @@ import com.supertv.app.services.SpeedTestService
 import com.supertv.app.ui.theme.*
 import kotlinx.coroutines.launch
 
-/**
- * 服务器切换弹�?�?�?Selene 用户菜单中的服务器选择
- *
- * 列出所�?API 节点，自动测速显示延迟，点击即切�?
- */
 @Composable
 fun ServerSwitchDialog(
     onDismiss: () -> Unit
@@ -46,15 +40,13 @@ fun ServerSwitchDialog(
     val speedTestService = remember { SpeedTestService() }
     val scope = rememberCoroutineScope()
 
-    val nodes = remember { ServerConfig.getNodes() }
+    val nodes = remember { ServerConfig.getNodes(context) }
     val currentKey = remember { ServerConfig.getSelectedKey(store) }
 
-    // 延迟结果: key -> latency (ms)
     var latencies by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var testing by remember { mutableStateOf(true) }
     var selectedKey by remember { mutableStateOf(currentKey) }
 
-    // 进入时自动测�?
     LaunchedEffect(Unit) {
         if (nodes.isEmpty()) {
             testing = false
@@ -78,14 +70,13 @@ fun ServerSwitchDialog(
             color = BackgroundCard
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                // ——�?标题�?——�?
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "切换服务�?,
+                        text = "切换服务器",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -102,7 +93,6 @@ fun ServerSwitchDialog(
                 Spacer(Modifier.height(16.dp))
 
                 if (nodes.isEmpty()) {
-                    // —�?无节点提�?—�?
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -110,14 +100,13 @@ fun ServerSwitchDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "暂无可用服务器节点\n请在 gradle.properties 中配�?API_NODES_JSON",
+                            text = "暂无可用服务器节点",
                             color = TextTertiary,
                             fontSize = 14.sp,
                             textAlign = TextAlign.Center
                         )
                     }
                 } else {
-                    // —�?节点列表 ——�?
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.heightIn(max = 400.dp)
@@ -130,10 +119,8 @@ fun ServerSwitchDialog(
                                 isTesting = testing,
                                 onClick = {
                                     selectedKey = node.key
-                                    // 切换 Retrofit �?baseUrl
                                     val url = node.url.trimEnd('/') + "/"
                                     RetrofitClient.switchBaseUrl(url)
-                                    // 持久化选中状�?
                                     ServerConfig.setSelectedKey(store, node.key)
                                     onDismiss()
                                 }
@@ -144,7 +131,6 @@ fun ServerSwitchDialog(
 
                 Spacer(Modifier.height(12.dp))
 
-                // —�?测速按�?/ 状�?——�?
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
@@ -158,7 +144,7 @@ fun ServerSwitchDialog(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "正在测�?..",
+                                text = "正在测速...",
                                 fontSize = 13.sp,
                                 color = TextSecondary
                             )
@@ -180,7 +166,7 @@ fun ServerSwitchDialog(
                                 tint = PrimaryGreen
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("重新测�?, color = PrimaryGreen, fontSize = 13.sp)
+                            Text("重新测速", color = PrimaryGreen, fontSize = 13.sp)
                         }
                     }
                 }
@@ -198,7 +184,6 @@ private fun NodeItem(
     onClick: () -> Unit
 ) {
     val bgColor = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else Color.Transparent
-    val borderColor = if (isSelected) PrimaryGreen else Color(0xFF2A2A3E)
 
     Surface(
         modifier = Modifier
@@ -215,7 +200,6 @@ private fun NodeItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 选中标识
             if (isSelected) {
                 Icon(
                     Icons.Default.Check,
@@ -226,7 +210,6 @@ private fun NodeItem(
                 Spacer(Modifier.width(8.dp))
             }
 
-            // 节点标签（不显示 URL�?
             Text(
                 text = node.label,
                 fontSize = 16.sp,
@@ -235,7 +218,6 @@ private fun NodeItem(
                 modifier = Modifier.weight(1f)
             )
 
-            // 延迟显示
             if (isTesting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
@@ -243,17 +225,8 @@ private fun NodeItem(
                     color = TextTertiary
                 )
             } else if (latency != null) {
-                val latencyText = when {
-                    latency >= Long.MAX_VALUE -> "超时"
-                    latency < 1000 -> "${latency}ms"
-                    else -> "${latency / 1000}.${(latency % 1000) / 100}s"
-                }
-                val latencyColor = when {
-                    latency >= Long.MAX_VALUE -> ErrorRed
-                    latency < 200 -> PrimaryGreen
-                    latency < 500 -> StarYellow
-                    else -> ErrorRed
-                }
+                val latencyText = if (latency >= 9999) "超时" else "${latency}ms"
+                val latencyColor = if (latency < 200) PrimaryGreen else if (latency < 500) StarYellow else ErrorRed
                 Text(
                     text = latencyText,
                     fontSize = 13.sp,
@@ -262,15 +235,5 @@ private fun NodeItem(
                 )
             }
         }
-    }
-
-    // 选中高亮边框
-    if (isSelected) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(PrimaryGreen.copy(alpha = 0.3f))
-        )
     }
 }

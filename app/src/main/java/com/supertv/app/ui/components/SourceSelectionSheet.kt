@@ -39,7 +39,6 @@ fun SourceSelectionSheet(
     cover: String = "",
     title: String = "",
     onSourceSelected: (SearchResult) -> Unit,
-    onRefresh: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -51,14 +50,14 @@ fun SourceSelectionSheet(
 
     LaunchedEffect(sources, currentSource, currentId) {
         val idx = sources.indexOfFirst { it.source == currentSource && it.id == currentId }
-        if (idx >= 0) listState.animateScrollToItem(idx.coerceAtLeast(0))
+        if (idx >= 0) listState.animateScrollToItem(idx)
     }
 
     fun runSpeedTest() {
         scope.launch {
             isTesting = true
             val base = RetrofitClient.getCurrentBaseUrl().trimEnd('/')
-            val urlMap = sources.associate { "${it.source}+${it.id}" to "$base/api/v1/douban/hot" }
+            val urlMap = sources.associate { (it.source + "+" + it.id) to (base + "/api/v1/douban/hot") }
             latencies = speedTestService.testAll(urlMap)
             isTesting = false
         }
@@ -72,12 +71,13 @@ fun SourceSelectionSheet(
         Column {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
-                Text("换源 (${sources.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
+                val sourceCount = sources.size
+                Text("换源 (" + sourceCount + ")", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
                 IconButton(onClick = { runSpeedTest() }, enabled = !isTesting) {
                     if (isTesting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = PrimaryGreen)
-                    else Icon(Icons.Default.Refresh, contentDescription = "测�?, tint = TextSecondary)
+                    else Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = TextSecondary)
                 }
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextTertiary) }
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = TextTertiary) }
             }
             if (cover.isNotBlank() || title.isNotBlank()) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -88,7 +88,8 @@ fun SourceSelectionSheet(
                     }
                     Column {
                         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("�?${sources.size} 个播放源", fontSize = 12.sp, color = TextSecondary)
+                        val sourceInfo = "共 " + sources.size + " 个播放源"
+                        Text(sourceInfo, fontSize = 12.sp, color = TextSecondary)
                     }
                 }
             }
@@ -96,9 +97,10 @@ fun SourceSelectionSheet(
             LazyColumn(state = listState, modifier = Modifier.heightIn(max = 400.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 itemsIndexed(sources) { _, source ->
+                    val key = source.source + "+" + source.id
                     SourceItem(context = context, source = source,
                         isSelected = source.source == currentSource && source.id == currentId,
-                        latency = latencies["${source.source}+${source.id}"], isTesting = isTesting,
+                        latency = latencies[key], isTesting = isTesting,
                         onClick = { onSourceSelected(source) })
                 }
             }
@@ -122,13 +124,19 @@ private fun SourceItem(context: android.content.Context, source: SearchResult, i
                 Text(source.sourceName.ifBlank { source.source }, fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) PrimaryGreen else TextPrimary)
-                Text("${source.episodes.size}�?· ${source.year.ifBlank { "未知" }}", fontSize = 12.sp, color = TextTertiary)
+                val episodeInfo = source.episodes.size.toString() + "集 · " + (source.year.ifBlank { "未知" })
+                Text(episodeInfo, fontSize = 12.sp, color = TextTertiary)
             }
             if (isTesting) {
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = TextTertiary)
             } else if (latency != null) {
                 val grade = st.getLatencyGrade(latency)
-                val gc = when { latency >= Long.MAX_VALUE -> ErrorRed; latency < 100 -> PrimaryGreen; latency < 300 -> StarYellow; else -> ErrorRed }
+                val gc = when { 
+                    latency >= Long.MAX_VALUE -> ErrorRed 
+                    latency < 100 -> PrimaryGreen 
+                    latency < 300 -> StarYellow 
+                    else -> ErrorRed 
+                }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(grade, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = gc)
                     Text(st.formatLatency(latency), fontSize = 10.sp, color = gc.copy(alpha = 0.7f))

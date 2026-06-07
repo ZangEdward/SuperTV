@@ -1,8 +1,5 @@
 package com.supertv.app.ui.components
 
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -16,19 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.supertv.app.model.Episode
 import com.supertv.app.services.EpisodeCacheManager
 import com.supertv.app.ui.theme.*
-import kotlinx.coroutines.launch
 
-/**
- * 剧集缓存管理弹窗 �?现代 UI
- * 显示所有剧集的缓存状态、下载进度、批量操�?
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpisodeCacheDialog(
@@ -39,19 +30,14 @@ fun EpisodeCacheDialog(
     cacheManager: EpisodeCacheManager,
     onDismiss: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     val downloadStates by cacheManager.downloadStates.collectAsState()
     val downloadProgress by cacheManager.downloadProgress.collectAsState()
-    var cacheSize by remember { mutableStateOf("计算�?..") }
+    var cacheSize by remember { mutableStateOf("0MB") }
 
-    // 计算缓存大小
     LaunchedEffect(Unit) {
         val size = cacheManager.getCacheSize()
-        cacheSize = when {
-            size < 1024 -> "${size}B"
-            size < 1024 * 1024 -> "${size / 1024}KB"
-            else -> "${size / (1024 * 1024)}MB"
-        }
+        val mb = size / (1024 * 1024)
+        cacheSize = mb.toString() + "MB"
     }
 
     ModalBottomSheet(
@@ -60,15 +46,13 @@ fun EpisodeCacheDialog(
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     ) {
         Column(Modifier.fillMaxWidth().padding(bottom = 32.dp)) {
-            // 标题
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.CloudDownload, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("离线缓存", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("缓存大小: $cacheSize", fontSize = 12.sp, color = TextSecondary)
+                    Text("当前缓存: " + cacheSize, fontSize = 12.sp, color = TextSecondary)
                 }
-                // 全部缓存按钮
                 FilledTonalButton(
                     onClick = {
                         episodes.forEach { ep ->
@@ -76,26 +60,22 @@ fun EpisodeCacheDialog(
                                 cacheManager.startDownload(ep, videoId, title)
                             }
                         }
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryGreen.copy(alpha = 0.15f))
+                    }
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("全部缓存", fontSize = 12.sp, color = PrimaryGreen)
+                    Text("全部下载", fontSize = 12.sp, color = PrimaryGreen)
                 }
                 Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextTertiary) }
+                IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close", tint = TextTertiary) }
             }
 
-            // 剧集列表
             LazyColumn(
                 modifier = Modifier.heightIn(max = 450.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 itemsIndexed(episodes) { idx, ep ->
-                    val isCached = ep.index in cachedEpisodes
-                    val taskId = "${videoId}_${ep.index}"
+                    val isCached = cachedEpisodes.contains(ep.index)
+                    val taskId = videoId + "_" + ep.index
                     val state = downloadStates[taskId]
                     val progress = downloadProgress[taskId] ?: 0f
 
@@ -132,82 +112,51 @@ private fun CacheEpisodeItem(
         color = BackgroundSurface
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            // 集数编号
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (isCached) CacheGreen else BackgroundCard,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("${index + 1}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    Text((index + 1).toString(), fontSize = 14.sp, fontWeight = FontWeight.Bold,
                         color = if (isCached) Color.White else TextPrimary)
                 }
             }
 
             Spacer(Modifier.width(12.dp))
 
-            // 标题
             Column(Modifier.weight(1f)) {
+                val epTitle = if (episode.title.isNotBlank()) episode.title else "第" + (index + 1) + "集"
                 Text(
-                    text = if (episode.title.isNotBlank()) episode.title else "�?{index + 1}�?,
+                    text = epTitle,
                     fontSize = 14.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                // 状�?进度
                 when {
-                    isCached -> Text("已缓�?, fontSize = 11.sp, color = CacheGreen)
+                    isCached -> Text("已完成", fontSize = 11.sp, color = CacheGreen)
                     isDownloading -> {
                         val pct = (progress * 100).toInt()
-                        Text("下载�?$pct%", fontSize = 11.sp, color = PrimaryGreen)
+                        Text("下载中 " + pct + "%", fontSize = 11.sp, color = PrimaryGreen)
                     }
                     state is EpisodeCacheManager.DownloadState.Failed -> {
-                        Text("下载失败: ${state.error}", fontSize = 11.sp, color = ErrorRed, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("失败", fontSize = 11.sp, color = ErrorRed)
                     }
-                    else -> Text("未缓�?, fontSize = 11.sp, color = TextTertiary)
+                    else -> Text("未缓存", fontSize = 11.sp, color = TextTertiary)
                 }
             }
 
             Spacer(Modifier.width(8.dp))
 
-            // 进度条（下载中）
             if (isDownloading) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp,
-                        color = PrimaryGreen,
-                        trackColor = BackgroundCard
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    IconButton(
-                        onClick = onCancel,
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "取消", tint = ErrorRed, modifier = Modifier.size(14.dp))
-                    }
+                IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Cancel", tint = ErrorRed)
                 }
             } else if (isCached) {
-                // 已缓�?�?勾�?
                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = CacheGreen, modifier = Modifier.size(24.dp))
             } else {
-                // 未缓�?�?下载按钮
-                IconButton(
-                    onClick = onCache,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = "缓存", tint = TextSecondary)
+                IconButton(onClick = onCache, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = "Download", tint = TextSecondary)
                 }
             }
-        }
-
-        // 下载进度�?
-        if (isDownloading && progress > 0) {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
-                color = PrimaryGreen,
-                trackColor = BackgroundCard
-            )
         }
     }
 }

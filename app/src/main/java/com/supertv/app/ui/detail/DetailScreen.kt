@@ -3,10 +3,10 @@ package com.supertv.app.ui.detail
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -84,7 +84,7 @@ fun DetailScreen(
                 onClick = onBack,
                 modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(Color(0x66000000), RoundedCornerShape(50))
             ) {
-                Icon(Icons.Default.ArrowBack, "返回", tint = TextPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = TextPrimary)
             }
             IconButton(
                 onClick = onToggleFavorite,
@@ -105,10 +105,9 @@ fun DetailScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (detail.year.isNotBlank()) Text(detail.year, fontSize = 13.sp, color = TextTertiary)
                 if (detail.area.isNotBlank()) Text(detail.area, fontSize = 13.sp, color = TextTertiary)
-                Text("�?{detail.totalEpisodes}�?, fontSize = 13.sp, color = TextTertiary)
+                Text("共 " + detail.totalEpisodes.toString() + " 集", fontSize = 13.sp, color = TextTertiary)
             }
 
-            // 来源选择�?
             Spacer(Modifier.height(8.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable { showSourcesDialog = true },
@@ -121,9 +120,10 @@ fun DetailScreen(
                 ) {
                     Icon(Icons.Default.Source, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("播放�? ${currentSource.ifBlank { detail.sourceName }}", color = TextPrimary, fontSize = 14.sp)
+                    val sourceText = if (currentSource.isBlank()) detail.sourceName else currentSource
+                    Text("播放源: " + sourceText, color = TextPrimary, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
-                    Text("${allSources.size}个源 >", color = PrimaryGreen, fontSize = 13.sp)
+                    Text(allSources.size.toString() + "个源 >", color = PrimaryGreen, fontSize = 13.sp)
                 }
             }
 
@@ -132,8 +132,8 @@ fun DetailScreen(
                 Text(detail.desc, fontSize = 14.sp, color = TextSecondary, maxLines = 5, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
             }
 
-            if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: ${detail.director}", fontSize = 13.sp, color = TextTertiary) }
-            if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: ${detail.actor}", fontSize = 13.sp, color = TextTertiary) }
+            if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = TextTertiary) }
+            if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = TextTertiary) }
 
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -155,9 +155,9 @@ fun DetailScreen(
                 ) {
                     Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (isFavorite) "取消收藏" else "收藏")
+                    val favText = if (isFavorite) "取消收藏" else "收藏"
+                    Text(favText)
                 }
-                // 缓存按钮
                 OutlinedButton(
                     onClick = { showCacheDialog = true },
                     modifier = Modifier.weight(1f),
@@ -194,14 +194,13 @@ fun DetailScreen(
         SourceSelectionSheet(
             sources = allSources,
             currentSource = currentSource,
-            currentId = detail?.id.orEmpty(),
-            cover = detail?.cover.orEmpty(),
-            title = detail?.title.orEmpty(),
+            currentId = detail.id,
+            cover = detail.cover,
+            title = detail.title,
             onSourceSelected = { source ->
                 onSourceSelect(source)
                 showSourcesDialog = false
             },
-            onRefresh = { },
             onDismiss = { showSourcesDialog = false }
         )
     }
@@ -227,12 +226,12 @@ private fun EpisodeCard(episode: Episode, index: Int, isCached: Boolean, onClick
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "${index + 1}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(text = (index + 1).toString(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isCached) Color.White else TextPrimary)
                 if (episode.title.isNotBlank()) {
-                    Text(text = episode.title, fontSize = 10.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = episode.title, fontSize = 10.sp, color = if (isCached) Color.White.copy(alpha = 0.7f) else TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (isCached) {
-                    Icon(Icons.Default.CheckCircle, "已缓�?, tint = CacheGreen, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.CheckCircle, "已缓存", tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             }
         }

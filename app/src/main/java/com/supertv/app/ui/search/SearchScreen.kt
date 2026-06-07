@@ -5,18 +5,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,21 +26,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.supertv.app.model.SearchResult
 import com.supertv.app.ui.components.ShimmerGrid
 import com.supertv.app.ui.components.VideoCard
 import com.supertv.app.ui.theme.*
 import com.supertv.app.viewmodel.SearchViewModel
 
-// ─── Selene 颜色常量 ───
 private val SeleneHistoryBg = Color(0xFF1e1e1e)
 private val SeleneHistoryText = Color(0xFFffffff)
-private val SeleneHistoryBorder = Color(0xFF333333)
-private val SeleneHistoryHoverBg = Color(0xFF1e3a28)
-private val SeleneHistoryHoverText = Color(0xFF27ae60)
-private val SeleneHistoryHoverBorder = Color(0xFF52c77a)
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
@@ -49,7 +45,7 @@ fun SearchScreen(
     onBack: () -> Unit
 ) {
     val query by viewModel.query.collectAsState()
-    val results by viewModel.results.collectAsState()
+    val pagingItems = viewModel.searchPagingData.collectAsLazyPagingItems()
     val suggestions by viewModel.suggestions.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
@@ -61,52 +57,54 @@ fun SearchScreen(
             .fillMaxSize()
             .background(BackgroundDark)
     ) {
-        // ─── 搜索�?�?�?Selene ───
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = BackgroundDark
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { viewModel.updateQuery(it) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("搜索影视资源...", color = TextTertiary) },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextTertiary)
-                },
-                trailingIcon = {
-                    if (query.isNotBlank()) {
-                        IconButton(onClick = { viewModel.updateQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "清除", tint = TextTertiary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { viewModel.updateQuery(it) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp, top = 8.dp, bottom = 8.dp),
+                    placeholder = { Text("搜索影视资源...", color = TextTertiary) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "搜索", tint = TextTertiary)
+                    },
+                    trailingIcon = {
+                        if (query.isNotBlank()) {
+                            IconButton(onClick = { viewModel.updateQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "清除", tint = TextTertiary)
+                            }
                         }
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryGreen,
-                    unfocusedBorderColor = Color(0xFF444444),
-                    cursorColor = TextPrimary,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
+                    singleLine = true,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryGreen,
+                        unfocusedBorderColor = Color(0xFF444444),
+                        cursorColor = TextPrimary,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
                 )
-            )
+            }
         }
 
-        // ─── 主体内容 ───
         when {
             isSearching -> {
                 Box(modifier = Modifier.padding(16.dp)) { ShimmerGrid(columns = 3) }
             }
 
-            results.isNotEmpty() -> {
-                // 搜索结果
+            pagingItems.itemCount > 0 -> {
                 Text(
-                    text = "找到 ${results.size} 个结�?,
+                    text = "找到结果",
                     fontSize = 13.sp,
                     color = TextTertiary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -118,14 +116,18 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(results, key = { it.id + it.source }) { item ->
-                        VideoCard(result = item, onClick = { onResultClick(item) })
+                    items(
+                        count = pagingItems.itemCount,
+                        key = pagingItems.itemKey { "${it.id}${it.source}" }
+                    ) { index ->
+                        pagingItems[index]?.let { item ->
+                            VideoCard(result = item, onClick = { onResultClick(item) })
+                        }
                     }
                 }
             }
 
             else -> {
-                // ——�?搜索历史 / 空状�?——�?�?Selene ───
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -133,7 +135,6 @@ fun SearchScreen(
                         .padding(horizontal = 16.dp)
                 ) {
                     if (searchHistory.isNotEmpty()) {
-                        // Selene 风格搜索历史：标题行 + 圆角药丸芯片
                         Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
@@ -149,8 +150,7 @@ fun SearchScreen(
                                 color = TextPrimary
                             )
                             TextButton(
-                                onClick = { showClearDialog = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                onClick = { showClearDialog = true }
                             ) {
                                 Text(
                                     text = "清空",
@@ -160,7 +160,6 @@ fun SearchScreen(
                             }
                         }
 
-                        // 历史标签 �?Wrap 流式布局
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -174,7 +173,6 @@ fun SearchScreen(
                             }
                         }
                     } else {
-                        // ——�?空状态：历史图标 + 提示文字 ——�?�?Selene ───
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -205,7 +203,6 @@ fun SearchScreen(
                         }
                     }
 
-                    // 搜索建议（如果有关联词）
                     if (query.isNotBlank() && suggestions.isNotEmpty()) {
                         Spacer(Modifier.height(16.dp))
                         Text(
@@ -226,7 +223,6 @@ fun SearchScreen(
         }
     }
 
-    // ─── 清空确认弹窗 �?�?Selene ───
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
@@ -262,7 +258,7 @@ fun SearchScreen(
             },
             text = {
                 Text(
-                    text = "确定要清空所有搜索历史吗？此操作无法撤销�?,
+                    text = "确定要清空所有搜索历史吗？此操作无法撤销。",
                     fontSize = 14.sp,
                     color = TextSecondary,
                     modifier = Modifier.padding(vertical = 8.dp)
@@ -292,7 +288,6 @@ fun SearchScreen(
     }
 }
 
-// ─── 历史标签 �?圆角药丸芯片（仿 Selene�?───
 @Composable
 private fun HistoryChip(
     text: String,
@@ -324,7 +319,6 @@ private fun HistoryChip(
     }
 }
 
-// ─── 建议词条（带搜索图标�?───
 @Composable
 private fun SuggestionPill(
     text: String,

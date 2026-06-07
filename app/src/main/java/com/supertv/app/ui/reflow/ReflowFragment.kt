@@ -57,7 +57,7 @@ fun FavoritesScreen(viewModel: ReflowViewModel) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("暂无收藏", color = TextTertiary, fontSize = 18.sp)
                     Spacer(Modifier.height(8.dp))
-                    Text("浏览影片时点击❤️即可收�?, color = TextTertiary, fontSize = 14.sp)
+                    Text("浏览影片时点击图标即可收藏", color = TextTertiary, fontSize = 14.sp)
                 }
             }
         } else {
@@ -88,7 +88,9 @@ fun FavoriteCard(favorite: Favorite) {
                 modifier = Modifier.fillMaxWidth().height(160.dp).background(Color(0xFF2A2A3E)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(favorite.title.first().toString(), fontSize = 28.sp, color = TextTertiary)
+                val title = favorite.title
+                val firstChar = if (title.isEmpty()) "?" else title.substring(0, 1)
+                Text(firstChar, fontSize = 28.sp, color = TextTertiary)
             }
             Text(
                 text = favorite.title, fontSize = 13.sp, color = TextPrimary,

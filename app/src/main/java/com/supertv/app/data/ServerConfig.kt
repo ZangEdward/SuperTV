@@ -1,41 +1,28 @@
 package com.supertv.app.data
 
+import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.supertv.app.BuildConfig
 import com.supertv.app.model.ApiNode
 
-/**
- * 服务器节点配�?�?�?BuildConfig.API_NODES_JSON 读取
- *
- * 构建时由 GitHub Secrets 注入 API_NODES_JSON 环境变量�?
- * 通过 gradle.properties 传递到 BuildConfig�?
- * 如果未配置（开发环境），返回空列表�?
- */
 object ServerConfig {
 
     private val gson = Gson()
-
-    /** 缓存的节点列�?*/
     private var cachedNodes: List<ApiNode>? = null
 
-    /**
-     * 获取所�?API 节点
-     */
-    fun getNodes(): List<ApiNode> {
+    fun getNodes(context: Context): List<ApiNode> {
         if (cachedNodes != null) return cachedNodes!!
 
         val json = try {
-            BuildConfig.API_NODES_JSON
+            context.assets.open("api_nodes.json").bufferedReader().use { it.readText() }
         } catch (_: Exception) {
             null
         }
 
-        val nodes = if (!json.isNullOrBlank() && json != "[]" && json != "\"[]\"") {
+        val nodes = if (!json.isNullOrBlank() && json != "[]") {
             try {
-                val rawJson = json.removeSurrounding("\"")
                 val type = object : TypeToken<List<ApiNode>>() {}.type
-                gson.fromJson<List<ApiNode>>(rawJson, type) ?: emptyList()
+                gson.fromJson<List<ApiNode>>(json, type) ?: emptyList()
             } catch (_: Exception) {
                 emptyList()
             }
@@ -47,38 +34,28 @@ object ServerConfig {
         return nodes
     }
 
-    /**
-     * 获取当前选中的节�?key
-     */
+    // 过渡方法，建议后续迁移到 getNodes(context)
+    fun getNodes(): List<ApiNode> {
+        return cachedNodes ?: emptyList()
+    }
+
     fun getSelectedKey(store: Store): String {
         return store.getString("selected_server_key", "")
     }
 
-    /**
-     * 保存选中的节�?key
-     */
     fun setSelectedKey(store: Store, key: String) {
         store.putString("selected_server_key", key)
     }
 
-    /**
-     * 根据 key 获取节点 URL
-     */
-    fun getNodeUrl(key: String): String? {
-        return getNodes().firstOrNull { it.key == key }?.url
+    fun getNodeUrl(context: Context, key: String): String? {
+        return getNodes(context).firstOrNull { it.key == key }?.url
     }
 
-    /**
-     * 获取当前选中节点�?URL（用�?API 切换�?
-     */
-    fun getSelectedUrl(store: Store): String? {
+    fun getSelectedUrl(context: Context, store: Store): String? {
         val key = getSelectedKey(store)
-        return getNodeUrl(key)
+        return getNodeUrl(context, key)
     }
 
-    /**
-     * 清除缓存（当 BuildConfig 可能变化时）
-     */
     fun clearCache() {
         cachedNodes = null
     }

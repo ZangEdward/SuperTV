@@ -11,14 +11,16 @@ import com.supertv.app.model.SearchResult
 import com.supertv.app.model.VideoDetail
 import com.supertv.app.services.SearchEngine
 import com.supertv.app.services.SpeedTestService
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.supertv.app.data.SearchPagingSource
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-/**
- * 搜索 ViewModel - 对应原项目的 searchStore.ts + detailStore.ts
- *
- * 管理搜索状态、搜索历史、搜索结果、详情等
- */
+@OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = Store.getInstance(application)
@@ -35,6 +37,17 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _results = MutableStateFlow<List<SearchResult>>(emptyList())
     val results: StateFlow<List<SearchResult>> = _results.asStateFlow()
 
+    // Paging 3 搜索结果
+    private val _searchQuery = MutableStateFlow("")
+    val searchPagingData: Flow<PagingData<SearchResult>> = _searchQuery
+        .filter { it.isNotBlank() }
+        .flatMapLatest { query ->
+            Pager(
+                config = PagingConfig(pageSize = 20, enablePlaceholders = false),
+                pagingSourceFactory = { SearchPagingSource(apiService, query) }
+            ).flow.cachedIn(viewModelScope)
+        }
+
     // 搜索建议
     private val _suggestions = MutableStateFlow<List<String>>(emptyList())
     val suggestions: StateFlow<List<String>> = _suggestions.asStateFlow()
@@ -43,7 +56,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
 
-    // 搜索状�?
+    // 搜索状�?
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
@@ -51,7 +64,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _detail = MutableStateFlow<VideoDetail?>(null)
     val detail: StateFlow<VideoDetail?> = _detail.asStateFlow()
 
-    // 详情加载�?
+    // 详情加载�?
     private val _isLoadingDetail = MutableStateFlow(false)
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
@@ -81,16 +94,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun search(query: String) {
         if (query.isBlank()) return
         _query.value = query
+        _searchQuery.value = query
         _isSearching.value = true
         _error.value = null
 
         // 保存搜索历史
         store.addSearchHistory(query)
         loadSearchHistory()
-
-        viewModelScope.launch {
-            searchEngine.search(query)
-        }
     }
 
     /**
@@ -137,7 +147,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 测速节�?
+     * 测速节�?
      */
     fun testLatency(urls: Map<String, String>) {
         viewModelScope.launch {
@@ -146,7 +156,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 获取最佳节�?
+     * 获取最佳节�?
      */
     fun getBestNode(): String? = speedTestService.getBestNode()
 
