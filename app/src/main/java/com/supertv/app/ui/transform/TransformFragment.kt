@@ -22,14 +22,17 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
@@ -64,6 +67,7 @@ class TransformFragment : Fragment() {
                         
                         val authRepo = remember { AuthRepository.getInstance(context) }
                         var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
+                        var showLoginDialog by remember { mutableStateOf(!isLoggedIn) }
                         var showUserMenu by remember { mutableStateOf(false) }
 
                         // 监听 401 错误，自动弹出登录框
@@ -71,6 +75,7 @@ class TransformFragment : Fragment() {
                             RetrofitClient.setUnauthorizedListener {
                                 authRepo.clearCredentials()
                                 isLoggedIn = false
+                                showLoginDialog = true
                             }
                         }
 
@@ -80,36 +85,49 @@ class TransformFragment : Fragment() {
                             viewModel.selectCategory(category)
                         }
 
-                        if (!isLoggedIn) {
-                            LoginDialog(onLoginSuccess = {
-                                isLoggedIn = true
-                                viewModel.refresh()
-                            })
-                        } else {
-                            if (showUserMenu) {
-                                UserMenu(
-                                    onClose = { showUserMenu = false },
-                                    onLogout = { isLoggedIn = false }
-                                )
-                            }
+                        if (showLoginDialog) {
+                            LoginDialog(
+                                onLoginSuccess = {
+                                    isLoggedIn = true
+                                    showLoginDialog = false
+                                    viewModel.refresh()
+                                },
+                                onDismiss = {
+                                    showLoginDialog = false
+                                }
+                            )
+                        }
 
-                            if (isTv) {
-                                TVHomeScreen(
-                                    viewModel = viewModel,
-                                    onItemClick = { /* 导航 */ },
-                                    onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
-                                    onUserClick = { showUserMenu = true }
-                                )
-                            } else {
-                                HomeScreen(
-                                    viewModel = viewModel,
-                                    onItemClick = { /* 导航逻辑 */ },
-                                    onSearchClick = {
-                                        findNavController().navigate(R.id.action_nav_transform_to_search)
-                                    },
-                                    onUserClick = { showUserMenu = true }
-                                )
-                            }
+                        if (showUserMenu) {
+                            UserMenu(
+                                onClose = { showUserMenu = false },
+                                onLogout = {
+                                    isLoggedIn = false
+                                    showLoginDialog = true
+                                }
+                            )
+                        }
+
+                        if (isTv) {
+                            TVHomeScreen(
+                                viewModel = viewModel,
+                                onItemClick = { /* 导航 */ },
+                                onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
+                                onUserClick = { 
+                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true
+                                }
+                            )
+                        } else {
+                            HomeScreen(
+                                viewModel = viewModel,
+                                onItemClick = { /* 导航逻辑 */ },
+                                onSearchClick = {
+                                    findNavController().navigate(R.id.action_nav_transform_to_search)
+                                },
+                                onUserClick = {
+                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true
+                                }
+                            )
                         }
                     }
                 }
@@ -133,11 +151,16 @@ fun TVHomeScreen(
     
     val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
 
-    Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
         // TV Header (SuperTV_old style)
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -145,7 +168,7 @@ fun TVHomeScreen(
                     text = "视频",
                     fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.clickable { }
                 )
                 Spacer(Modifier.width(20.dp))
@@ -153,16 +176,16 @@ fun TVHomeScreen(
                     text = "直播",
                     fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.clickable { /* 跳转直播 */ }
                 )
             }
             
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                IconButton(onClick = { /* 收藏 */ }) { Icon(Icons.Outlined.Favorite, null, tint = Color.White) }
-                IconButton(onClick = onSearchClick) { Icon(Icons.Outlined.Search, null, tint = Color.White) }
-                IconButton(onClick = { /* 设置 */ }) { Icon(Icons.Outlined.Settings, null, tint = Color.White) }
-                IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = Color.White) }
+                IconButton(onClick = { /* 收藏 */ }) { Icon(Icons.Outlined.Favorite, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = onSearchClick) { Icon(Icons.Outlined.Search, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = { /* 设置 */ }) { Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.onBackground) }
             }
         }
 
@@ -176,12 +199,12 @@ fun TVHomeScreen(
                 Surface(
                     onClick = { viewModel.selectCategory(category) },
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) PrimaryGreen else Color.Transparent,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                     modifier = Modifier.padding(vertical = 4.dp)
                 ) {
                     Text(
                         text = category,
-                        color = if (isSelected) Color.White else Color.Gray,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -225,7 +248,12 @@ fun HomeScreen(
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
-    Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
         // Selene Style Header
         SeleneHeader(onSearchClick = onSearchClick, onUserClick = onUserClick)
         
@@ -276,7 +304,7 @@ fun HomeScreen(
                 else -> {
                     item {
                         SectionHeader(selectedCategory)
-                        Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = TextTertiary)
+                        Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -296,19 +324,19 @@ fun SeleneHeader(onSearchClick: () -> Unit, onUserClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         IconButton(onClick = onSearchClick) {
-            Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = TextPrimary)
+            Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onBackground)
         }
         
         Text(
             text = "SuperTV",
             fontSize = 22.sp,
             fontWeight = FontWeight.ExtraBold,
-            color = PrimaryGreen,
+            color = MaterialTheme.colorScheme.primary,
             letterSpacing = 1.5.sp
         )
         
         IconButton(onClick = onUserClick) {
-            Icon(Icons.Outlined.AccountCircle, contentDescription = "用户", tint = TextPrimary)
+            Icon(Icons.Outlined.AccountCircle, contentDescription = "用户", tint = MaterialTheme.colorScheme.onBackground)
         }
     }
 }
@@ -323,14 +351,14 @@ fun SectionHeader(title: String) {
             modifier = Modifier
                 .width(4.dp)
                 .height(18.dp)
-                .background(PrimaryGreen, RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = title,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = TextPrimary
+            color = MaterialTheme.colorScheme.onBackground
         )
     }
 }
@@ -352,33 +380,89 @@ fun PosterCard(result: SearchResult, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .width(120.dp)
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
+            .padding(4.dp)
     ) {
-        Box {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f)
+                .clip(RoundedCornerShape(8.dp))
+                .shadow(4.dp)
+        ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(result.cover)
                     .crossfade(true)
                     .build(),
                 contentDescription = result.title,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.7f)
-                    .clip(RoundedCornerShape(8.dp)),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
+            
+            // Rating Badge (Selene style)
+            if (result.rating.isNotBlank() && result.rating != "0") {
+                Surface(
+                    color = Color(0xCC000000),
+                    shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 8.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFC107),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = result.rating,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            
+            // Year Overlay
+            if (result.year.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .background(
+                            Color.Black.copy(alpha = 0.6f),
+                            RoundedCornerShape(topStart = 8.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        result.year,
+                        color = Color.White,
+                        fontSize = 10.sp
+                    )
+                }
+            }
         }
+        
+        Spacer(Modifier.height(8.dp))
+        
         Text(
             text = result.title,
             fontSize = 13.sp,
-            color = TextPrimary,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
-            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            overflow = TextOverflow.Ellipsis
         )
         Text(
             text = result.sourceName,
             fontSize = 11.sp,
-            color = TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
         )
     }

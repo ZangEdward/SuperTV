@@ -29,6 +29,7 @@ data class SearchResult(
     val sourceName: String = "",
     val id: String = "",
     val year: String = "",
+    val rating: String = "",
     val desc: String = "",
     val type: String = "",
     val episodes: List<Episode> = emptyList()

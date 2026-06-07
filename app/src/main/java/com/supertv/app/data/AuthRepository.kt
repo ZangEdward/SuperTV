@@ -62,15 +62,16 @@ class AuthRepository private constructor(context: Context) {
                 val response = api.login(LoginRequest(username, password))
                 if (response.isSuccessful && response.body() != null) {
                     val loginResp = response.body()!!
-                    if (loginResp.success) {
-                        // 解析并保存 Cookies
-                        val cookies = response.headers().get("Set-Cookie")
+                    if (loginResp.ok || loginResp.success) {
+                        // 解析并保存所有 Cookies
+                        val cookieList = response.headers().values("Set-Cookie")
+                        val cookies = if (cookieList.isNotEmpty()) cookieList.joinToString("; ") else null
                         saveCredentials(serverUrl, username, password, loginResp.token, loginResp.user, cookies)
                         // 应用到 Retrofit
                         RetrofitClient.setAuth(loginResp.token, cookies)
                         Result.success(loginResp)
                     } else {
-                        Result.failure(Exception(loginResp.message.ifBlank { "登录失败" }))
+                        Result.failure(Exception(loginResp.error.ifBlank { loginResp.message.ifBlank { "登录失败" } }))
                     }
                 } else {
                     Result.failure(Exception("服务器错误: ${response.code()}"))

@@ -56,6 +56,7 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
+                .windowInsetsPadding(WindowInsets.statusBars)
         ) {
             // Search Header
             Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {

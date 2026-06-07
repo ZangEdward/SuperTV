@@ -168,8 +168,10 @@ data class LoginRequest(
 )
 
 data class LoginResponse(
-    val success: Boolean = false,
-    val message: String = "",
+    val ok: Boolean = false,
+    val success: Boolean = false, // 兼容性保留
+    val error: String = "",
+    val message: String = "", // 兼容性保留
     val token: String = "",
     val user: UserInfo? = null
 )

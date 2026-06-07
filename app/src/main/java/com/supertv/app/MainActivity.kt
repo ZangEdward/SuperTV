@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -12,6 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,8 +30,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
 import com.supertv.app.databinding.ActivityMainBinding
-import com.supertv.app.ui.theme.PrimaryGreen
-import com.supertv.app.ui.theme.TextSecondary
+import com.supertv.app.ui.theme.SuperTVTheme
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,8 +38,10 @@ class MainActivity : AppCompatActivity() {
     private val binding get() = _binding!!
     private var lastBackPressTime = 0L
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
 
         try {
             // 设置主题
@@ -55,11 +60,46 @@ class MainActivity : AppCompatActivity() {
             navHostFragment?.let { navHost ->
                 val navController = navHost.navController
                 
-                // 绑定 Compose 底部导航
-                binding.appBarMain.contentMain?.bottomNavCompose?.apply {
-                    setContent {
-                        MaterialTheme {
-                            ComposeBottomNavBar(navController)
+                // 绑定 Compose 导航栏 (自适应手机/平板)
+                binding.appBarMain.contentMain?.let { contentMain ->
+                    contentMain.bottomNavCompose.setContent {
+                        val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
+                        val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+
+                        // 动态调整布局约束
+                        SideEffect {
+                            val layout = contentMain.root as? androidx.constraintlayout.widget.ConstraintLayout ?: return@SideEffect
+                            val constraintSet = androidx.constraintlayout.widget.ConstraintSet()
+                            constraintSet.clone(layout)
+                            
+                            if (useSidebar) {
+                                // 侧边栏模式 (Tablet)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                                constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
+                                
+                                constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
+                                constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                            } else {
+                                // 底部栏模式 (Mobile)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+                                constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                                constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                                
+                                constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                                constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                            }
+                            constraintSet.applyTo(layout)
+                        }
+
+                        SuperTVTheme {
+                            if (useSidebar) {
+                                ComposeSideNavBar(navController)
+                            } else {
+                                ComposeBottomNavBar(navController)
+                            }
                         }
                     }
                 }
@@ -92,25 +132,18 @@ class MainActivity : AppCompatActivity() {
         val currentDestination = navBackStackEntry?.destination
 
         Surface(
-            color = Color(0xFF121212),
+            color = MaterialTheme.colorScheme.surface,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth().height(72.dp)
+            modifier = Modifier.fillMaxWidth().height(80.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val items = listOf(
-                    NavigationItem(R.id.nav_transform, R.string.menu_home, Icons.Outlined.Home),
-                    NavigationItem(R.id.nav_movie, R.string.menu_movie, Icons.Outlined.Movie),
-                    NavigationItem(R.id.nav_tv, R.string.menu_tv, Icons.Outlined.Tv),
-                    NavigationItem(R.id.nav_anime, R.string.menu_anime, Icons.Outlined.CrueltyFree),
-                    NavigationItem(R.id.nav_show, R.string.menu_show, Icons.Outlined.TheaterComedy),
-                    NavigationItem(R.id.nav_short_drama, R.string.menu_short_drama, Icons.Outlined.VideoLibrary),
-                    NavigationItem(R.id.nav_live, R.string.menu_live, Icons.Outlined.LiveTv)
-                )
+                val items = getNavItems()
 
                 items.forEach { item ->
                     val isSelected = currentDestination?.id == item.id
@@ -133,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                             Icon(
                                 imageVector = item.icon,
                                 contentDescription = stringResource(item.labelRes),
-                                tint = if (isSelected) PrimaryGreen else TextSecondary,
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
@@ -141,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                                 text = stringResource(item.labelRes),
                                 fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (isSelected) PrimaryGreen else TextSecondary
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -149,6 +182,63 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    @Composable
+    private fun ComposeSideNavBar(navController: NavController) {
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentDestination = navBackStackEntry?.destination
+
+        NavigationRail(
+            containerColor = MaterialTheme.colorScheme.surface,
+            header = {
+                Text(
+                    "SuperTV",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            },
+            modifier = Modifier.fillMaxHeight()
+        ) {
+            val items = getNavItems()
+
+            items.forEach { item ->
+                val isSelected = currentDestination?.id == item.id
+                NavigationRailItem(
+                    icon = {
+                        Icon(item.icon, contentDescription = stringResource(item.labelRes))
+                    },
+                    label = {
+                        Text(stringResource(item.labelRes))
+                    },
+                    selected = isSelected,
+                    onClick = {
+                        if (currentDestination?.id != item.id) {
+                            navController.navigate(item.id)
+                        }
+                    },
+                    colors = NavigationRailItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        indicatorColor = Color.Transparent
+                    )
+                )
+            }
+        }
+    }
+
+    private fun getNavItems() = listOf(
+        NavigationItem(R.id.nav_transform, R.string.menu_home, Icons.Outlined.Home),
+        NavigationItem(R.id.nav_movie, R.string.menu_movie, Icons.Outlined.Movie),
+        NavigationItem(R.id.nav_tv, R.string.menu_tv, Icons.Outlined.Tv),
+        NavigationItem(R.id.nav_anime, R.string.menu_anime, Icons.Outlined.CrueltyFree),
+        NavigationItem(R.id.nav_show, R.string.menu_show, Icons.Outlined.TheaterComedy),
+        NavigationItem(R.id.nav_short_drama, R.string.menu_short_drama, Icons.Outlined.VideoLibrary),
+        NavigationItem(R.id.nav_live, R.string.menu_live, Icons.Outlined.LiveTv)
+    )
 
     private data class NavigationItem(
         val id: Int,

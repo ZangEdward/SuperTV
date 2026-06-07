@@ -142,6 +142,7 @@ fun TVSearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(TV_BG)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
             // Close Button
             IconButton(
@@ -368,12 +369,40 @@ fun TVVideoCard(
                 contentScale = ContentScale.Crop
             )
 
-            // Year Badge (Top-Left)
+            // Rating Badge (Top-Left)
+            if (result.rating.isNotBlank() && result.rating != "0") {
+                Surface(
+                    color = Color(0xCC000000),
+                    shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 8.dp),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = Color(0xFFFFC107),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = result.rating,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Year Badge (Bottom-Left)
             if (result.year.isNotBlank() && result.year != "unknown") {
                 Surface(
-                    color = Color(0xCC2C3E50),
-                    shape = RoundedCornerShape(5.dp),
-                    modifier = Modifier.padding(4.dp).align(Alignment.TopStart)
+                    color = Color(0x99000000),
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.padding(4.dp).align(Alignment.BottomStart)
                 ) {
                     Text(
                         result.year,

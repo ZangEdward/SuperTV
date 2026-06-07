@@ -28,7 +28,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginDialog(
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -50,8 +51,12 @@ fun LoginDialog(
     var passwordVisible by remember { mutableStateOf(false) }
 
     Dialog(
-        onDismissRequest = { }, // 强制登录，不允许取消
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false)
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            usePlatformDefaultWidth = false
+        )
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -198,6 +203,14 @@ fun LoginDialog(
                     } else {
                         Text("登录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.padding(top = 16.dp),
+                    enabled = !isLoading
+                ) {
+                    Text("跳过并进入首页", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

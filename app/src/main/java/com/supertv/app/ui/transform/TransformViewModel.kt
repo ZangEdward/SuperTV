@@ -120,6 +120,7 @@ private fun DoubanItem.toSearchResult() = SearchResult(
     title = title,
     cover = cover,
     year = year,
+    rating = rating,
     source = "douban",
     sourceName = sourceName.ifBlank { "豆瓣" },
     desc = desc

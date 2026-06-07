@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -80,9 +82,8 @@ fun VideoCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val cacheService = remember { CacheService.getInstance(context) }
 
-    // 处理图片 URL（CDN 替换）和请求头（防盗链）
+    // 处理图片 URL
     val processedUrl = remember(result.cover, result.source) {
         ImageUrlHelper.processImageUrl(result.cover, result.source)
     }
@@ -95,7 +96,7 @@ fun VideoCard(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = BackgroundCard),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
@@ -103,14 +104,14 @@ fun VideoCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(0.67f) // 2:3 比例
+                    .aspectRatio(0.7f)
                     .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(processedUrl)
                         .crossfade(true)
-                        .size(Size(200, 300))  // 参考 Selene memCacheWidth/memCacheHeight
+                        .size(Size(300, 450))
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .addHeader("Referer", imageHeaders["Referer"] ?: "")
@@ -121,20 +122,48 @@ fun VideoCard(
                     contentScale = ContentScale.Crop
                 )
 
+                // Rating Badge (Selene style)
+                if (result.rating.isNotBlank() && result.rating != "0") {
+                    Surface(
+                        color = Color(0xCC000000),
+                        shape = RoundedCornerShape(bottomEnd = 8.dp),
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Filled.Star,
+                                contentDescription = null,
+                                tint = Color(0xFFFFC107),
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            Text(
+                                text = result.rating,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 // 来源标签
                 if (result.sourceName.isNotBlank()) {
                     Surface(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
+                            .align(Alignment.BottomStart)
                             .padding(4.dp),
-                        color = Color(0xCC000000),
+                        color = Color(0x99000000),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = result.sourceName,
                             color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
                 }
@@ -143,16 +172,16 @@ fun VideoCard(
                 if (result.year.isNotBlank()) {
                     Surface(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
+                            .align(Alignment.BottomEnd)
                             .padding(4.dp),
-                        color = Color(0xCC000000),
+                        color = Color(0x99000000),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = result.year,
                             color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
                 }
@@ -161,9 +190,10 @@ fun VideoCard(
             // 标题
             Text(
                 text = result.title,
-                fontSize = 13.sp,
-                color = TextPrimary,
-                maxLines = 2,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             )
