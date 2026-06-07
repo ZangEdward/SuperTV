@@ -12,6 +12,7 @@
     <string name="menu_tv">剧集</string>
     <string name="menu_anime">动漫</string>
     <string name="menu_show">综艺</string>
+    <string name="menu_short_drama">短剧</string>
     <string name="menu_live">直播</string>
     <string name="menu_favorites">收藏</string>
     <string name="menu_cache">下载</string>

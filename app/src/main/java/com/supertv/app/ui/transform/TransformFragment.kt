@@ -38,11 +38,14 @@ import androidx.navigation.fragment.findNavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.supertv.app.R
-import com.supertv.app.model.SearchResult
 import com.supertv.app.data.AuthRepository
+import com.supertv.app.data.RetrofitClient
+import com.supertv.app.model.SearchResult
 import com.supertv.app.ui.components.LoginDialog
 import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.theme.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
@@ -63,6 +66,14 @@ class TransformFragment : Fragment() {
                         var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                         var showUserMenu by remember { mutableStateOf(false) }
 
+                        // 监听 401 错误，自动弹出登录框
+                        LaunchedEffect(Unit) {
+                            RetrofitClient.setUnauthorizedListener {
+                                authRepo.clearCredentials()
+                                isLoggedIn = false
+                            }
+                        }
+
                         if (!isLoggedIn) {
                             LoginDialog(onLoginSuccess = {
                                 isLoggedIn = true
@@ -75,6 +86,12 @@ class TransformFragment : Fragment() {
                                 onClose = { showUserMenu = false },
                                 onLogout = { isLoggedIn = false }
                             )
+                        }
+
+                        // Get category from arguments
+                        val category = arguments?.getString("category") ?: "热门"
+                        LaunchedEffect(category) {
+                            viewModel.selectCategory(category)
                         }
 
                         if (isTv) {
@@ -208,34 +225,9 @@ fun HomeScreen(
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
-    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
-
     Column(modifier = Modifier.fillMaxSize().background(BackgroundDark)) {
         // Selene Style Header
         SeleneHeader(onSearchClick = onSearchClick, onUserClick = onUserClick)
-
-        // Category Navigation
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(categories) { category ->
-                val isSelected = category == selectedCategory
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { viewModel.selectCategory(category) },
-                    label = { Text(category) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryGreen,
-                        selectedLabelColor = Color.White,
-                        containerColor = BackgroundCard,
-                        labelColor = TextSecondary
-                    ),
-                    border = null
-                )
-            }
-        }
         
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             when (selectedCategory) {
@@ -257,20 +249,34 @@ fun HomeScreen(
                         VideoCardRow(items = shortDramas, onClick = onItemClick)
                     }
                 }
+                "电影" -> {
+                    item {
+                        SectionHeader("精品电影")
+                        VideoCardRow(items = recommended, onClick = onItemClick)
+                    }
+                }
+                "剧集" -> {
+                    item {
+                        SectionHeader("最新剧集")
+                        VideoCardRow(items = hotMovies, onClick = onItemClick)
+                    }
+                }
+                "动漫" -> {
+                    item {
+                        SectionHeader("热门动漫")
+                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                    }
+                }
+                "短剧" -> {
+                    item {
+                        SectionHeader("热门短剧")
+                        VideoCardRow(items = shortDramas, onClick = onItemClick)
+                    }
+                }
                 else -> {
                     item {
                         SectionHeader(selectedCategory)
-                        val content = when (selectedCategory) {
-                            "电影" -> recommended
-                            "剧集" -> animeUpdates
-                            "短剧" -> shortDramas
-                            else -> emptyList()
-                        }
-                        if (content.isEmpty()) {
-                            Text("更多 $selectedCategory 内容正在加载...", modifier = Modifier.padding(16.dp), color = TextTertiary)
-                        } else {
-                            VideoCardRow(items = content, onClick = onItemClick)
-                        }
+                        Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = TextTertiary)
                     }
                 }
             }

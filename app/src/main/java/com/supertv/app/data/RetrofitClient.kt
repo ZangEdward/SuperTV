@@ -8,9 +8,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * Retrofit网络客户�?- 对应原项目的 services/api.ts 中的API�?
+ * Retrofit网络客户端 - 对应原项目的 services/api.ts 中的API类
  *
- * 支持多节点切换，动态修�?baseUrl
+ * 支持多节点切换，动态修改 baseUrl，以及自动处理 401 登录失效
  */
 object RetrofitClient {
 
@@ -21,17 +21,57 @@ object RetrofitClient {
         level = HttpLoggingInterceptor.Level.BASIC
     }
 
+    private var authToken: String? = null
+    private var authCookies: String? = null
+    private var onUnauthorized: (() -> Unit)? = null
+
+    /**
+     * 设置认证信息
+     */
+    fun setAuth(token: String?, cookies: String?) {
+        authToken = token
+        authCookies = cookies
+    }
+
+    /**
+     * 设置 401 未授权监听
+     */
+    fun setUnauthorizedListener(listener: () -> Unit) {
+        onUnauthorized = listener
+    }
+
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
         .readTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
         .addInterceptor(loggingInterceptor)
         .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
+            val requestBuilder = chain.request().newBuilder()
                 .addHeader("User-Agent", "SuperTV/1.0")
                 .addHeader("Accept", "application/json")
-                .build()
-            chain.proceed(request)
+            
+            // 添加 Token (Selene 风格)
+            authToken?.let {
+                if (it.isNotBlank()) {
+                    requestBuilder.addHeader("Authorization", "Bearer $it")
+                }
+            }
+            
+            // 添加 Cookies (SuperTV_old 风格)
+            authCookies?.let {
+                if (it.isNotBlank()) {
+                    requestBuilder.addHeader("Cookie", it)
+                }
+            }
+            
+            val response = chain.proceed(requestBuilder.build())
+            
+            // 如果返回 401，通知 UI 弹出登录框
+            if (response.code == 401) {
+                onUnauthorized?.invoke()
+            }
+            
+            response
         }
         .build()
 
@@ -56,8 +96,6 @@ object RetrofitClient {
                 createApiService()
             }
         } catch (e: Exception) {
-            // 如果初始化失败（如 URL 非法），返回一个代理或抛出更清晰的异常
-            // 这里为了防止闪退，如果真的报错了，在调用处还会有 try-catch
             throw e
         }
     }
@@ -81,7 +119,6 @@ object RetrofitClient {
         val url = if (newBaseUrl.endsWith("/")) newBaseUrl else "$newBaseUrl/"
         if (url == currentBaseUrl) return
         
-        // 简单验证 URL 合法性，防止 Retrofit 抛出异常
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
         
         currentBaseUrl = url
@@ -97,7 +134,7 @@ object RetrofitClient {
     private fun buildRetrofit(): Retrofit {
         val gson = com.google.gson.GsonBuilder()
             .setLenient()
-            .disableHtmlEscaping() // 关键修复：防止中文被转义
+            .disableHtmlEscaping()
             .create()
 
         return Retrofit.Builder()

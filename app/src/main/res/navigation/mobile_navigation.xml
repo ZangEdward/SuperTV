@@ -10,6 +10,7 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="首页"
         tools:layout="@layout/fragment_transform" >
+        <argument android:name="category" android:defaultValue="热门" />
         <action
             android:id="@+id/action_nav_transform_to_search"
             app:destination="@id/nav_search" />
@@ -17,27 +18,38 @@
 
     <fragment
         android:id="@+id/nav_movie"
-        android:name="com.supertv.app.ui.reflow.ReflowFragment"
-        android:label="电影"
-        tools:layout="@layout/fragment_reflow" />
+        android:name="com.supertv.app.ui.transform.TransformFragment"
+        android:label="电影" >
+        <argument android:name="category" android:defaultValue="电影" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_tv"
-        android:name="com.supertv.app.ui.reflow.ReflowFragment"
-        android:label="剧集"
-        tools:layout="@layout/fragment_reflow" />
+        android:name="com.supertv.app.ui.transform.TransformFragment"
+        android:label="剧集" >
+        <argument android:name="category" android:defaultValue="剧集" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_anime"
-        android:name="com.supertv.app.ui.reflow.ReflowFragment"
-        android:label="动漫"
-        tools:layout="@layout/fragment_reflow" />
+        android:name="com.supertv.app.ui.transform.TransformFragment"
+        android:label="动漫" >
+        <argument android:name="category" android:defaultValue="动漫" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_show"
-        android:name="com.supertv.app.ui.reflow.ReflowFragment"
-        android:label="综艺"
-        tools:layout="@layout/fragment_reflow" />
+        android:name="com.supertv.app.ui.transform.TransformFragment"
+        android:label="综艺" >
+        <argument android:name="category" android:defaultValue="综艺" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_short_drama"
+        android:name="com.supertv.app.ui.transform.TransformFragment"
+        android:label="短剧" >
+        <argument android:name="category" android:defaultValue="短剧" />
+    </fragment>
 
     <fragment
         android:id="@+id/nav_live"

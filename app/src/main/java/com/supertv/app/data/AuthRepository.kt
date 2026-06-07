@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 认证与同步仓�?- 参考旧项目�?authStore.ts + storage.ts
+ * 认证与同步仓�?- 参考旧项目�?authStore.ts + storage.ts
  */
 class AuthRepository private constructor(context: Context) {
 
@@ -37,7 +37,7 @@ class AuthRepository private constructor(context: Context) {
         }
     }
 
-    /** 是否已登�?*/
+    /** 是否已登�?*/
     fun isLoggedIn(): Boolean = prefs.contains(KEY_TOKEN)
 
     /** 获取 token */
@@ -62,13 +62,17 @@ class AuthRepository private constructor(context: Context) {
                 if (response.isSuccessful && response.body() != null) {
                     val loginResp = response.body()!!
                     if (loginResp.success) {
-                        saveCredentials(serverUrl, username, password, loginResp.token, loginResp.user)
+                        // 解析并保存 Cookies
+                        val cookies = response.headers().get("Set-Cookie")
+                        saveCredentials(serverUrl, username, password, loginResp.token, loginResp.user, cookies)
+                        // 应用到 Retrofit
+                        RetrofitClient.setAuth(loginResp.token, cookies)
                         Result.success(loginResp)
                     } else {
                         Result.failure(Exception(loginResp.message.ifBlank { "登录失败" }))
                     }
                 } else {
-                    Result.failure(Exception("服务器错�? ${response.code()}"))
+                    Result.failure(Exception("服务器错误: ${response.code()}"))
                 }
             } catch (e: Exception) {
                 Result.failure(e)
@@ -81,16 +85,18 @@ class AuthRepository private constructor(context: Context) {
         withContext(Dispatchers.IO) {
             try { apiService.logout() } catch (_: Exception) {}
         }
+        RetrofitClient.setAuth(null, null)
         clearCredentials()
     }
 
     /** 保存凭据 */
-    private fun saveCredentials(serverUrl: String, username: String, password: String, token: String, user: UserInfo?) {
+    private fun saveCredentials(serverUrl: String, username: String, password: String, token: String, user: UserInfo?, cookies: String?) {
         prefs.edit()
             .putString(KEY_SERVER_URL, serverUrl)
             .putString(KEY_USERNAME, username)
             .putString(KEY_PASSWORD, password)
             .putString(KEY_TOKEN, token)
+            .putString("cookies", cookies)
             .putString(KEY_USER_INFO, if (user != null) gson.toJson(user) else null)
             .apply()
     }
@@ -106,7 +112,7 @@ class AuthRepository private constructor(context: Context) {
     /** 获取保存的用户名 */
     fun getSavedUsername(): String = prefs.getString(KEY_USERNAME, "") ?: ""
 
-    /** 获取保存的密�?*/
+    /** 获取保存的密�?*/
     fun getSavedPassword(): String = prefs.getString(KEY_PASSWORD, "") ?: ""
 
     /** 尝试自动登录 */
