@@ -144,7 +144,7 @@ fun SearchScreen(
                             Text(
                                 text = "搜索历史",
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.w600,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
                             TextButton(
@@ -254,7 +254,7 @@ fun SearchScreen(
                     Text(
                         text = "清空搜索历史",
                         fontSize = 18.sp,
-                        fontWeight = FontWeight.w600,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                 }

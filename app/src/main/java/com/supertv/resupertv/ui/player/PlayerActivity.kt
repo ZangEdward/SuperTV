@@ -321,7 +321,7 @@ fun MobilePlayerScreen(
 
             Box(Modifier.fillMaxSize().clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { showControls = !showControls })
 
-            AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+            if (showControls) {
                 Box(Modifier.fillMaxSize().background(Color(0x80000000))) {
                     Row(Modifier.fillMaxWidth().padding(8.dp).align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White) }
