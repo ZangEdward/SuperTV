@@ -17,10 +17,6 @@ import com.supertv.app.viewmodel.SearchViewModel
 
 /**
  * 搜索 Fragment
- *
- * 自动检测设备类型：
- * - TV �?使用 TVSearchScreen（三栏键盘布局�?
- * - 手机/平板 �?使用 SearchScreen（标准搜索栏�?
  */
 class SearchFragment : Fragment() {
 
@@ -45,7 +41,7 @@ class SearchFragment : Fragment() {
                             viewModel = viewModel,
                             onResultClick = { result ->
                                 val intent = PlayerActivity.createIntent(
-                                    requireContext(),
+                                    context = requireContext(),
                                     url = "",
                                     title = result.title,
                                     source = result.source,
@@ -60,7 +56,7 @@ class SearchFragment : Fragment() {
                             viewModel = viewModel,
                             onResultClick = { result ->
                                 val intent = PlayerActivity.createIntent(
-                                    requireContext(),
+                                    context = requireContext(),
                                     url = "",
                                     title = result.title,
                                     source = result.source,

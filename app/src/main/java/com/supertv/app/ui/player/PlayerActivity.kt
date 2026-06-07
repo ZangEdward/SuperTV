@@ -50,6 +50,8 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "video_title"
         private const val EXTRA_EPISODE_INDEX = "episode_index"
         private const val EXTRA_TOTAL_EPISODES = "total_episodes"
+        private const val EXTRA_SOURCE = "source"
+        private const val EXTRA_ID = "content_id"
         // 传递备用源列表的 JSON
         private const val EXTRA_SOURCES_JSON = "sources_json"
 
@@ -59,7 +61,9 @@ class PlayerActivity : ComponentActivity() {
             title: String,
             episodeIndex: Int = 0,
             totalEpisodes: Int = 0,
-            sourcesJson: String = "[]"
+            sourcesJson: String = "[]",
+            source: String = "",
+            id: String = ""
         ): Intent {
             return Intent(context, PlayerActivity::class.java).apply {
                 putExtra(EXTRA_URL, url)
@@ -67,6 +71,8 @@ class PlayerActivity : ComponentActivity() {
                 putExtra(EXTRA_EPISODE_INDEX, episodeIndex)
                 putExtra(EXTRA_TOTAL_EPISODES, totalEpisodes)
                 putExtra(EXTRA_SOURCES_JSON, sourcesJson)
+                putExtra(EXTRA_SOURCE, source)
+                putExtra(EXTRA_ID, id)
             }
         }
     }
