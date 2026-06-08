@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 搜索引擎 - 对应原项目的搜索模块
  *
- * 支持多源并发搜索、渐进式加载、拼音匹配、去尾搜�?
+ * 支持多源并发搜索、渐进式加载、拼音匹配、去尾搜索
  */
 class SearchEngine(private val apiService: ApiService) {
 
@@ -48,7 +48,7 @@ class SearchEngine(private val apiService: ApiService) {
             val totalSources = sources.size
 
             sources.forEachIndexed { index, source ->
-                _statusMessage.value = "正在检�? $source ($index/$totalSources)"
+                _statusMessage.value = "正在检索: $source ($index/$totalSources)"
                 _progress.value = (index.toFloat() / totalSources)
 
                 try {
@@ -56,12 +56,13 @@ class SearchEngine(private val apiService: ApiService) {
                         apiService.search(query, source)
                     }
                     if (response.isSuccessful) {
-                        val results = response.body() ?: emptyList()
+                        val body = response.body()
+                        val results = body?.results ?: body?.data ?: emptyList<SearchResult>()
                         allResults.addAll(results)
                         _searchResults.value = allResults.distinctBy { it.id }
                     }
                 } catch (e: Exception) {
-                    // 单个源超时或失败，继续下一�?
+                    // 单个源超时或失败，继续下一个
                 }
             }
 
@@ -72,24 +73,24 @@ class SearchEngine(private val apiService: ApiService) {
     }
 
     /**
-     * 去尾搜索匹配 �?�?"abcd" 无结果则自动尝试 "abc"�?ab"
+     * 去尾搜索匹配 - 如 "abcd" 无结果则自动尝试 "abc"、"ab"
      */
     suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
         return repository.searchWithTailTrim(query, sources)
     }
 
     /**
-     * 获取搜索建议 (拼音首字母匹�?-> 后端验证 -> 去重 -> 限制9�?
+     * 获取搜索建议 (拼音首字母匹配 -> 后端验证 -> 去重 -> 限制9条)
      */
     suspend fun getSuggestions(query: String): List<String> {
         if (query.isBlank()) return emptyList()
         return try {
             val response = apiService.getSuggestions(query)
             if (response.isSuccessful) {
-                response.body()?.distinct()?.take(9) ?: emptyList()
-            } else emptyList()
+                response.body()?.distinct()?.take(9) ?: emptyList<String>()
+            } else emptyList<String>()
         } catch (e: Exception) {
-            emptyList()
+            emptyList<String>()
         }
     }
 

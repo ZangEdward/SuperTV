@@ -106,6 +106,43 @@ data class DoubanResponse(
 )
 
 /**
+ * 收藏
+ */
+data class Favorite(
+    val cover: String = "",
+    val title: String = "",
+    @SerializedName("source_name")
+    val sourceName: String = "",
+    @SerializedName("total_episodes")
+    val totalEpisodes: Int = 0,
+    @SerializedName("search_title")
+    val searchTitle: String = "",
+    val year: String = "",
+    @SerializedName("save_time")
+    val saveTime: Long = 0L
+)
+
+/**
+ * 播放记录
+ */
+data class PlayRecord(
+    val title: String = "",
+    @SerializedName("source_name")
+    val sourceName: String = "",
+    val cover: String = "",
+    val index: Int = 0,
+    @SerializedName("total_episodes")
+    val totalEpisodes: Int = 0,
+    @SerializedName("play_time")
+    val playTime: Long = 0L,
+    @SerializedName("total_time")
+    val totalTime: Long = 0L,
+    @SerializedName("save_time")
+    val saveTime: Long = 0L,
+    val year: String = ""
+)
+
+/**
  * API站点配置
  */
 data class ApiSite(

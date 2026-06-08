@@ -9,7 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 数据同步服务 - 参考旧项目�?storage.ts 中的 FavoriteManager/PlayRecordManager
+ * 数据同步服务 - 参考旧项目 storage.ts 中的 FavoriteManager/PlayRecordManager
  *
  * 登录时从服务器拉取数据合并到本地，本地修改时同步到服务器
  */
@@ -43,9 +43,9 @@ class SyncService private constructor(context: Context) {
             try {
                 val remoteResponse = api.getFavorites()
                 if (remoteResponse.isSuccessful) {
-                    val remote = remoteResponse.body() ?: emptyList()
+                    val remote = remoteResponse.body() ?: emptyList<Favorite>()
                     val local = store.getFavorites()
-                    // 合并：以服务器为主，补充本地独有�?
+                    // 合并：以服务器为主，补充本地独有
                     val remoteKeys = remote.map { it.searchTitle + it.sourceName }.toSet()
                     val merged = remote.toMutableList()
                     for (fav in local) {
@@ -64,18 +64,18 @@ class SyncService private constructor(context: Context) {
         }
     }
 
-    /** 添加收藏并同步到服务�?*/
+    /** 添加收藏并同步到服务器 */
     suspend fun addFavorite(fav: Favorite) {
         store.addFavorite(fav)
         val api = getApi() ?: return
         withContext(Dispatchers.IO) {
             try {
-                api.addFavorite(fav.searchTitle, fav.sourceName, gson.toJson(fav))
+                api.addFavorite(fav.sourceName, fav.searchTitle, gson.toJson(fav))
             } catch (_: Exception) {}
         }
     }
 
-    /** 删除收藏并同步到服务�?*/
+    /** 删除收藏并同步到服务器 */
     suspend fun removeFavorite(title: String, sourceName: String) {
         store.removeFavorite(title, sourceName)
         val api = getApi() ?: return
@@ -91,7 +91,7 @@ class SyncService private constructor(context: Context) {
             try {
                 val response = api.getPlayRecords()
                 if (response.isSuccessful) {
-                    val remote = response.body() ?: emptyList()
+                    val remote = response.body() ?: emptyList<PlayRecord>()
                     store.replacePlayRecords(remote)
                     remote
                 } else store.getPlayRecords()
@@ -99,7 +99,7 @@ class SyncService private constructor(context: Context) {
         }
     }
 
-    /** 保存播放记录并同�?*/
+    /** 保存播放记录并同步 */
     suspend fun savePlayRecord(record: PlayRecord) {
         store.addPlayRecord(record)
         val api = getApi() ?: return
@@ -115,7 +115,7 @@ class SyncService private constructor(context: Context) {
             try {
                 val response = api.getSearchHistory()
                 if (response.isSuccessful) {
-                    val remote = response.body() ?: emptyList()
+                    val remote = response.body() ?: emptyList<String>()
                     store.replaceSearchHistory(remote)
                     remote
                 } else store.getSearchHistory()
@@ -123,7 +123,7 @@ class SyncService private constructor(context: Context) {
         }
     }
 
-    /** 添加搜索历史并同�?*/
+    /** 添加搜索历史并同步 */
     suspend fun addSearchHistory(keyword: String) {
         store.addSearchHistory(keyword)
         val api = getApi() ?: return
@@ -132,7 +132,7 @@ class SyncService private constructor(context: Context) {
         }
     }
 
-    /** 清除搜索历史并同�?*/
+    /** 清除搜索历史并同步 */
     suspend fun clearSearchHistory() {
         store.clearSearchHistory()
         val api = getApi() ?: return
@@ -141,7 +141,7 @@ class SyncService private constructor(context: Context) {
         }
     }
 
-    /** 登录后全量同�?*/
+    /** 登录后全量同步 */
     suspend fun syncAll() {
         syncFavorites()
         syncPlayRecords()

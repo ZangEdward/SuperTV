@@ -8,9 +8,9 @@ import com.supertv.app.model.PlayRecord
 import com.supertv.app.model.SearchResult
 
 /**
- * 本地存储管理�?- 对应原项目的 stores �?services/storage.ts
+ * 本地存储管理器 - 对应原项目的 stores 和 services/storage.ts
  *
- * 使用 SharedPreferences 实现轻量�?KV 存储
+ * 使用 SharedPreferences 实现轻量级 KV 存储
  */
 class Store(private val context: Context) {
 
@@ -43,7 +43,7 @@ class Store(private val context: Context) {
         val json = prefs.getString(KEY_FAVORITES, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<Favorite>>() {}.type
-            gson.fromJson(json, type)
+            gson.fromJson<List<Favorite>>(json, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
@@ -67,7 +67,7 @@ class Store(private val context: Context) {
         saveFavorites(list)
     }
 
-    /** 批量替换收藏（用于服务器同步�?*/
+    /** 批量替换收藏（用于服务器同步）*/
     fun replaceFavorites(favorites: List<Favorite>) {
         saveFavorites(favorites)
     }
@@ -82,7 +82,7 @@ class Store(private val context: Context) {
         val json = prefs.getString(KEY_PLAY_RECORDS, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<PlayRecord>>() {}.type
-            gson.fromJson(json, type)
+            gson.fromJson<List<PlayRecord>>(json, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
@@ -104,7 +104,7 @@ class Store(private val context: Context) {
         }
     }
 
-    /** 批量替换播放记录（用于服务器同步�?*/
+    /** 批量替换播放记录（用于服务器同步）*/
     fun replacePlayRecords(records: List<PlayRecord>) {
         savePlayRecords(records)
     }
@@ -115,7 +115,7 @@ class Store(private val context: Context) {
         val json = prefs.getString(KEY_SEARCH_HISTORY, null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<String>>() {}.type
-            gson.fromJson(json, type)
+            gson.fromJson<List<String>>(json, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
@@ -133,7 +133,7 @@ class Store(private val context: Context) {
         prefs.edit().remove(KEY_SEARCH_HISTORY).apply()
     }
 
-    /** 批量替换搜索历史（用于服务器同步�?*/
+    /** 批量替换搜索历史（用于服务器同步）*/
     fun replaceSearchHistory(history: List<String>) {
         prefs.edit().putString(KEY_SEARCH_HISTORY, gson.toJson(history)).apply()
     }
@@ -169,7 +169,7 @@ class Store(private val context: Context) {
         val json = prefs.getString(KEY_CACHED_EPISODES, null) ?: return emptyMap()
         return try {
             val type = object : TypeToken<Map<String, Set<Int>>>() {}.type
-            gson.fromJson(json, type)
+            gson.fromJson<Map<String, Set<Int>>>(json, type) ?: emptyMap()
         } catch (e: Exception) {
             emptyMap()
         }

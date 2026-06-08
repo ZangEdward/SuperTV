@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -82,59 +81,54 @@ class MainActivity : AppCompatActivity() {
                 })
 
                 // 绑定 Compose 导航栏 (自适应手机/平板)
-                binding.appBarMain.contentMain?.let { contentMain ->
-                    val composeView = contentMain.bottomNavCompose
-                    if (composeView != null) {
-                        composeView.setContent {
-                            val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
-                            val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+                binding.appBarMain.contentMain?.bottomNavCompose?.setContent {
+                    val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
+                    val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
 
-                            // 动态调整布局约束
-                            SideEffect {
-                                val layout = contentMain.root as androidx.constraintlayout.widget.ConstraintLayout
-                                val constraintSet = androidx.constraintlayout.widget.ConstraintSet()
-                                constraintSet.clone(layout)
-                                
-                                if (useSidebar) {
-                                    // 侧边栏模式 (Tablet / Landscape)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
-                                    constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
-                                    
-                                    // 确保 NavHost 铺满剩余空间
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
-                                    
-                                    // 更新宽度
-                                    constraintSet.constrainWidth(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
-                                    constraintSet.constrainHeight(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.MATCH_CONSTRAINT)
-                                } else {
-                                    // 底部栏模式 (Mobile / Portrait)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
-                                    constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
-                                    constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
-                                    
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
-                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
-                                    
-                                    // 更新尺寸
-                                    constraintSet.constrainWidth(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.MATCH_CONSTRAINT)
-                                    constraintSet.constrainHeight(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
-                                }
-                                constraintSet.applyTo(layout)
-                            }
+                    // 动态调整布局约束
+                    SideEffect {
+                        val layout = binding.appBarMain.contentMain.root
+                        val constraintSet = androidx.constraintlayout.widget.ConstraintSet()
+                        constraintSet.clone(layout)
+                        
+                        if (useSidebar) {
+                            // 侧边栏模式 (Tablet / Landscape)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                            constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
+                            
+                            // 确保 NavHost 铺满剩余空间
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                            
+                            // 更新宽度
+                            constraintSet.constrainWidth(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
+                            constraintSet.constrainHeight(R.id.bottom_nav_compose, 0) // MATCH_CONSTRAINT
+                        } else {
+                            // 底部栏模式 (Mobile / Portrait)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+                            constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                            constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                            
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
+                            constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                            
+                            // 更新尺寸
+                            constraintSet.constrainWidth(R.id.bottom_nav_compose, 0) // MATCH_CONSTRAINT
+                            constraintSet.constrainHeight(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
+                        }
+                        constraintSet.applyTo(layout)
+                    }
 
-                            SuperTVTheme {
-                                if (useSidebar) {
-                                    ComposeSideNavBar(navController)
-                                } else {
-                                    ComposeBottomNavBar(navController)
-                                }
-                            }
+                    SuperTVTheme {
+                        if (useSidebar) {
+                            ComposeSideNavBar(navController)
+                        } else {
+                            ComposeBottomNavBar(navController)
                         }
                     }
                 }

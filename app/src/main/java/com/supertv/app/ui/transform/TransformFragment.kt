@@ -425,7 +425,7 @@ fun PosterCard(result: SearchResult, onClick: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            Icons.Filled.Star,
+                            imageVector = Icons.Default.Star,
                             contentDescription = null,
                             tint = Color(0xFFFFC107),
                             modifier = Modifier.size(10.dp)

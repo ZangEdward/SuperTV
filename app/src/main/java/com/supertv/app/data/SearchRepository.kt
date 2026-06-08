@@ -11,7 +11,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * 搜索仓库 - 对应原项目的 services/api.ts 搜索相关逻辑
  *
- * 封装搜索业务逻辑，支持多源并发搜�?
+ * 封装搜索业务逻辑，支持多源并发搜�?
  */
 class SearchRepository(private val apiService: ApiService) {
 
@@ -20,7 +20,7 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
-     * 执行搜索，支持多源并�?
+     * 执行搜索，支持多源并�?
      */
     suspend fun search(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
         return coroutineScope {
@@ -30,7 +30,8 @@ class SearchRepository(private val apiService: ApiService) {
                         withTimeout(SEARCH_TIMEOUT_MS) {
                             val response = apiService.search(query, source)
                             if (response.isSuccessful) {
-                                response.body() ?: emptyList()
+                                val body = response.body()
+                                body?.results ?: body?.data ?: emptyList()
                             } else emptyList()
                         }
                     } catch (e: Exception) {
@@ -45,7 +46,7 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
-     * 去尾搜索匹配 �?�?"abcd" 无结果则尝试 "abc"�?ab"
+     * 去尾搜索匹配 �?�?"abcd" 无结果则尝试 "abc"�?ab"
      */
     suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
         if (query.length <= 1) return emptyList()
@@ -53,7 +54,7 @@ class SearchRepository(private val apiService: ApiService) {
         var results = search(query, sources)
         var trimmed = query
 
-        // 逐位去尾重试，直到有结果或只�?个字
+        // 逐位去尾重试，直到有结果或只�?个字
         while (results.isEmpty() && trimmed.length > 1) {
             trimmed = trimmed.dropLast(1)
             if (trimmed.length >= 1) {
