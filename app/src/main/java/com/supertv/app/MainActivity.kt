@@ -6,10 +6,13 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -27,11 +30,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.fragment.NavHostFragment
+import androidx.navigation.navOptions
 import androidx.navigation.ui.setupWithNavController
 import com.supertv.app.databinding.ActivityMainBinding
 import com.supertv.app.ui.theme.SuperTVTheme
+
+import com.supertv.app.viewmodel.MainViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.supertv.app.ui.components.GlobalHeader
+import com.supertv.app.ui.components.UserMenu
+import com.supertv.app.ui.components.LoginDialog
+import com.supertv.app.data.AuthRepository
+import com.supertv.app.data.RetrofitClient
 
 class MainActivity : AppCompatActivity() {
 
@@ -82,8 +95,24 @@ class MainActivity : AppCompatActivity() {
 
                 // 绑定 Compose 导航栏 (自适应手机/平板)
                 binding.appBarMain.contentMain?.bottomNavCompose?.setContent {
+                    val mainViewModel: MainViewModel = viewModel()
+                    val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
                     val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
                     val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
+                    
+                    val authRepo = remember { AuthRepository.getInstance(this@MainActivity) }
+                    var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
+                    var showUserMenu by remember { mutableStateOf(false) }
+                    var showLoginDialog by remember { mutableStateOf(false) }
+
+                    // 监听 401 错误，自动弹出登录框
+                    LaunchedEffect(Unit) {
+                        RetrofitClient.setUnauthorizedListener {
+                            authRepo.clearCredentials()
+                            isLoggedIn = false
+                            showLoginDialog = true
+                        }
+                    }
 
                     // 动态调整布局约束
                     SideEffect {
@@ -124,13 +153,52 @@ class MainActivity : AppCompatActivity() {
                         constraintSet.applyTo(layout)
                     }
 
-                    SuperTVTheme {
-                        if (useSidebar) {
-                            ComposeSideNavBar(navController)
-                        } else {
-                            ComposeBottomNavBar(navController)
+                    SuperTVTheme(darkTheme = isDarkTheme) {
+                        Column {
+                            if (!useSidebar) {
+                                GlobalHeader(
+                                    onUserClick = { 
+                                        if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
+                                    },
+                                    onSearchClick = { navController.navigate(R.id.nav_search) },
+                                    onDownloadClick = { navController.navigate(R.id.nav_slideshow) },
+                                    onThemeToggle = { mainViewModel.toggleTheme() },
+                                    isDarkTheme = isDarkTheme
+                                )
+                            }
+                            
+                            if (useSidebar) {
+                                ComposeSideNavBar(navController)
+                            } else {
+                                ComposeBottomNavBar(navController)
+                            }
+                        }
+
+                        if (showUserMenu) {
+                            UserMenu(
+                                onClose = { showUserMenu = false },
+                                onLogout = {
+                                    isLoggedIn = false
+                                    showLoginDialog = true
+                                }
+                            )
+                        }
+
+                        if (showLoginDialog) {
+                            LoginDialog(
+                                onLoginSuccess = {
+                                    isLoggedIn = true
+                                    showLoginDialog = false
+                                },
+                                onDismiss = { showLoginDialog = false }
+                            )
                         }
                     }
+                }
+
+                // 统一配置全局左右滑动动画 (类似 ViewPager2)
+                navController.addOnDestinationChangedListener { _, destination, _ ->
+                    // 可以根据 destination 进行一些逻辑处理
                 }
 
                 binding.navView?.setupWithNavController(navController)
@@ -148,16 +216,18 @@ class MainActivity : AppCompatActivity() {
         val currentDestination = navBackStackEntry?.destination
 
         Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth().height(72.dp)
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+            tonalElevation = 0.dp, // 移除投影，更现代
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), // 顶部圆角
+            modifier = Modifier.fillMaxWidth().height(64.dp) // 降低高度 (原 72dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly // 均匀分布
             ) {
                 val items = getNavItems()
 
@@ -167,10 +237,27 @@ class MainActivity : AppCompatActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(80.dp)
+                            .width(68.dp) // 缩小宽度
                             .clickable {
                                 if (currentDestination?.id != item.id) {
-                                    navController.navigate(item.id)
+                                    val navOptions = navOptions {
+                                        // 添加滑动动画 (首页例外)
+                                        if (item.id != R.id.nav_transform) {
+                                            anim {
+                                                enter = R.anim.slide_in_right
+                                                exit = R.anim.slide_out_left
+                                                popEnter = R.anim.slide_in_left
+                                                popExit = R.anim.slide_out_right
+                                            }
+                                        }
+                                        // 关键：避免堆叠，恢复状态，实现左右切换不卡死
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                    navController.navigate(item.id, navOptions)
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -182,16 +269,24 @@ class MainActivity : AppCompatActivity() {
                             Icon(
                                 imageVector = item.icon,
                                 contentDescription = stringResource(item.labelRes),
-                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(26.dp)
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(24.dp) // 缩小图标
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(item.labelRes),
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (isSelected) {
+                                Text(
+                                    text = stringResource(item.labelRes),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                // 添加一个小点指示器
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .size(4.dp)
+                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                )
+                            }
                         }
                     }
                 }

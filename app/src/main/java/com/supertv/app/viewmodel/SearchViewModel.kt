@@ -183,7 +183,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val response = apiService.netDiskSearch(query)
                 if (response.isSuccessful) {
-                    _netDiskResults.value = response.body() ?: emptyList()
+                    val body = response.body()
+                    if (body?.success == true) {
+                        // 提取所有类型的网盘资源并展平
+                        val allItems = body.data?.mergedByType?.values?.flatten() ?: emptyList()
+                        _netDiskResults.value = allItems
+                    } else {
+                        _error.value = "网盘搜索失败: ${body?.error ?: "未知错误"}"
+                    }
                 } else {
                     _error.value = "网盘搜索失败: ${response.code()}"
                 }

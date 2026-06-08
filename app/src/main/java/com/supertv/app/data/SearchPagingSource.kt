@@ -18,7 +18,7 @@ class SearchPagingSource(
             // 这里我们保持 position 但处理包装类
             val response = apiService.search(query, source)
             val body = response.body()
-            val results = body?.results ?: body?.data ?: emptyList()
+            val results = (body?.results ?: body?.data ?: emptyList()).distinctBy { it.id + it.source }
             
             LoadResult.Page(
                 data = results,

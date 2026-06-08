@@ -135,6 +135,39 @@ fun DetailScreen(
             if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = TextTertiary) }
             if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = TextTertiary) }
 
+            Spacer(Modifier.height(20.dp))
+            Text("播放源", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(8.dp))
+            
+            // 竖向排列的播放源
+            if (allSources.isEmpty() && detail.source.isNotBlank()) {
+                // 如果没有其他源，显示当前详情的源
+                SourceItem(
+                    context = context,
+                    source = SearchResult(
+                        id = detail.id,
+                        title = detail.title,
+                        cover = detail.cover,
+                        source = detail.source,
+                        sourceName = detail.sourceName,
+                        episodes = detail.episodes
+                    ),
+                    isSelected = true,
+                    onClick = { /* 已经是当前源 */ }
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    allSources.forEach { source ->
+                        SourceItem(
+                            context = context,
+                            source = source,
+                            isSelected = source.source == currentSource && source.id == detail.id,
+                            onClick = { onSourceSelect(source) }
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
@@ -214,6 +247,28 @@ fun DetailScreen(
             cacheManager = cacheManager,
             onDismiss = { showCacheDialog = false }
         )
+    }
+}
+
+@Composable
+private fun SourceItem(context: android.content.Context, source: SearchResult, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp), color = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else BackgroundCard) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (source.cover.isNotBlank() || source.poster.isNotBlank()) {
+                AsyncImage(ImageRequest.Builder(context).data(source.cover.ifBlank { source.poster }).crossfade(true).build(),
+                    null, Modifier.width(36.dp).height(50.dp).clip(RoundedCornerShape(4.dp)), contentScale = ContentScale.Crop)
+                Spacer(Modifier.width(10.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(source.sourceName.ifBlank { source.source }, fontSize = 14.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSelected) PrimaryGreen else TextPrimary)
+                val episodeInfo = (if (source.episodes.isNotEmpty()) "${source.episodes.size}集 · " else "") + (source.year.ifBlank { "未知" })
+                Text(episodeInfo, fontSize = 12.sp, color = TextTertiary)
+            }
+            if (isSelected) { Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp)) }
+        }
     }
 }
 

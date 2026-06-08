@@ -13,7 +13,25 @@
         <argument android:name="category" android:defaultValue="热门" />
         <action
             android:id="@+id/action_nav_transform_to_search"
-            app:destination="@id/nav_search" />
+            app:destination="@id/nav_search"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+        <action
+            android:id="@+id/action_nav_transform_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+        <action
+            android:id="@+id/action_nav_transform_to_slideshow"
+            app:destination="@id/nav_slideshow"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
@@ -21,6 +39,13 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="电影" >
         <argument android:name="category" android:defaultValue="电影" />
+        <action
+            android:id="@+id/action_nav_movie_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
@@ -28,6 +53,13 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="剧集" >
         <argument android:name="category" android:defaultValue="剧集" />
+        <action
+            android:id="@+id/action_nav_tv_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
@@ -35,6 +67,13 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="动漫" >
         <argument android:name="category" android:defaultValue="动漫" />
+        <action
+            android:id="@+id/action_nav_anime_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
@@ -42,6 +81,13 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="综艺" >
         <argument android:name="category" android:defaultValue="综艺" />
+        <action
+            android:id="@+id/action_nav_show_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
@@ -49,17 +95,70 @@
         android:name="com.supertv.app.ui.transform.TransformFragment"
         android:label="短剧" >
         <argument android:name="category" android:defaultValue="短剧" />
+        <action
+            android:id="@+id/action_nav_short_drama_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
     </fragment>
 
     <fragment
         android:id="@+id/nav_live"
+        android:name="com.supertv.app.ui.live.LiveFragment"
+        android:label="电视直播"
+        tools:layout="@layout/fragment_slideshow" >
+        <action
+            android:id="@+id/action_nav_live_to_search"
+            app:destination="@id/nav_search"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+        <action
+            android:id="@+id/action_nav_live_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_slideshow"
         android:name="com.supertv.app.ui.slideshow.SlideshowFragment"
-        android:label="直播"
+        android:label="缓存管理"
         tools:layout="@layout/fragment_slideshow" />
 
     <fragment
         android:id="@+id/nav_search"
         android:name="com.supertv.app.ui.search.SearchFragment"
         android:label="搜索"
-        tools:layout="@layout/fragment_search" />
+        tools:layout="@layout/fragment_search" >
+        <action
+            android:id="@+id/action_nav_search_to_detail"
+            app:destination="@id/nav_detail"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/nav_detail"
+        android:name="com.supertv.app.ui.detail.DetailFragment"
+        android:label="详情" >
+        <argument android:name="id" app:argType="string" />
+        <argument android:name="source" app:argType="string" />
+        <argument android:name="title" app:argType="string" />
+        <argument android:name="cover" app:argType="string" />
+        <action
+            android:id="@+id/action_nav_detail_to_slideshow"
+            app:destination="@id/nav_slideshow"
+            app:enterAnim="@anim/slide_in_right"
+            app:exitAnim="@anim/slide_out_left"
+            app:popEnterAnim="@anim/slide_in_left"
+            app:popExitAnim="@anim/slide_out_right" />
+    </fragment>
 </navigation>

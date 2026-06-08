@@ -41,14 +41,13 @@ class SearchFragment : Fragment() {
                         TVSearchScreen(
                             viewModel = viewModel,
                             onResultClick = { result ->
-                                val intent = PlayerActivity.createIntent(
-                                    context = requireContext(),
-                                    url = "",
-                                    title = result.title,
-                                    source = result.source,
-                                    id = result.id
-                                )
-                                startActivity(intent)
+                                val bundle = Bundle().apply {
+                                    putString("id", result.id)
+                                    putString("source", result.source)
+                                    putString("title", result.title)
+                                    putString("cover", result.cover.ifBlank { result.poster })
+                                }
+                                findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle)
                             },
                             onBack = { findNavController().navigateUp() }
                         )
@@ -56,14 +55,13 @@ class SearchFragment : Fragment() {
                         SearchScreen(
                             viewModel = viewModel,
                             onResultClick = { result ->
-                                val intent = PlayerActivity.createIntent(
-                                    context = requireContext(),
-                                    url = "",
-                                    title = result.title,
-                                    source = result.source,
-                                    id = result.id
-                                )
-                                startActivity(intent)
+                                val bundle = Bundle().apply {
+                                    putString("id", result.id)
+                                    putString("source", result.source)
+                                    putString("title", result.title)
+                                    putString("cover", result.cover.ifBlank { result.poster })
+                                }
+                                findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle)
                             },
                             onBack = { findNavController().navigateUp() }
                         )

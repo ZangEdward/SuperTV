@@ -20,28 +20,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import com.supertv.app.data.ApiNodeService
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
-import com.supertv.app.model.ApiNode
-import com.supertv.app.model.ReleaseItem
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.supertv.app.model.*
 import com.supertv.app.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-
 enum class MenuPage {
-    Main, NodeSelection, AIRecommend, ReleaseCalendar
+    Main, NodeSelection, AIRecommend, ReleaseCalendar, WatchHistory, Favorites, Settings, About
 }
 
 @Composable
@@ -120,6 +121,10 @@ fun UserMenu(
                                 onNavigateToNodes = { currentPage = MenuPage.NodeSelection },
                                 onNavigateToAI = { currentPage = MenuPage.AIRecommend },
                                 onNavigateToCalendar = { currentPage = MenuPage.ReleaseCalendar },
+                                onNavigateToHistory = { currentPage = MenuPage.WatchHistory },
+                                onNavigateToFavorites = { currentPage = MenuPage.Favorites },
+                                onNavigateToSettings = { currentPage = MenuPage.Settings },
+                                onNavigateToAbout = { currentPage = MenuPage.About },
                                 onLogout = {
                                     val scope = CoroutineScope(Dispatchers.Main)
                                     scope.launch {
@@ -142,6 +147,10 @@ fun UserMenu(
                             )
                             MenuPage.AIRecommend -> AIRecommendMenu(onBack = { currentPage = MenuPage.Main })
                             MenuPage.ReleaseCalendar -> ReleaseCalendarMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.WatchHistory -> WatchHistoryMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.Favorites -> FavoritesMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.Settings -> SettingsMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.About -> AboutMenu(onBack = { currentPage = MenuPage.Main })
                         }
                     }
                 }
@@ -155,6 +164,10 @@ fun MainMenu(
     onNavigateToNodes: () -> Unit,
     onNavigateToAI: () -> Unit,
     onNavigateToCalendar: () -> Unit,
+    onNavigateToHistory: () -> Unit,
+    onNavigateToFavorites: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToAbout: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column {
@@ -200,8 +213,11 @@ fun MainMenu(
 
         MenuItem(icon = Icons.Rounded.AutoAwesome, title = "AI 智能推荐", iconColor = PrimaryGreen, onClick = onNavigateToAI)
         MenuItem(icon = Icons.Rounded.CalendarMonth, title = "即将上映日历", onClick = onNavigateToCalendar)
+        MenuItem(icon = Icons.Rounded.History, title = "观看历史", onClick = onNavigateToHistory)
+        MenuItem(icon = Icons.Rounded.Favorite, title = "我的收藏", onClick = onNavigateToFavorites)
         MenuItem(icon = Icons.Rounded.Dns, title = "服务器节点", onClick = onNavigateToNodes)
-        MenuItem(icon = Icons.Rounded.Storage, title = "清除缓存", onClick = { /* TODO */ })
+        MenuItem(icon = Icons.Rounded.Settings, title = "偏好设置", onClick = onNavigateToSettings)
+        MenuItem(icon = Icons.Rounded.Info, title = "关于我们", onClick = onNavigateToAbout)
         
         Spacer(Modifier.height(8.dp))
         HorizontalDivider(color = BackgroundSurface, thickness = 1.dp)
@@ -324,6 +340,143 @@ fun CalendarItem(date: String, title: String, type: String) {
     }
 }
 
+
+@Composable
+fun WatchHistoryMenu(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember { Store.getInstance(context) }
+    val history = remember { store.getPlayRecords() }
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
+            Text("观看历史", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Box(modifier = Modifier.heightIn(max = 400.dp)) {
+            if (history.isEmpty()) {
+                Text("暂无播放记录", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
+            } else {
+                LazyColumn {
+                    items(history) { item ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(
+                                model = item.cover,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
+                                Text("第 ${item.index} 集 · ${item.sourceName}", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun FavoritesMenu(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember { Store.getInstance(context) }
+    val favorites = remember { store.getFavorites() }
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
+            Text("我的收藏", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Box(modifier = Modifier.heightIn(max = 400.dp)) {
+            if (favorites.isEmpty()) {
+                Text("暂无收藏内容", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
+            } else {
+                LazyColumn {
+                    items(favorites) { item ->
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(
+                                model = item.cover,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
+                                Text("${item.sourceName} · ${item.year}", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun SettingsMenu(onBack: () -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
+            Text("偏好设置", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        MenuItem(icon = Icons.Rounded.Notifications, title = "推送通知", onClick = {})
+        MenuItem(icon = Icons.Rounded.Language, title = "语言设置", onClick = {})
+        MenuItem(icon = Icons.Rounded.Security, title = "隐私政策", onClick = {})
+        
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun AboutMenu(onBack: () -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
+            Text("关于我们", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        
+        Spacer(Modifier.height(24.dp))
+        
+        Surface(
+            modifier = Modifier.size(80.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = PrimaryGreen
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text("TV", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
+            }
+        }
+        
+        Spacer(Modifier.height(16.dp))
+        Text("SuperTV 原生版", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        Text("Version 1.2.0 (LunaTV Core)", fontSize = 12.sp, color = TextSecondary)
+        
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "本项目仅供学习交流使用。所有视频内容均来自第三方接口，本应用不存储任何视频资源。",
+            fontSize = 12.sp,
+            color = TextTertiary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        
+        Spacer(Modifier.height(32.dp))
+    }
+}
 
 @Composable
 fun NodeSelectionMenu(

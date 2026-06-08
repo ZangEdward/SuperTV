@@ -93,7 +93,7 @@ interface ApiService {
     @GET("api/netdisk/search")
     suspend fun netDiskSearch(
         @Query("q") query: String
-    ): Response<List<NetDiskItem>>
+    ): Response<NetDiskResponse>
 
     // ==================== 测速 ====================
 
@@ -170,6 +170,13 @@ interface ApiService {
 
     @GET("api/calendar/release")
     suspend fun getReleaseCalendar(): Response<ReleaseCalendarResponse>
+
+    // ==================== Bangumi 代理 ====================
+
+    @GET("api/proxy/bangumi")
+    suspend fun getBangumiData(
+        @Query("path") path: String = "calendar"
+    ): Response<List<BangumiCalendarItem>>
 }
 
 data class LoginRequest(

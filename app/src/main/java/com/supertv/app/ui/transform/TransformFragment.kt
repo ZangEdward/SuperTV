@@ -51,8 +51,12 @@ import com.supertv.app.ui.theme.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+import com.supertv.app.ui.components.GlobalHeader
+import com.supertv.app.viewmodel.MainViewModel
+
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
+    private val mainViewModel: MainViewModel by viewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -61,21 +65,21 @@ class TransformFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                SuperTVTheme {
+                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                val authRepo = remember { AuthRepository.getInstance(context) }
+                var showUserMenu by remember { mutableStateOf(false) }
+                var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
+                var showLoginDialog by remember { mutableStateOf(!isLoggedIn) }
+
+                SuperTVTheme(darkTheme = isDarkTheme) {
                     Surface(color = MaterialTheme.colorScheme.background) {
                         val configuration = LocalConfiguration.current
                         val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
                         
-                        val authRepo = remember { AuthRepository.getInstance(context) }
-                        var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
-                        var showLoginDialog by remember { mutableStateOf(!isLoggedIn) }
-                        var showUserMenu by remember { mutableStateOf(false) }
-
                         // 监听 401 错误，自动弹出登录框
                         LaunchedEffect(Unit) {
                             RetrofitClient.setUnauthorizedListener {
                                 authRepo.clearCredentials()
-                                isLoggedIn = false
                                 showLoginDialog = true
                             }
                         }
@@ -112,23 +116,44 @@ class TransformFragment : Fragment() {
                         if (isTv) {
                             TVHomeScreen(
                                 viewModel = viewModel,
-                                onItemClick = { /* 导航 */ },
+                                onItemClick = { result ->
+                                    val bundle = Bundle().apply {
+                                        putString("id", result.id)
+                                        putString("source", result.source)
+                                        putString("title", result.title)
+                                        putString("cover", result.cover.ifBlank { result.poster })
+                                    }
+                                    findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                },
                                 onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
                                 onUserClick = { 
                                     if (isLoggedIn) showUserMenu = true else showLoginDialog = true
                                 }
                             )
                         } else {
-                            HomeScreen(
-                                viewModel = viewModel,
-                                onItemClick = { /* 导航逻辑 */ },
-                                onSearchClick = {
-                                    findNavController().navigate(R.id.action_nav_transform_to_search)
-                                },
-                                onUserClick = {
-                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true
-                                }
-                            )
+                            Column {
+                                GlobalHeader(
+                                    onUserClick = { 
+                                        if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
+                                    },
+                                    onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
+                                    onDownloadClick = { findNavController().navigate(R.id.action_nav_transform_to_slideshow) },
+                                    onThemeToggle = { mainViewModel.toggleTheme() },
+                                    isDarkTheme = isDarkTheme
+                                )
+                                HomeScreen(
+                                    viewModel = viewModel,
+                                    onItemClick = { result ->
+                                        val bundle = Bundle().apply {
+                                            putString("id", result.id)
+                                            putString("source", result.source)
+                                            putString("title", result.title)
+                                            putString("cover", result.cover.ifBlank { result.poster })
+                                        }
+                                        findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -239,9 +264,7 @@ fun TVHomeScreen(
 @Composable
 fun HomeScreen(
     viewModel: TransformViewModel,
-    onItemClick: (SearchResult) -> Unit,
-    onSearchClick: () -> Unit,
-    onUserClick: () -> Unit
+    onItemClick: (SearchResult) -> Unit
 ) {
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
@@ -256,99 +279,78 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
-        // Selene Style Header
-        SeleneHeader(onSearchClick = onSearchClick, onUserClick = onUserClick)
+        // 全局通用 Header 已由 Fragment 容器提供或在此显示
         
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            when (selectedCategory) {
-                "热门" -> {
-                    item {
-                        SectionHeader("豆瓣热播")
-                        VideoCardRow(items = hotMovies, onClick = onItemClick)
+        if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                when (selectedCategory) {
+                    "热门" -> {
+                        item {
+                            SectionHeader("豆瓣热播")
+                            VideoCardRow(items = hotMovies, onClick = onItemClick)
+                        }
+                        item {
+                            SectionHeader("精品推荐")
+                            VideoCardRow(items = recommended, onClick = onItemClick)
+                        }
+                        item {
+                            SectionHeader("动漫更新")
+                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                        }
+                        item {
+                            SectionHeader("热门短剧")
+                            VideoCardRow(items = shortDramas, onClick = onItemClick)
+                        }
                     }
-                    item {
-                        SectionHeader("精品推荐")
-                        VideoCardRow(items = recommended, onClick = onItemClick)
+                    "电影" -> {
+                        item {
+                            SectionHeader("精品电影")
+                            VideoCardRow(items = recommended, onClick = onItemClick)
+                        }
                     }
-                    item {
-                        SectionHeader("动漫更新")
-                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                    "剧集" -> {
+                        item {
+                            SectionHeader("最新剧集")
+                            VideoCardRow(items = hotMovies, onClick = onItemClick)
+                        }
                     }
-                    item {
-                        SectionHeader("热门短剧")
-                        VideoCardRow(items = shortDramas, onClick = onItemClick)
+                    "动漫" -> {
+                        item {
+                            SectionHeader("热门动漫")
+                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                        }
                     }
-                }
-                "电影" -> {
-                    item {
-                        SectionHeader("精品电影")
-                        VideoCardRow(items = recommended, onClick = onItemClick)
+                    "综艺" -> {
+                        item {
+                            SectionHeader("热门综艺")
+                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                        }
                     }
-                }
-                "剧集" -> {
-                    item {
-                        SectionHeader("最新剧集")
-                        VideoCardRow(items = hotMovies, onClick = onItemClick)
+                    "短剧" -> {
+                        item {
+                            SectionHeader("热门短剧")
+                            VideoCardRow(items = shortDramas, onClick = onItemClick)
+                        }
                     }
-                }
-                "动漫" -> {
-                    item {
-                        SectionHeader("热门动漫")
-                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                    }
-                }
-                "综艺" -> {
-                    item {
-                        SectionHeader("热门综艺")
-                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                    }
-                }
-                "短剧" -> {
-                    item {
-                        SectionHeader("热门短剧")
-                        VideoCardRow(items = shortDramas, onClick = onItemClick)
-                    }
-                }
-                else -> {
-                    item {
-                        SectionHeader(selectedCategory)
-                        if (isLoading) {
-                            Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else {
-                            Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> {
+                        item {
+                            SectionHeader(selectedCategory)
+                            if (isLoading && recommended.isEmpty()) {
+                                Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else if (recommended.isEmpty()) {
+                                Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                VideoCardRow(items = recommended, onClick = onItemClick)
+                            }
                         }
                     }
                 }
+                item { Spacer(modifier = Modifier.height(80.dp)) }
             }
-            item { Spacer(modifier = Modifier.height(80.dp)) }
-        }
-    }
-}
-
-@Composable
-fun SeleneHeader(onSearchClick: () -> Unit, onUserClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        IconButton(onClick = onSearchClick) {
-            Icon(Icons.Outlined.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onBackground)
-        }
-        
-        Text(
-            text = "SuperTV",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary,
-            letterSpacing = 1.5.sp
-        )
-        
-        IconButton(onClick = onUserClick) {
-            Icon(Icons.Outlined.AccountCircle, contentDescription = "用户", tint = MaterialTheme.colorScheme.onBackground)
         }
     }
 }

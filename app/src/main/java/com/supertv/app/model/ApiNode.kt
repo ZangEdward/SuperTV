@@ -106,43 +106,6 @@ data class DoubanResponse(
 )
 
 /**
- * 收藏
- */
-data class Favorite(
-    val cover: String = "",
-    val title: String = "",
-    @SerializedName("source_name")
-    val sourceName: String = "",
-    @SerializedName("total_episodes")
-    val totalEpisodes: Int = 0,
-    @SerializedName("search_title")
-    val searchTitle: String = "",
-    val year: String = "",
-    @SerializedName("save_time")
-    val saveTime: Long = 0L
-)
-
-/**
- * 播放记录
- */
-data class PlayRecord(
-    val title: String = "",
-    @SerializedName("source_name")
-    val sourceName: String = "",
-    val cover: String = "",
-    val index: Int = 0,
-    @SerializedName("total_episodes")
-    val totalEpisodes: Int = 0,
-    @SerializedName("play_time")
-    val playTime: Long = 0L,
-    @SerializedName("total_time")
-    val totalTime: Long = 0L,
-    @SerializedName("save_time")
-    val saveTime: Long = 0L,
-    val year: String = ""
-)
-
-/**
  * API站点配置
  */
 data class ApiSite(
@@ -174,6 +137,25 @@ data class DLNADevice(
 )
 
 /**
+ * 网盘搜索响应
+ */
+data class NetDiskResponse(
+    val success: Boolean = false,
+    val data: NetDiskData? = null,
+    val error: String? = null
+)
+
+/**
+ * 网盘搜索数据
+ */
+data class NetDiskData(
+    val total: Int = 0,
+    @SerializedName("merged_by_type")
+    val mergedByType: Map<String, List<NetDiskItem>> = emptyMap(),
+    val query: String = ""
+)
+
+/**
  * 网盘搜索项
  */
 data class NetDiskItem(
@@ -182,7 +164,10 @@ data class NetDiskItem(
     val url: String = "",
     val title: String = "",
     val datetime: String = "",
-    val size: String = ""
+    val size: String = "",
+    val name: String = "", // 兼容不同 API
+    @SerializedName("update_time")
+    val updateTime: String = ""
 )
 
 /**
@@ -223,8 +208,44 @@ data class ReleaseItem(
 )
 
 /**
- * 上映日历响应
+ * Bangumi 条目
  */
-data class ReleaseCalendarResponse(
-    val items: List<ReleaseItem> = emptyList()
+data class BangumiItem(
+    val id: Int = 0,
+    val name: String = "",
+    @SerializedName("name_cn")
+    val nameCn: String = "",
+    val summary: String = "",
+    @SerializedName("images")
+    val images: BangumiImages? = null,
+    @SerializedName("rating")
+    val rating: BangumiRating? = null
+)
+
+data class BangumiImages(
+    val large: String = "",
+    val common: String = "",
+    val medium: String = "",
+    val small: String = "",
+    val grid: String = ""
+)
+
+data class BangumiRating(
+    val score: Double = 0.0,
+    val total: Int = 0
+)
+
+/**
+ * Bangumi 每日更新
+ */
+data class BangumiCalendarItem(
+    val weekday: BangumiWeekday? = null,
+    val items: List<BangumiItem> = emptyList()
+)
+
+data class BangumiWeekday(
+    val en: String = "",
+    val cn: String = "",
+    val ja: String = "",
+    val id: Int = 0
 )

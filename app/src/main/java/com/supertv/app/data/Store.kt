@@ -24,6 +24,7 @@ class Store(private val context: Context) {
         private const val KEY_LAST_PLAYED = "last_played"
         private const val KEY_CACHED_EPISODES = "cached_episodes"
         private const val KEY_API_BASE_URL = "api_base_url"
+        private const val KEY_HOME_CACHE_PREFIX = "home_cache_"
 
         @Volatile
         private var instance: Store? = null
@@ -186,6 +187,21 @@ class Store(private val context: Context) {
     fun isEpisodeCached(videoId: String, episodeIndex: Int): Boolean {
         val map = getCachedEpisodes()
         return map[videoId]?.contains(episodeIndex) ?: false
+    }
+
+    fun saveCategoryCache(category: String, results: List<SearchResult>) {
+        prefs.edit().putString(KEY_HOME_CACHE_PREFIX + category, gson.toJson(results)).apply()
+    }
+
+    fun getCategoryCache(category: String): List<SearchResult> {
+        val json = prefs.getString(KEY_HOME_CACHE_PREFIX + category, "") ?: ""
+        if (json.isBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<SearchResult>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     // ==================== 通用存储 ====================

@@ -49,6 +49,7 @@ object RetrofitClient {
             val requestBuilder = chain.request().newBuilder()
                 .addHeader("User-Agent", "SuperTV/1.0")
                 .addHeader("Accept", "application/json")
+                .addHeader("Accept-Charset", "utf-8")
             
             // 添加 Token (Selene 风格)
             authToken?.let {
@@ -69,6 +70,21 @@ object RetrofitClient {
             // 如果返回 401，通知 UI 弹出登录框
             if (response.code == 401) {
                 onUnauthorized?.invoke()
+            }
+            
+            // 强制处理乱码：如果响应是 JSON，强制使用 UTF-8 解码
+            val contentType = response.body?.contentType()
+            if (contentType != null && contentType.subtype == "json") {
+                // 检查是否已经是 UTF-8
+                if (contentType.charset() == null) {
+                    val bytes = response.body?.bytes() ?: return@addInterceptor response
+                    val bodyString = String(bytes, Charsets.UTF_8)
+                    @Suppress("DEPRECATION")
+                    val newBody = okhttp3.ResponseBody.create(contentType, bodyString)
+                    return@addInterceptor response.newBuilder()
+                        .body(newBody)
+                        .build()
+                }
             }
             
             response

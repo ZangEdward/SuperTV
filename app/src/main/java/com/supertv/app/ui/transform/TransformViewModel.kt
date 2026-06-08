@@ -49,6 +49,27 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun loadData() {
         val category = _selectedCategory.value
+        
+        // 先从缓存加载，实现“秒开”效果，类似 Selene
+        val cached = store.getCategoryCache(category)
+        if (cached.isNotEmpty()) {
+            when (category) {
+                "热门" -> {
+                    // 热门频道数据较为复杂，这里简单恢复主要数据
+                    _hotMovies.value = cached
+                }
+                "电影" -> _recommended.value = cached
+                "剧集" -> _hotMovies.value = cached
+                "动漫" -> _animeUpdates.value = cached
+                "综艺" -> _animeUpdates.value = cached
+                "短剧" -> _shortDramas.value = cached
+                else -> {
+                     // 其他自定义分类
+                     _recommended.value = cached
+                }
+            }
+        }
+
         viewModelScope.launch {
             _isLoading.value = true
 
@@ -73,7 +94,10 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    _hotMovies.value = items.map { it.toSearchResult() }
+                    val results = items.map { it.toSearchResult() }
+                    _hotMovies.value = results
+                    // 只有热门主数据缓存
+                    store.saveCategoryCache("热门", results)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TransformViewModel", "Failed to load hot movies", e)
@@ -93,13 +117,27 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
 
+        // 动漫更新：整合 Bangumi
         launch {
             try {
-                val resp = apiService.getDoubanData("tv", "动漫")
+                val resp = apiService.getBangumiData("calendar")
                 if (resp.isSuccessful) {
                     val body = resp.body()
-                    val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    _animeUpdates.value = items.map { it.toSearchResult() }
+                    // 取今天的更新 (0: Mon, 1: Tue, ..., 6: Sun)
+                    val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) // 1: Sun, 2: Mon, ...
+                    val bangumiIndex = if (today == 1) 6 else today - 2
+                    
+                    val items = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
+                    val results = items.map { it.toSearchResult() }
+                    _animeUpdates.value = results
+                } else {
+                    // Fallback to Douban
+                    val doubanResp = apiService.getDoubanData("tv", "动漫")
+                    if (doubanResp.isSuccessful) {
+                        val body = doubanResp.body()
+                        val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
+                        _animeUpdates.value = items.map { it.toSearchResult() }
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TransformViewModel", "Failed to load anime", e)
@@ -121,17 +159,23 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadCategoryData(category: String) {
+        if (category == "动漫") {
+            loadAnimeData()
+            return
+        }
+        
         val (type, tag) = when (category) {
             "电影" -> "movie" to "热门"
             "剧集" -> "tv" to "热门"
-            "动漫" -> "tv" to "动漫"
             "综艺" -> "tv" to "综艺"
             "短剧" -> {
                 val resp = apiService.getShortDramaHot(1)
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    _shortDramas.value = items.map { it.toSearchResult() }
+                    val results = items.map { it.toSearchResult() }
+                    _shortDramas.value = results
+                    store.saveCategoryCache("短剧", results)
                 }
                 return
             }
@@ -145,16 +189,33 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 
+                // 保存缓存
+                store.saveCategoryCache(category, results)
+
                 // 根据分类更新对应的 StateFlow，以便 Fragment 显示
                 when (category) {
                     "电影" -> _recommended.value = results
                     "剧集" -> _hotMovies.value = results
-                    "动漫" -> _animeUpdates.value = results
                     "综艺" -> _animeUpdates.value = results // 借用 animeUpdates 展示综艺
                 }
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load category $category", e)
+        }
+    }
+
+    private suspend fun loadAnimeData() {
+        try {
+            val resp = apiService.getBangumiData("calendar")
+            if (resp.isSuccessful) {
+                val body = resp.body()
+                val allItems = body?.flatMap { it.items } ?: emptyList()
+                val results = allItems.map { it.toSearchResult() }.distinctBy { it.id }
+                _animeUpdates.value = results
+                store.saveCategoryCache("动漫", results)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TransformViewModel", "Failed to load anime data", e)
         }
     }
 
@@ -172,4 +233,15 @@ private fun DoubanItem.toSearchResult() = SearchResult(
     source = "douban",
     sourceName = if (sourceName.isNotBlank()) sourceName else "豆瓣",
     desc = desc
+)
+
+private fun BangumiItem.toSearchResult() = SearchResult(
+    id = id.toString(),
+    title = nameCn.ifBlank { name },
+    cover = images?.large ?: images?.common ?: "",
+    year = "",
+    rating = rating?.score?.toString() ?: "",
+    source = "bangumi",
+    sourceName = "Bangumi",
+    desc = summary
 )
