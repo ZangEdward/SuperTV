@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -123,7 +124,17 @@ class TransformFragment : Fragment() {
                                         putString("source", source)
                                         putString("title", title)
                                     }
-                                    findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                    // 动态判断当前目的地，执行正确的 Action
+                                    val currentDest = findNavController().currentDestination?.id
+                                    val actionId = when (currentDest) {
+                                        R.id.nav_movie -> R.id.action_nav_movie_to_detail
+                                        R.id.nav_tv -> R.id.action_nav_tv_to_detail
+                                        R.id.nav_anime -> R.id.action_nav_anime_to_detail
+                                        R.id.nav_show -> R.id.action_nav_show_to_detail
+                                        R.id.nav_short_drama -> R.id.action_nav_short_drama_to_detail
+                                        else -> R.id.action_nav_transform_to_detail
+                                    }
+                                    findNavController().navigate(actionId, bundle)
                                 },
                                 onNavigateToDownloads = {
                                     findNavController().navigate(R.id.action_nav_transform_to_slideshow)
@@ -141,7 +152,16 @@ class TransformFragment : Fragment() {
                                         putString("title", result.title)
                                         putString("cover", result.cover.ifBlank { result.poster })
                                     }
-                                    findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                    val currentDest = findNavController().currentDestination?.id
+                                    val actionId = when (currentDest) {
+                                        R.id.nav_movie -> R.id.action_nav_movie_to_detail
+                                        R.id.nav_tv -> R.id.action_nav_tv_to_detail
+                                        R.id.nav_anime -> R.id.action_nav_anime_to_detail
+                                        R.id.nav_show -> R.id.action_nav_show_to_detail
+                                        R.id.nav_short_drama -> R.id.action_nav_short_drama_to_detail
+                                        else -> R.id.action_nav_transform_to_detail
+                                    }
+                                    findNavController().navigate(actionId, bundle)
                                 },
                                 onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
                                 onUserClick = { 
@@ -157,10 +177,10 @@ class TransformFragment : Fragment() {
                                     onSearchClick = { 
                                         val navOptions = androidx.navigation.navOptions {
                                             anim {
-                                                enter = com.supertv.app.R.anim.slide_in_right
-                                                exit = com.supertv.app.R.anim.slide_out_left
-                                                popEnter = com.supertv.app.R.anim.slide_in_left
-                                                popExit = com.supertv.app.R.anim.slide_out_right
+                                                enter = R.anim.slide_in_right
+                                                exit = R.anim.slide_out_left
+                                                popEnter = R.anim.slide_in_left
+                                                popExit = R.anim.slide_out_right
                                             }
                                         }
                                         findNavController().navigate(R.id.action_nav_transform_to_search, null, navOptions) 
@@ -168,10 +188,10 @@ class TransformFragment : Fragment() {
                                     onDownloadClick = { 
                                         val navOptions = androidx.navigation.navOptions {
                                             anim {
-                                                enter = com.supertv.app.R.anim.slide_in_right
-                                                exit = com.supertv.app.R.anim.slide_out_left
-                                                popEnter = com.supertv.app.R.anim.slide_in_left
-                                                popExit = com.supertv.app.R.anim.slide_out_right
+                                                enter = R.anim.slide_in_right
+                                                exit = R.anim.slide_out_left
+                                                popEnter = R.anim.slide_in_left
+                                                popExit = R.anim.slide_out_right
                                             }
                                         }
                                         findNavController().navigate(R.id.action_nav_transform_to_slideshow, null, navOptions) 
@@ -188,7 +208,16 @@ class TransformFragment : Fragment() {
                                             putString("title", result.title)
                                             putString("cover", result.cover.ifBlank { result.poster })
                                         }
-                                        findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                        val currentDest = findNavController().currentDestination?.id
+                                        val actionId = when (currentDest) {
+                                            R.id.nav_movie -> R.id.action_nav_movie_to_detail
+                                            R.id.nav_tv -> R.id.action_nav_tv_to_detail
+                                            R.id.nav_anime -> R.id.action_nav_anime_to_detail
+                                            R.id.nav_show -> R.id.action_nav_show_to_detail
+                                            R.id.nav_short_drama -> R.id.action_nav_short_drama_to_detail
+                                            else -> R.id.action_nav_transform_to_detail
+                                        }
+                                        findNavController().navigate(actionId, bundle)
                                     }
                                 )
                             }
@@ -278,22 +307,37 @@ fun TVHomeScreen(
         }
 
         // Content Grid
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(5),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        AnimatedContent(
+            targetState = selectedCategory,
+            transitionSpec = {
+                val oldIndex = categories.indexOf(initialState)
+                val newIndex = categories.indexOf(targetState)
+                if (newIndex > oldIndex) {
+                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                }.using(SizeTransform(clip = false))
+            },
+            label = "TVCategoryAnimation",
             modifier = Modifier.fillMaxSize()
-        ) {
-            val content = when (selectedCategory) {
-                "热门" -> hotMovies
-                "电影" -> recommended
-                "剧集" -> animeUpdates
-                "短剧" -> shortDramas
-                else -> emptyList()
-            }
-            items(content) { item ->
-                PosterCard(result = item, onClick = { onItemClick(item) })
+        ) { targetCategory ->
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(5),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                val content = when (targetCategory) {
+                    "热门" -> hotMovies
+                    "电影" -> recommended
+                    "剧集" -> animeUpdates
+                    "短剧" -> shortDramas
+                    else -> emptyList()
+                }
+                items(content) { item ->
+                    PosterCard(result = item, onClick = { onItemClick(item) })
+                }
             }
         }
     }
@@ -311,83 +355,97 @@ fun HomeScreen(
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
-        // 全局通用 Header 已由 Fragment 容器提供或在此显示
-        
         if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                when (selectedCategory) {
-                    "热门" -> {
-                        item {
-                            SectionHeader("豆瓣热播")
-                            VideoCardRow(items = hotMovies, onClick = onItemClick)
+            AnimatedContent(
+                targetState = selectedCategory,
+                transitionSpec = {
+                    val oldIndex = categories.indexOf(initialState)
+                    val newIndex = categories.indexOf(targetState)
+                    if (newIndex > oldIndex) {
+                        (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                    } else {
+                        (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                    }.using(SizeTransform(clip = false))
+                },
+                label = "CategoryAnimation",
+                modifier = Modifier.fillMaxSize()
+            ) { targetCategory ->
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    when (targetCategory) {
+                        "热门" -> {
+                            item {
+                                SectionHeader("豆瓣热播")
+                                VideoCardRow(items = hotMovies, onClick = onItemClick)
+                            }
+                            item {
+                                SectionHeader("精品推荐")
+                                VideoCardRow(items = recommended, onClick = onItemClick)
+                            }
+                            item {
+                                SectionHeader("动漫更新")
+                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                            }
+                            item {
+                                SectionHeader("热门短剧")
+                                VideoCardRow(items = shortDramas, onClick = onItemClick)
+                            }
                         }
-                        item {
-                            SectionHeader("精品推荐")
-                            VideoCardRow(items = recommended, onClick = onItemClick)
-                        }
-                        item {
-                            SectionHeader("动漫更新")
-                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                        }
-                        item {
-                            SectionHeader("热门短剧")
-                            VideoCardRow(items = shortDramas, onClick = onItemClick)
-                        }
-                    }
-                    "电影" -> {
-                        item {
-                            SectionHeader("精品电影")
-                            VideoCardRow(items = recommended, onClick = onItemClick)
-                        }
-                    }
-                    "剧集" -> {
-                        item {
-                            SectionHeader("最新剧集")
-                            VideoCardRow(items = hotMovies, onClick = onItemClick)
-                        }
-                    }
-                    "动漫" -> {
-                        item {
-                            SectionHeader("热门动漫")
-                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                        }
-                    }
-                    "综艺" -> {
-                        item {
-                            SectionHeader("热门综艺")
-                            VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                        }
-                    }
-                    "短剧" -> {
-                        item {
-                            SectionHeader("热门短剧")
-                            VideoCardRow(items = shortDramas, onClick = onItemClick)
-                        }
-                    }
-                    else -> {
-                        item {
-                            SectionHeader(selectedCategory)
-                            if (isLoading && recommended.isEmpty()) {
-                                Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else if (recommended.isEmpty()) {
-                                Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            } else {
+                        "电影" -> {
+                            item {
+                                SectionHeader("精品电影")
                                 VideoCardRow(items = recommended, onClick = onItemClick)
                             }
                         }
+                        "剧集" -> {
+                            item {
+                                SectionHeader("最新剧集")
+                                VideoCardRow(items = hotMovies, onClick = onItemClick)
+                            }
+                        }
+                        "动漫" -> {
+                            item {
+                                SectionHeader("热门动漫")
+                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                            }
+                        }
+                        "综艺" -> {
+                            item {
+                                SectionHeader("热门综艺")
+                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                            }
+                        }
+                        "短剧" -> {
+                            item {
+                                SectionHeader("热门短剧")
+                                VideoCardRow(items = shortDramas, onClick = onItemClick)
+                            }
+                        }
+                        else -> {
+                            item {
+                                SectionHeader(targetCategory)
+                                if (isLoading && recommended.isEmpty()) {
+                                    Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (recommended.isEmpty()) {
+                                    Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    VideoCardRow(items = recommended, onClick = onItemClick)
+                                }
+                            }
+                        }
                     }
+                    item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
-                item { Spacer(modifier = Modifier.height(80.dp)) }
             }
         }
     }
@@ -429,93 +487,9 @@ fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit) {
 
 @Composable
 fun PosterCard(result: SearchResult, onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(120.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.7f)
-                .clip(RoundedCornerShape(8.dp))
-                .shadow(4.dp)
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(result.cover)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = result.title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            
-            // Rating Badge (Selene style)
-            if (result.rating.isNotBlank() && result.rating != "0") {
-                Surface(
-                    color = Color(0xCC000000),
-                    shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 8.dp),
-                    modifier = Modifier.align(Alignment.TopStart)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            tint = Color(0xFFFFC107),
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        Text(
-                            text = result.rating,
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-            
-            // Year Overlay
-            if (result.year.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .background(
-                            Color.Black.copy(alpha = 0.6f),
-                            RoundedCornerShape(topStart = 8.dp)
-                        )
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        result.year,
-                        color = Color.White,
-                        fontSize = 10.sp
-                    )
-                }
-            }
-        }
-        
-        Spacer(Modifier.height(8.dp))
-        
-        Text(
-            text = result.title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = result.sourceName,
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1
-        )
-    }
+    com.supertv.app.ui.components.VideoCard(
+        result = result,
+        onClick = onClick,
+        modifier = Modifier.width(130.dp)
+    )
 }

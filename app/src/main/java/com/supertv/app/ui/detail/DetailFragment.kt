@@ -33,7 +33,7 @@ class DetailFragment : Fragment() {
 
         // 加载详情
         if (id.isNotBlank() && source.isNotBlank()) {
-            viewModel.loadDetail(id, source)
+            viewModel.loadDetail(id, source, title)
         }
 
         return ComposeView(requireContext()).apply {
@@ -41,12 +41,19 @@ class DetailFragment : Fragment() {
                 SuperTVTheme {
                     val detail by viewModel.detail.collectAsState()
                     val isLoading by viewModel.isLoadingDetail.collectAsState()
+                    val allSources by viewModel.allSources.collectAsState()
+                    val latencies by viewModel.latencies.collectAsState()
+                    val isAllSourcesLoading by viewModel.allSourcesLoading.collectAsState()
                     
                     DetailScreen(
                         detail = detail,
                         isLoading = isLoading,
                         isFavorite = false,
                         cachedEpisodes = emptySet(),
+                        allSources = allSources,
+                        currentSource = detail?.source ?: source,
+                        latencies = latencies,
+                        isAllSourcesLoading = isAllSourcesLoading,
                         onEpisodeClick = { episode ->
                             val currentDetail = detail
                             val intent = PlayerActivity.createIntent(
@@ -72,6 +79,9 @@ class DetailFragment : Fragment() {
                                 )
                                 startActivity(intent)
                             }
+                        },
+                        onSourceSelect = { result ->
+                             viewModel.switchSource(result)
                         }
                     )
                 }

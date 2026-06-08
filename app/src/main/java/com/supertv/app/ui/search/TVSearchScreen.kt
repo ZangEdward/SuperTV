@@ -42,6 +42,7 @@ import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
 import com.supertv.app.model.SearchResult
 import com.supertv.app.services.PinyinSuggestionsFetcher
+import com.supertv.app.services.ImageUrlHelper
 import com.supertv.app.ui.components.VideoCard
 import com.supertv.app.ui.theme.*
 import com.supertv.app.viewmodel.SearchViewModel
@@ -335,45 +336,56 @@ fun TVVideoCard(
     result: SearchResult,
     onClick: () -> Unit
 ) {
+    val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (isFocused) 1.05f else 1f, label = "scale")
 
+    // 使用 ImageUrlHelper 处理 URL 和请求头，解决防盗链和加速问题
+    val processedUrl = remember(result.cover, result.source) {
+        ImageUrlHelper.processImageUrl(result.cover, result.source)
+    }
+    val imageHeaders = remember(result.cover, result.source) {
+        ImageUrlHelper.getImageHeaders(result.cover, result.source)
+    }
+
     Column(
         modifier = Modifier
-            .width(160.dp)
+            .width(150.dp) // 稍微调整宽度，适配 1080P/720P TV
             .scale(scale)
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .clickable { onClick() }
-            .padding(8.dp)
+            .padding(6.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.67f)
+                .aspectRatio(0.7f) // 与主页 VideoCard 比例一致
                 .clip(RoundedCornerShape(8.dp))
                 .border(
-                    width = if (isFocused) 3.dp else 0.dp,
-                    color = if (isFocused) PrimaryGreen else Color.Transparent,
+                    width = if (isFocused) 3.dp else 1.dp,
+                    color = if (isFocused) PrimaryGreen else Color(0xFF333333),
                     shape = RoundedCornerShape(8.dp)
                 )
                 .background(Color(0xFF222222))
         ) {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(result.cover)
+                model = ImageRequest.Builder(context)
+                    .data(processedUrl)
                     .crossfade(true)
+                    .addHeader("Referer", imageHeaders["Referer"] ?: "")
+                    .addHeader("User-Agent", imageHeaders["User-Agent"] ?: "")
                     .build(),
                 contentDescription = result.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
 
-            // Rating Badge (Top-Left)
+            // Rating Badge (与主页一致，位于左上)
             if (result.rating.isNotBlank() && result.rating != "0") {
                 Surface(
                     color = Color(0xCC000000),
-                    shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 8.dp),
+                    shape = RoundedCornerShape(bottomEnd = 8.dp),
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Row(
@@ -397,47 +409,53 @@ fun TVVideoCard(
                 }
             }
 
-            // Year Badge (Bottom-Left)
-            if (result.year.isNotBlank() && result.year != "unknown") {
+            // Year/Source Badge (位于左下)
+            if (result.sourceName.isNotBlank() || result.year.isNotBlank()) {
                 Surface(
                     color = Color(0x99000000),
                     shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.padding(4.dp).align(Alignment.BottomStart)
                 ) {
+                    val label = if (result.sourceName.isNotBlank()) {
+                        if (result.year.isNotBlank()) "${result.sourceName} · ${result.year}" else result.sourceName
+                    } else result.year
+                    
                     Text(
-                        result.year,
+                        text = label,
                         color = Color.White,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        fontSize = 9.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }
 
-            // Episode Badge (Top-Right)
-            if (result.episodes.size > 1) {
-                Surface(
-                    color = Color(0xFF27AE60),
-                    shape = RoundedCornerShape(5.dp),
+            // Episode Badge (位于右上)
+            if (result.episodes.isNotEmpty() || (result.type.isNotBlank())) {
+                 Surface(
+                    color = PrimaryGreen.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(4.dp),
                     modifier = Modifier.padding(4.dp).align(Alignment.TopEnd)
                 ) {
+                    val epText = if (result.episodes.isNotEmpty()) "${result.episodes.size}集" else result.type
                     Text(
-                        result.episodes.size.toString(),
+                        text = epText,
                         color = Color.White,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }
         }
         
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         
         Text(
             text = result.title,
             color = if (isFocused) PrimaryGreen else Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
+            fontSize = 12.sp,
+            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1, // TV 建议单行，防止布局错位
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()

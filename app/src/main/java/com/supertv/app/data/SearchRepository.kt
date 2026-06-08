@@ -85,7 +85,20 @@ class SearchRepository(private val apiService: ApiService) {
         return try {
             val response = apiService.getDetail(id, source)
             if (response.isSuccessful) {
-                response.body()
+                val detail = response.body()
+                // 如果详情中没有剧集，尝试单独获取剧集列表
+                if (detail != null && detail.episodes.isEmpty()) {
+                    try {
+                        val epResponse = apiService.getEpisodes(id, source)
+                        if (epResponse.isSuccessful) {
+                            val episodes = epResponse.body() ?: emptyList()
+                            return detail.copy(episodes = episodes)
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SearchRepository", "Failed to load episodes separately", e)
+                    }
+                }
+                detail
             } else null
         } catch (e: Exception) {
             null

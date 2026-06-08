@@ -40,6 +40,8 @@ fun DetailScreen(
     cachedEpisodes: Set<Int>,
     allSources: List<SearchResult> = emptyList(),
     currentSource: String = "",
+    latencies: Map<String, Long> = emptyMap(),
+    isAllSourcesLoading: Boolean = false, // 新增：正在搜索全网源
     onEpisodeClick: (Episode) -> Unit,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
@@ -136,7 +138,15 @@ fun DetailScreen(
             if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = TextTertiary) }
 
             Spacer(Modifier.height(20.dp))
-            Text("播放源", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("播放源", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                if (isAllSourcesLoading) {
+                    Spacer(Modifier.width(12.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = PrimaryGreen)
+                    Spacer(Modifier.width(8.dp))
+                    Text("全网检索中...", fontSize = 12.sp, color = TextTertiary)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             
             // 竖向排列的播放源
@@ -158,10 +168,12 @@ fun DetailScreen(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     allSources.forEach { source ->
+                        val latency = latencies[source.id + source.source]
                         SourceItem(
                             context = context,
                             source = source,
                             isSelected = source.source == currentSource && source.id == detail.id,
+                            latency = latency,
                             onClick = { onSourceSelect(source) }
                         )
                     }
@@ -251,7 +263,13 @@ fun DetailScreen(
 }
 
 @Composable
-private fun SourceItem(context: android.content.Context, source: SearchResult, isSelected: Boolean, onClick: () -> Unit) {
+private fun SourceItem(
+    context: android.content.Context,
+    source: SearchResult,
+    isSelected: Boolean,
+    latency: Long? = null,
+    onClick: () -> Unit
+) {
     Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp), color = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else BackgroundCard) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -264,10 +282,22 @@ private fun SourceItem(context: android.content.Context, source: SearchResult, i
                 Text(source.sourceName.ifBlank { source.source }, fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) PrimaryGreen else TextPrimary)
+                
                 val episodeInfo = (if (source.episodes.isNotEmpty()) "${source.episodes.size}集 · " else "") + (source.year.ifBlank { "未知" })
                 Text(episodeInfo, fontSize = 12.sp, color = TextTertiary)
             }
-            if (isSelected) { Spacer(Modifier.width(6.dp)); Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp)) }
+            
+            if (latency != null) {
+                val color = when {
+                    latency < 100 -> PrimaryGreen
+                    latency < 300 -> Color(0xFFFFA000)
+                    else -> ErrorRed
+                }
+                Text("${latency}ms", color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+            }
+
+            if (isSelected) { Icon(Icons.Default.Check, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp)) }
         }
     }
 }

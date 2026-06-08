@@ -91,29 +91,25 @@ fun VideoCard(
         ImageUrlHelper.getImageHeaders(result.cover, result.source)
     }
 
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .clickable(onClick = onClick)
+            .padding(4.dp)
     ) {
-        Column {
-            // 封面图
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.7f)
-                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-            ) {
+        // 封面图容器
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.7f),
+            shape = RoundedCornerShape(10.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(processedUrl)
                         .crossfade(true)
-                        .size(Size(300, 450))
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .diskCachePolicy(CachePolicy.ENABLED)
                         .addHeader("Referer", imageHeaders["Referer"] ?: "")
                         .addHeader("User-Agent", imageHeaders["User-Agent"] ?: "")
                         .build(),
@@ -122,7 +118,7 @@ fun VideoCard(
                     contentScale = ContentScale.Crop
                 )
 
-                // Rating Badge (Selene style)
+                // Rating Badge (左上角，深色半透明背景)
                 if (result.rating.isNotBlank() && result.rating != "0") {
                     Surface(
                         color = Color(0xCC000000),
@@ -150,8 +146,28 @@ fun VideoCard(
                     }
                 }
 
-                // 来源标签
-                if (result.sourceName.isNotBlank()) {
+                // 剧集/类型标签 (右上角，主题色背景)
+                if (result.episodes.isNotEmpty() || result.type.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp),
+                        color = PrimaryGreen.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        val label = if (result.episodes.isNotEmpty()) "${result.episodes.size}集" else result.type
+                        Text(
+                            text = label,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // 底部信息条 (来源 + 年份，左下角)
+                if (result.sourceName.isNotBlank() || result.year.isNotBlank()) {
                     Surface(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -159,26 +175,13 @@ fun VideoCard(
                         color = Color(0x99000000),
                         shape = RoundedCornerShape(4.dp)
                     ) {
+                        val footerText = if (result.sourceName.isNotBlank() && result.year.isNotBlank()) {
+                            "${result.sourceName} · ${result.year}"
+                        } else {
+                            result.sourceName.ifBlank { result.year }
+                        }
                         Text(
-                            text = result.sourceName,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                        )
-                    }
-                }
-
-                // 年份标签
-                if (result.year.isNotBlank()) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp),
-                        color = Color(0x99000000),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = result.year,
+                            text = footerText,
                             color = Color.White,
                             fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
@@ -186,16 +189,29 @@ fun VideoCard(
                     }
                 }
             }
+        }
 
-            // 标题
+        Spacer(Modifier.height(8.dp))
+
+        // 标题 (使用 Material3 字体样式)
+        Text(
+            text = result.title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 2.dp)
+        )
+        
+        if (result.desc.isNotBlank()) {
             Text(
-                text = result.title,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+                text = result.desc,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                modifier = Modifier.padding(start = 2.dp, end = 2.dp, top = 2.dp)
             )
         }
     }

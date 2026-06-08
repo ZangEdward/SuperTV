@@ -1,5 +1,6 @@
 package com.supertv.app.ui.search
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +21,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +56,14 @@ fun SearchScreen(
         val isSearching by viewModel.isSearching.collectAsState()
 
         var showClearDialog by remember { mutableStateOf(false) }
+        var selectedNetDiskType by remember { mutableStateOf("") }
+        
+        // 当网盘结果更新时，默认选择第一个 Tab
+        LaunchedEffect(netDiskResults) {
+            if (netDiskResults.isNotEmpty() && (selectedNetDiskType.isBlank() || !netDiskResults.containsKey(selectedNetDiskType))) {
+                selectedNetDiskType = netDiskResults.keys.first()
+            }
+        }
 
         Column(
             modifier = Modifier
@@ -59,8 +72,8 @@ fun SearchScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
         ) {
             // Search Header
-            Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background, tonalElevation = 2.dp) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
                     }
@@ -69,28 +82,28 @@ fun SearchScreen(
                         onValueChange = { viewModel.updateQuery(it) },
                         modifier = Modifier
                             .weight(1f)
-                            .padding(end = 16.dp, top = 8.dp, bottom = 8.dp),
-                        placeholder = { Text("搜索影视、网盘资源...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            .padding(end = 16.dp, top = 4.dp),
+                        placeholder = { Text("搜索影视、网盘资源...", fontSize = 14.sp) },
                         leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Default.Search, contentDescription = "搜索", modifier = Modifier.size(20.dp))
                         },
                         trailingIcon = {
                             if (query.isNotBlank()) {
                                 IconButton(onClick = { viewModel.updateQuery("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "清除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Default.Clear, contentDescription = "清除", modifier = Modifier.size(20.dp))
                                 }
                             }
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
                         singleLine = true,
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(28.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.surfaceVariant,
-                            cursorColor = MaterialTheme.colorScheme.primary,
-                            focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onBackground
+                            focusedBorderColor = PrimaryGreen,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                            cursorColor = PrimaryGreen,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                         )
                     )
                 }
@@ -100,39 +113,45 @@ fun SearchScreen(
             TabRow(
                 selectedTabIndex = searchMode,
                 containerColor = MaterialTheme.colorScheme.background,
-                contentColor = MaterialTheme.colorScheme.primary,
+                contentColor = PrimaryGreen,
+                divider = { HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant) },
                 indicator = { tabPositions ->
                     TabRowDefaults.SecondaryIndicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[searchMode]),
-                        color = MaterialTheme.colorScheme.primary
+                        color = PrimaryGreen,
+                        height = 3.dp
                     )
                 }
             ) {
                 Tab(
                     selected = searchMode == 0,
                     onClick = { viewModel.setSearchMode(0) },
-                    text = { Text("全网聚合") }
+                    text = { Text("全网聚合", fontSize = 15.sp, fontWeight = if (searchMode == 0) FontWeight.Bold else FontWeight.Normal) }
                 )
                 Tab(
                     selected = searchMode == 1,
                     onClick = { viewModel.setSearchMode(1) },
-                    text = { Text("网盘资源") }
+                    text = { Text("网盘资源", fontSize = 15.sp, fontWeight = if (searchMode == 1) FontWeight.Bold else FontWeight.Normal) }
                 )
             }
 
             when {
                 isSearching -> {
-                    Box(modifier = Modifier.padding(16.dp)) { 
-                        if (searchMode == 0) ShimmerGrid(columns = 3) else CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.align(Alignment.Center))
+                    Box(modifier = Modifier.fillMaxSize()) { 
+                        if (searchMode == 0) {
+                            ShimmerGrid(columns = 2) 
+                        } else {
+                            CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.align(Alignment.Center))
+                        }
                     }
                 }
 
                 searchMode == 0 && pagingItems.itemCount > 0 -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        contentPadding = PaddingValues(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        columns = GridCells.Fixed(2), // 移动端 2 列视觉效果更好
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(
@@ -147,9 +166,46 @@ fun SearchScreen(
                 }
                 
                 searchMode == 1 && netDiskResults.isNotEmpty() -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-                        items(netDiskResults) { item ->
-                            NetDiskResultItem(item)
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // 网盘分类 Tabs
+                        ScrollableTabRow(
+                            selectedTabIndex = netDiskResults.keys.toList().indexOf(selectedNetDiskType).coerceAtLeast(0),
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                            edgePadding = 16.dp,
+                            divider = {},
+                            indicator = {}
+                        ) {
+                            netDiskResults.forEach { (type, items) ->
+                                val isSelected = selectedNetDiskType == type
+                                Tab(
+                                    selected = isSelected,
+                                    onClick = { selectedNetDiskType = type },
+                                    text = { 
+                                        Surface(
+                                            color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Text(
+                                                text = "${getNetDiskName(type)} (${items.size})",
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                fontSize = 12.sp,
+                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        val currentData = netDiskResults[selectedNetDiskType] ?: emptyList()
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(currentData) { item ->
+                                NetDiskResultItem(item)
+                            }
                         }
                     }
                 }
@@ -172,24 +228,107 @@ fun SearchScreen(
     }
 }
 
+private fun getNetDiskName(type: String): String {
+    return when (type.lowercase()) {
+        "quark" -> "夸克"
+        "magnet" -> "磁力"
+        "baidu" -> "百度"
+        "aliyun" -> "阿里"
+        "xunlei" -> "迅雷"
+        "pikpak" -> "PikPak"
+        "uc" -> "UC"
+        else -> type.uppercase()
+    }
+}
+
 @Composable
 fun NetDiskResultItem(item: NetDiskItem) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val uriHandler = LocalUriHandler.current
+
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { /* TODO: Open URL */ },
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = BackgroundCard),
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = PrimaryGreen)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(item.title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row {
-                    Text(item.source, color = TextTertiary, fontSize = 11.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.size, color = TextTertiary, fontSize = 11.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.datetime, color = TextTertiary, fontSize = 11.sp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = item.source,
+                    color = PrimaryGreen,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = item.datetime.take(10), // 只显示日期
+                    color = TextTertiary,
+                    fontSize = 11.sp
+                )
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            
+            Text(
+                text = item.title,
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 20.sp
+            )
+            
+            if (item.note.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = item.note,
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 18.sp
+                )
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { 
+                        clipboardManager.setText(AnnotatedString(item.url))
+                        Toast.makeText(context, "已复制链接", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("复制链接", fontSize = 12.sp)
+                }
+                
+                Button(
+                    onClick = { 
+                        try {
+                            uriHandler.openUri(item.url)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text("直接打开", fontSize = 12.sp, color = Color.White)
                 }
             }
         }
@@ -212,13 +351,22 @@ fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch:
             }
             FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 history.forEach { term ->
-                    SuggestionChip(onClick = { onSearch(term) }, label = { Text(term) })
+                    SuggestionChip(
+                        onClick = { onSearch(term) },
+                        label = { Text(term) },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            labelColor = TextSecondary
+                        ),
+                        border = null
+                    )
                 }
             }
         } else {
             Box(modifier = Modifier.fillMaxWidth().padding(top = 100.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.History, contentDescription = null, tint = BackgroundSurface, modifier = Modifier.size(64.dp))
+                    Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.size(64.dp))
                     Text("暂无搜索历史", color = TextTertiary, modifier = Modifier.padding(top = 16.dp))
                 }
             }

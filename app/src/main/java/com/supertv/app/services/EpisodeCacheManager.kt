@@ -24,7 +24,8 @@ class EpisodeCacheManager(private val context: Context) {
         .followRedirects(true)
         .build()
 
-    private val cacheDir = File(context.cacheDir, "episodes").also { it.mkdirs() }
+    // 修改缓存目录：从 context.cacheDir (临时) 切换到 context.getExternalFilesDir (相对持久)
+    private val cacheDir = File(context.getExternalFilesDir(null), "episodes").also { it.mkdirs() }
     private val activeTasks = mutableMapOf<String, Job>()
     private val concurrencyLimit = AtomicInteger(3)
 

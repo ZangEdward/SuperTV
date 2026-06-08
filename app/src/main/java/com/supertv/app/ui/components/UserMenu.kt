@@ -33,7 +33,6 @@ import com.supertv.app.data.ApiNodeService
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.supertv.app.model.*
@@ -43,7 +42,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 enum class MenuPage {
-    Main, NodeSelection, AIRecommend, ReleaseCalendar, WatchHistory, Favorites, Settings, About
+    Main, NodeSelection, AIRecommend, ReleaseCalendar, WatchHistory, Favorites, Settings, About, Stats
 }
 
 @Composable
@@ -128,6 +127,7 @@ fun UserMenu(
                                 onNavigateToFavorites = { currentPage = MenuPage.Favorites },
                                 onNavigateToSettings = { currentPage = MenuPage.Settings },
                                 onNavigateToAbout = { currentPage = MenuPage.About },
+                                onNavigateToStats = { currentPage = MenuPage.Stats },
                                 onNavigateToDownloads = {
                                     onNavigateToDownloads()
                                     onClose()
@@ -170,6 +170,7 @@ fun UserMenu(
                             )
                             MenuPage.Settings -> SettingsMenu(onBack = { currentPage = MenuPage.Main })
                             MenuPage.About -> AboutMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.Stats -> StatsMenu(onBack = { currentPage = MenuPage.Main })
                         }
                     }
                 }
@@ -187,6 +188,7 @@ fun MainMenu(
     onNavigateToFavorites: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onNavigateToStats: () -> Unit,
     onNavigateToDownloads: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -238,6 +240,7 @@ fun MainMenu(
         MenuItem(icon = Icons.Rounded.FileDownload, title = "离线缓存", onClick = onNavigateToDownloads)
         MenuItem(icon = Icons.Rounded.Dns, title = "服务器节点", onClick = onNavigateToNodes)
         MenuItem(icon = Icons.Rounded.Settings, title = "偏好设置", onClick = onNavigateToSettings)
+        MenuItem(icon = Icons.Rounded.BarChart, title = "数据统计", onClick = onNavigateToStats)
         MenuItem(icon = Icons.Rounded.Info, title = "关于我们", onClick = onNavigateToAbout)
         
         Spacer(Modifier.height(8.dp))
@@ -613,5 +616,58 @@ fun MenuItem(
         Text(title, color = textColor, fontSize = 15.sp)
         Spacer(Modifier.weight(1f))
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextTertiary, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+fun StatsMenu(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val store = remember { Store.getInstance(context) }
+    
+    val favoritesCount = remember { store.getFavorites().size }
+    val historyCount = remember { store.getPlayRecords().size }
+    val searchCount = remember { store.getSearchHistory().size }
+    val cachedCount = remember { store.getCachedEpisodes().values.sumOf { it.size } }
+    
+    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
+            Text("数据统计", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        
+        Spacer(Modifier.height(16.dp))
+        
+        StatItem("我的收藏", "$favoritesCount 个项目", Icons.Rounded.Favorite, PrimaryGreen)
+        StatItem("观看历史", "$historyCount 条记录", Icons.Rounded.History, Color(0xFF2196F3))
+        StatItem("搜索历史", "$searchCount 次搜索", Icons.Rounded.Search, Color(0xFFFF9800))
+        StatItem("缓存集数", "$cachedCount 集内容", Icons.Rounded.FileDownload, Color(0xFF9C27B0))
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun StatItem(label: String, value: String, icon: ImageVector, color: Color) {
+    Surface(
+        color = BackgroundSurface,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(40.dp).background(color.copy(alpha = 0.1f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(label, fontSize = 12.sp, color = TextSecondary)
+                Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+        }
     }
 }

@@ -61,8 +61,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
 
     // 网盘搜索结果
-    private val _netDiskResults = MutableStateFlow<List<NetDiskItem>>(emptyList())
-    val netDiskResults: StateFlow<List<NetDiskItem>> = _netDiskResults.asStateFlow()
+    private val _netDiskResults = MutableStateFlow<Map<String, List<NetDiskItem>>>(emptyMap())
+    val netDiskResults: StateFlow<Map<String, List<NetDiskItem>>> = _netDiskResults.asStateFlow()
 
     // 搜索建议
     private val _suggestions = MutableStateFlow<List<String>>(emptyList())
@@ -87,9 +87,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _isLoadingDetail = MutableStateFlow(false)
     val isLoadingDetail: StateFlow<Boolean> = _isLoadingDetail.asStateFlow()
 
+    // 所有来源（全网聚合详情）
+    private val _allSources = MutableStateFlow<List<SearchResult>>(emptyList())
+    val allSources: StateFlow<List<SearchResult>> = _allSources.asStateFlow()
+
+    private val _allSourcesLoading = MutableStateFlow(false)
+    val allSourcesLoading: StateFlow<Boolean> = _allSourcesLoading.asStateFlow()
+
     // 错误信息
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    // 测速状态
+    val isTestingLatency: StateFlow<Boolean> = speedTestService.isTesting
+    val latencies: StateFlow<Map<String, Long>> = speedTestService.latencies
 
     init {
         loadSearchHistory()
@@ -185,9 +196,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 if (response.isSuccessful) {
                     val body = response.body()
                     if (body?.success == true) {
-                        // 提取所有类型的网盘资源并展平
-                        val allItems = body.data?.mergedByType?.values?.flatten() ?: emptyList()
-                        _netDiskResults.value = allItems
+                        _netDiskResults.value = body.data?.mergedByType ?: emptyMap()
                     } else {
                         _error.value = "网盘搜索失败: ${body?.error ?: "未知错误"}"
                     }
@@ -235,18 +244,81 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * 获取视频详情
      */
-    fun loadDetail(id: String, source: String) {
+    fun loadDetail(id: String, source: String, title: String? = null) {
         viewModelScope.launch {
             _isLoadingDetail.value = true
             _error.value = null
+            _allSources.value = emptyList()
+            
             try {
-                // 确保 ApiService 已初始化
-                RetrofitClient.getApiService()
+                // 1. 加载主详情
                 val result = repository.getDetail(id, source)
                 _detail.value = result
+
+                // 2. 如果主详情没有剧集（如豆瓣/Bangumi），或者手动触发，搜索全网来源
+                val searchTitle = title ?: result?.title
+                if (!searchTitle.isNullOrBlank()) {
+                    loadAllSources(searchTitle, result?.id, result?.source)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("SearchViewModel", "Load detail failed", e)
                 _error.value = "加载详情失败: ${e.message}"
+            } finally {
+                _isLoadingDetail.value = false
+            }
+        }
+    }
+
+    /**
+     * 加载全网来源
+     */
+    private fun loadAllSources(title: String, currentId: String?, currentSource: String?) {
+        viewModelScope.launch {
+            _allSourcesLoading.value = true
+            try {
+                val results = repository.search(title)
+                // 排除当前已有的源（如果 ID 和 Source 都一样）
+                val filtered = results.filter { it.id != currentId || it.source != currentSource }
+                _allSources.value = filtered
+                
+                // 如果当前详情为空，且找到了其他有效的源，尝试加载第一个
+                if (_detail.value == null && results.isNotEmpty()) {
+                    val first = results.first()
+                    val detail = repository.getDetail(first.id, first.source)
+                    _detail.value = detail
+                }
+
+                // 自动对所有来源进行测速（取第一个剧集的 URL 测速）
+                val testUrls = mutableMapOf<String, String>()
+                results.forEach { res ->
+                    if (res.episodes.isNotEmpty()) {
+                        testUrls[res.id + res.source] = res.episodes.first().url
+                    }
+                }
+                if (testUrls.isNotEmpty()) {
+                    speedTestService.testAll(testUrls)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SearchViewModel", "Search all sources failed", e)
+            } finally {
+                _allSourcesLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * 切换播放源
+     */
+    fun switchSource(result: SearchResult) {
+        viewModelScope.launch {
+            _isLoadingDetail.value = true
+            try {
+                val detail = repository.getDetail(result.id, result.source)
+                if (detail != null) {
+                    _detail.value = detail
+                }
+            } catch (e: Exception) {
+                _error.value = "切换源失败"
             } finally {
                 _isLoadingDetail.value = false
             }

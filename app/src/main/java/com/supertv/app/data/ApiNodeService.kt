@@ -10,13 +10,26 @@ object ApiNodeService {
 
     fun getNodes(context: Context): Array<ApiNode> {
         return try {
-            // 使用 bufferedReader 并指定 UTF-8 确保编码正确
-            val json = context.assets.open(ASSET_FILE).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val bytes = context.assets.open(ASSET_FILE).use { it.readBytes() }
+            // 尝试以 UTF-8 读取
+            var json = String(bytes, Charsets.UTF_8)
+            
+            // 启发式检测：如果包含乱码字符（常见于 GBK 被当做 UTF-8 读取），尝试用 GBK 重新读取
+            // 简单的检测方法：如果包含 replacement character 或者非打印字符比例过高
+            if (json.contains("\ufffd")) {
+                 json = String(bytes, Charset.forName("GBK"))
+            }
+            
             Gson().fromJson(json, Array<ApiNode>::class.java)
         } catch (e: Exception) {
             android.util.Log.e("ApiNodeService", "Failed to load nodes: ${e.message}")
-            // 返回默认节点，防止应用启动失败
-            arrayOf(ApiNode("default", "演示节点", "https://api.example.com"))
+            // 兜底方案：如果还是失败，尝试用 GBK
+            try {
+                val json = context.assets.open(ASSET_FILE).bufferedReader(Charset.forName("GBK")).use { it.readText() }
+                Gson().fromJson(json, Array<ApiNode>::class.java)
+            } catch (e2: Exception) {
+                arrayOf(ApiNode("default", "演示节点", "https://api.example.com"))
+            }
         }
     }
 }

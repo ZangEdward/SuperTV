@@ -36,7 +36,8 @@ import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.navOptions
 import androidx.navigation.ui.setupWithNavController
 import com.supertv.app.databinding.ActivityMainBinding
-import com.supertv.app.ui.theme.SuperTVTheme
+import com.supertv.app.ui.theme.*
+import androidx.compose.ui.draw.clip
 
 import com.supertv.app.viewmodel.MainViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -67,9 +68,6 @@ class MainActivity : AppCompatActivity() {
             
             _binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
-
-            setSupportActionBar(binding.appBarMain.toolbar)
-            supportActionBar?.hide() // 隐藏默认 Action Bar，使用 Compose 自定义 Header
 
             // 获取 NavHost
             val navHostFragment = supportFragmentManager
@@ -115,36 +113,42 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    val navBackStackEntry by navController.currentBackStackEntryAsState()
+                    val currentDestination = navBackStackEntry?.destination
+                    val showHeader = currentDestination?.id != R.id.nav_detail && currentDestination?.id != R.id.nav_search
+
                     SuperTVTheme(darkTheme = isDarkTheme) {
-                        GlobalHeader(
-                            onUserClick = { 
-                                if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
-                            },
-                            onSearchClick = { 
-                                val searchNavOptions = navOptions {
-                                    anim {
-                                        enter = R.anim.slide_in_right
-                                        exit = R.anim.slide_out_left
-                                        popEnter = R.anim.slide_in_left
-                                        popExit = R.anim.slide_out_right
+                        if (showHeader) {
+                            GlobalHeader(
+                                onUserClick = { 
+                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
+                                },
+                                onSearchClick = { 
+                                    val searchNavOptions = navOptions {
+                                        anim {
+                                            enter = R.anim.slide_in_right
+                                            exit = R.anim.slide_out_left
+                                            popEnter = R.anim.slide_in_left
+                                            popExit = R.anim.slide_out_right
+                                        }
                                     }
-                                }
-                                navController.navigate(R.id.nav_search, null, searchNavOptions)
-                            },
-                            onDownloadClick = { 
-                                val slideshowNavOptions = navOptions {
-                                    anim {
-                                        enter = R.anim.slide_in_right
-                                        exit = R.anim.slide_out_left
-                                        popEnter = R.anim.slide_in_left
-                                        popExit = R.anim.slide_out_right
+                                    navController.navigate(R.id.nav_search, null, searchNavOptions)
+                                },
+                                onDownloadClick = { 
+                                    val slideshowNavOptions = navOptions {
+                                        anim {
+                                            enter = R.anim.slide_in_right
+                                            exit = R.anim.slide_out_left
+                                            popEnter = R.anim.slide_in_left
+                                            popExit = R.anim.slide_out_right
+                                        }
                                     }
-                                }
-                                navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
-                            },
-                            onThemeToggle = { mainViewModel.toggleTheme() },
-                            isDarkTheme = isDarkTheme
-                        )
+                                    navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
+                                },
+                                onThemeToggle = { mainViewModel.toggleTheme() },
+                                isDarkTheme = isDarkTheme
+                            )
+                        }
 
                         if (showUserMenu) {
                             UserMenu(
@@ -276,43 +280,53 @@ class MainActivity : AppCompatActivity() {
     private fun ComposeBottomNavBar(navController: NavController) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
+        val items = remember { getNavItems() }
 
         Surface(
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-            tonalElevation = 0.dp, // 移除投影，更现代
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp), // 顶部圆角
-            modifier = Modifier.fillMaxWidth().height(64.dp) // 降低高度 (原 72dp)
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+            tonalElevation = 8.dp,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp + 12.dp) // 增加高度以覆盖底部 safe area
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .horizontalScroll(rememberScrollState()),
+                    .windowInsetsPadding(WindowInsets.navigationBars) // 在内部处理缩进
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly // 均匀分布
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                val items = getNavItems()
-
-                items.forEach { item ->
+                items.forEachIndexed { index, item ->
                     val isSelected = currentDestination?.id == item.id
                     
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(68.dp) // 缩小宽度
+                            .width(64.dp)
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(16.dp)) // 点击效果也圆角化
                             .clickable {
                                 if (currentDestination?.id != item.id) {
+                                    val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
+                                    val isForward = index > currentIndex
+
                                     val navOptions = navOptions {
-                                        // 添加滑动动画 (首页例外)
-                                        if (item.id != R.id.nav_transform) {
-                                            anim {
+                                        anim {
+                                            if (isForward) {
                                                 enter = R.anim.slide_in_right
                                                 exit = R.anim.slide_out_left
                                                 popEnter = R.anim.slide_in_left
                                                 popExit = R.anim.slide_out_right
+                                            } else {
+                                                enter = R.anim.slide_in_left
+                                                exit = R.anim.slide_out_right
+                                                popEnter = R.anim.slide_in_right
+                                                popExit = R.anim.slide_out_left
                                             }
                                         }
-                                        // 关键：避免堆叠，恢复状态，实现左右切换不卡死
                                         popUpTo(navController.graph.findStartDestination().id) {
                                             saveState = true
                                         }
@@ -331,22 +345,21 @@ class MainActivity : AppCompatActivity() {
                             Icon(
                                 imageVector = item.icon,
                                 contentDescription = stringResource(item.labelRes),
-                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(24.dp) // 缩小图标
+                                tint = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(24.dp)
                             )
                             if (isSelected) {
                                 Text(
                                     text = stringResource(item.labelRes),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = PrimaryGreen
                                 )
-                                // 添加一个小点指示器
                                 Box(
                                     modifier = Modifier
                                         .padding(top = 2.dp)
                                         .size(4.dp)
-                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                        .background(PrimaryGreen, CircleShape)
                                 )
                             }
                         }
@@ -360,6 +373,7 @@ class MainActivity : AppCompatActivity() {
     private fun ComposeSideNavBar(navController: NavController) {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
+        val items = remember { getNavItems() }
 
         NavigationRail(
             containerColor = MaterialTheme.colorScheme.surface,
@@ -374,9 +388,7 @@ class MainActivity : AppCompatActivity() {
             },
             modifier = Modifier.fillMaxHeight().width(80.dp)
         ) {
-            val items = getNavItems()
-
-            items.forEach { item ->
+            items.forEachIndexed { index, item ->
                 val isSelected = currentDestination?.id == item.id
                 NavigationRailItem(
                     icon = {
@@ -388,7 +400,30 @@ class MainActivity : AppCompatActivity() {
                     selected = isSelected,
                     onClick = {
                         if (currentDestination?.id != item.id) {
-                            navController.navigate(item.id)
+                            val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
+                            val isForward = index > currentIndex
+
+                            val navOptions = navOptions {
+                                anim {
+                                    if (isForward) {
+                                        enter = R.anim.slide_in_right
+                                        exit = R.anim.slide_out_left
+                                        popEnter = R.anim.slide_in_left
+                                        popExit = R.anim.slide_out_right
+                                    } else {
+                                        enter = R.anim.slide_in_left
+                                        exit = R.anim.slide_out_right
+                                        popEnter = R.anim.slide_in_right
+                                        popExit = R.anim.slide_out_left
+                                    }
+                                }
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                    restoreState = true
+                            }
+                            navController.navigate(item.id, null, navOptions)
                         }
                     },
                     colors = NavigationRailItemDefaults.colors(

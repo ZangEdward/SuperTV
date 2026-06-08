@@ -166,6 +166,7 @@ data class NetDiskItem(
     val datetime: String = "",
     val size: String = "",
     val name: String = "", // 兼容不同 API
+    val note: String = "",
     @SerializedName("update_time")
     val updateTime: String = ""
 )
