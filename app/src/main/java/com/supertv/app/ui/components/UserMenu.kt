@@ -166,7 +166,13 @@ fun MainMenu(
                 
                 Text("当前用户", fontSize = 12.sp, color = TextSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(userInfo?.nickname?.ifBlank { userInfo.username } ?: "演示模式", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    val displayName = when {
+                        !userInfo?.nickname.isNullOrBlank() -> userInfo?.nickname
+                        !userInfo?.username.isNullOrBlank() -> userInfo?.username
+                        authRepo.getSavedUsername().isNotBlank() -> authRepo.getSavedUsername()
+                        else -> "已登录"
+                    }
+                    Text(displayName ?: "", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                     Spacer(Modifier.width(8.dp))
                     Surface(color = PrimaryGreen.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
                         Text("V2", color = PrimaryGreen, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
@@ -313,25 +319,14 @@ fun NodeSelectionMenu(
 ) {
     val scope = rememberCoroutineScope()
     val latencies = remember { mutableStateMapOf<String, Long>() }
-    val apiService = remember { RetrofitClient.getApiService() }
+    val speedTestService = remember { com.supertv.app.services.SpeedTestService() }
 
     // 开始测速
     LaunchedEffect(nodes) {
         nodes.forEach { node ->
             scope.launch {
-                try {
-                    val start = System.currentTimeMillis()
-                    // 尝试请求测速接口
-                    val response = apiService.speedTest(node.url)
-                    if (response.isSuccessful) {
-                        val end = System.currentTimeMillis()
-                        latencies[node.url] = end - start
-                    } else {
-                        latencies[node.url] = -1L
-                    }
-                } catch (_: Exception) {
-                    latencies[node.url] = -1L // 表示不可达
-                }
+                val latency = speedTestService.testLatency("${node.url}/icons/icon-512x512.png")
+                latencies[node.url] = if (latency == Long.MAX_VALUE) -1L else latency
             }
         }
     }

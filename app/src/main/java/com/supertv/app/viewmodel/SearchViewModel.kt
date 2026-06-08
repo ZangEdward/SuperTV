@@ -113,16 +113,21 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val response = apiService.search(query)
                 if (response.isSuccessful) {
                     _results.value = response.body() ?: emptyList()
+                } else {
+                    _error.value = "搜索失败: ${response.code()}"
                 }
             } catch (e: Exception) {
-                _error.value = "搜索失败: ${e.message}"
+                android.util.Log.e("SearchViewModel", "searchTV failed", e)
+                _error.value = "网络异常: ${e.message}"
             } finally {
                 _isSearching.value = false
             }
         }
         
-        store.addSearchHistory(query)
-        loadSearchHistory()
+        try {
+            store.addSearchHistory(query)
+            loadSearchHistory()
+        } catch (_: Exception) {}
     }
 
     /**
@@ -150,13 +155,18 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 if (_searchMode.value == 0) {
                     _searchQuery.value = query
+                    // PagingSource handles its own errors, but we can reset isSearching
+                    // isSearching is used for Shimmer effect
                 } else {
                     performNetDiskSearch(query)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SearchViewModel", "Search failed", e)
                 _error.value = "搜索异常: ${e.message}"
-                _isSearching.value = false
+            } finally {
+                if (_searchMode.value != 0) { // Paging results are handled by pagingItems.loadState
+                   _isSearching.value = false
+                }
             }
         }
 

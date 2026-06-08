@@ -60,6 +60,25 @@ class MainActivity : AppCompatActivity() {
             navHostFragment?.let { navHost ->
                 val navController = navHost.navController
                 
+                // 处理双击返回退出
+                onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        // 如果 NavController 可以返回，则由 NavController 处理
+                        if (navController.navigateUp()) {
+                            return
+                        }
+                        
+                        // 否则执行双击退出逻辑
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastBackPressTime < 2000) {
+                            finishAffinity()
+                        } else {
+                            lastBackPressTime = currentTime
+                            Toast.makeText(this@MainActivity, "再按一次返回键退出", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                })
+
                 // 绑定 Compose 导航栏 (自适应手机/平板)
                 binding.appBarMain.contentMain?.let { contentMain ->
                     val composeView = contentMain.bottomNavCompose
@@ -109,19 +128,6 @@ class MainActivity : AppCompatActivity() {
 
                 binding.navView?.setupWithNavController(navController)
             }
-
-            // 处理双击返回退出
-            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-                override fun handleOnBackPressed() {
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastBackPressTime < 2000) {
-                        finishAffinity()
-                    } else {
-                        lastBackPressTime = currentTime
-                        Toast.makeText(this@MainActivity, "再按一次返回键退出", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            })
 
         } catch (e: Exception) {
             Log.e("SuperTV", "MainActivity: Fatal error in onCreate", e)

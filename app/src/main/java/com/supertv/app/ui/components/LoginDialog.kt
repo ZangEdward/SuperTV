@@ -204,14 +204,6 @@ fun LoginDialog(
                         Text("登录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                 }
-
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.padding(top = 16.dp),
-                    enabled = !isLoading
-                ) {
-                    Text("跳过并进入首页", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
         }
     }

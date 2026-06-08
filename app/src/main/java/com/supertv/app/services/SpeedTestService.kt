@@ -11,9 +11,9 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 
 /**
- * 测速服�?- 对应原项目的 services/speedTestService.ts
+ * 测速服�?- 对应原项目的 services/speedTestService.ts
  *
- * 通过小样本并发RTT探测延迟，加权评分排�?
+ * 通过小样本并发RTT探测延迟，加权评分排�?
  */
 class SpeedTestService {
 
@@ -32,7 +32,7 @@ class SpeedTestService {
     val isTesting: StateFlow<Boolean> = _isTesting.asStateFlow()
 
     /**
-     * 测试单个URL的延�?
+     * 测试单个URL的延�?
      */
     suspend fun testLatency(url: String): Long {
         return withContext(Dispatchers.IO) {
@@ -40,11 +40,17 @@ class SpeedTestService {
             try {
                 val request = Request.Builder()
                     .url(url)
-                    .header("Range", "bytes=0-1024")
+                    .head() // 使用 HEAD 方法
+                    .header("Cache-Control", "no-store")
                     .build()
                 val response = client.newCall(request).execute()
+                val isSuccessful = response.isSuccessful
                 response.close()
-                System.currentTimeMillis() - startTime
+                if (isSuccessful) {
+                    System.currentTimeMillis() - startTime
+                } else {
+                    Long.MAX_VALUE
+                }
             } catch (e: Exception) {
                 Long.MAX_VALUE
             }
@@ -76,12 +82,12 @@ class SpeedTestService {
     }
 
     /**
-     * 计算加权评分 �?�?Selene _calculateSourceScore
-     * 综合延迟评分 (满分100)，数字越高越�?
+     * 计算加权评分 �?�?Selene _calculateSourceScore
+     * 综合延迟评分 (满分100)，数字越高越�?
      */
     fun calculateScore(latency: Long): Double {
         if (latency == Long.MAX_VALUE) return 0.0
-        // 延迟评分 �?线性映射，越低分越�?
+        // 延迟评分 �?线性映射，越低分越�?
         val pingScore = when {
             latency < 50 -> 100.0
             latency < 100 -> 90.0
@@ -95,7 +101,7 @@ class SpeedTestService {
     }
 
     /**
-     * 获取延迟对应的显示等�?(S/A/B/C/D)
+     * 获取延迟对应的显示等�?(S/A/B/C/D)
      */
     fun getLatencyGrade(latency: Long): String {
         return when {
@@ -110,7 +116,7 @@ class SpeedTestService {
     }
 
     /**
-     * 格式化延迟显�?
+     * 格式化延迟显�?
      */
     fun formatLatency(latency: Long): String {
         return when {
@@ -121,10 +127,10 @@ class SpeedTestService {
     }
 
     /**
-     * 获取最优节�?
+     * 获取最优节�?
      */
     /**
-     * 获取最优节�?(延迟最�?
+     * 获取最优节�?(延迟最�?
      */
     fun getBestNode(): String? {
         val sorted = _latencies.value.entries

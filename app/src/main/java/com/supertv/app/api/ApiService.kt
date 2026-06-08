@@ -14,16 +14,16 @@ interface ApiService {
 
     // ==================== 首页/豆瓣 ====================
 
-    @GET("api/v1/douban/hot")
+    @GET("api/douban/hot")
     suspend fun getDoubanHot(): Response<DoubanResponse>
 
-    @GET("api/v1/douban/recommend")
+    @GET("api/douban/recommend")
     suspend fun getDoubanRecommend(): Response<DoubanResponse>
 
-    @GET("api/v1/douban/new")
+    @GET("api/douban/new")
     suspend fun getDoubanNew(): Response<DoubanResponse>
 
-    @GET("api/v1/douban/category")
+    @GET("api/douban/category")
     suspend fun getDoubanCategory(
         @Query("type") type: String,
         @Query("page") page: Int = 1
@@ -31,21 +31,21 @@ interface ApiService {
 
     // ==================== 搜索 ====================
 
-    @GET("api/v1/search")
+    @GET("api/search")
     suspend fun search(
         @Query("q") query: String,
         @Query("source") source: String = "all",
         @Query("page") page: Int = 1
     ): Response<List<SearchResult>>
 
-    @GET("api/v1/search/suggest")
+    @GET("api/search/suggest")
     suspend fun getSuggestions(
         @Query("q") query: String
     ): Response<List<String>>
 
     // ==================== 详情 ====================
 
-    @GET("api/v1/detail")
+    @GET("api/detail")
     suspend fun getDetail(
         @Query("id") id: String,
         @Query("source") source: String
@@ -53,7 +53,7 @@ interface ApiService {
 
     // ==================== 剧集列表 ====================
 
-    @GET("api/v1/episodes")
+    @GET("api/episodes")
     suspend fun getEpisodes(
         @Query("id") id: String,
         @Query("source") source: String
@@ -61,7 +61,7 @@ interface ApiService {
 
     // ==================== 播放 ====================
 
-    @GET("api/v1/play")
+    @GET("api/play")
     suspend fun getPlayUrl(
         @Query("id") id: String,
         @Query("source") source: String,
@@ -70,31 +70,31 @@ interface ApiService {
 
     // ==================== 站点列表 ====================
 
-    @GET("api/v1/sites")
+    @GET("api/sites")
     suspend fun getSites(): Response<List<ApiSite>>
 
-    // ==================== 服务器配�?====================
+    // ==================== 服务器配?====================
 
-    @GET("api/v1/config")
+    @GET("api/config")
     suspend fun getServerConfig(): Response<ServerConfig>
 
     // ==================== 网盘搜索 ====================
 
-    @GET("api/v1/netdisk/search")
+    @GET("api/netdisk/search")
     suspend fun netDiskSearch(
         @Query("q") query: String
     ): Response<List<NetDiskItem>>
 
-    // ==================== 测�?====================
+    // ==================== 测?====================
 
-    @POST("api/v1/speedtest")
+    @POST("api/speedtest")
     suspend fun speedTest(
         @Query("url") url: String
     ): Response<SpeedTestResult>
 
     // ==================== 视频解析 ====================
 
-    @GET("api/v1/parse")
+    @GET("api/parse")
     suspend fun parseVideo(
         @Query("url") url: String
     ): Response<ParseResult>
@@ -111,54 +111,54 @@ interface ApiService {
 
     // ==================== 同步 ====================
 
-    @GET("api/v1/favorites")
+    @GET("api/favorites")
     suspend fun getFavorites(): Response<List<Favorite>>
 
-    @POST("api/v1/favorites/add")
+    @POST("api/favorites/add")
     suspend fun addFavorite(
         @Query("source") source: String,
         @Query("id") id: String,
         @Query("data") data: String
     ): Response<Map<String, Any>>
 
-    @POST("api/v1/favorites/remove")
+    @POST("api/favorites/remove")
     suspend fun removeFavorite(
         @Query("source") source: String,
         @Query("id") id: String
     ): Response<Map<String, Any>>
 
-    @GET("api/v1/playrecords")
+    @GET("api/playrecords")
     suspend fun getPlayRecords(): Response<List<PlayRecord>>
 
-    @POST("api/v1/playrecords/save")
+    @POST("api/playrecords/save")
     suspend fun savePlayRecord(
         @Query("data") data: String
     ): Response<Map<String, Any>>
 
-    @GET("api/v1/searchhistory")
+    @GET("api/searchhistory")
     suspend fun getSearchHistory(): Response<List<String>>
 
-    @POST("api/v1/searchhistory/add")
+    @POST("api/searchhistory/add")
     suspend fun addSearchHistory(
         @Query("keyword") keyword: String
     ): Response<Map<String, Any>>
 
-    @POST("api/v1/searchhistory/clear")
+    @POST("api/searchhistory/clear")
     suspend fun clearSearchHistory(): Response<Map<String, Any>>
 
     // ==================== LunaTV 增强功能 ====================
 
-    @GET("api/v1/shortdrama/hot")
+    @GET("api/shortdrama/hot")
     suspend fun getShortDramaHot(
         @Query("page") page: Int = 1
     ): Response<DoubanResponse>
 
-    @GET("api/v1/ai/recommend")
+    @GET("api/ai/recommend")
     suspend fun getAIRecommend(
         @Query("context") context: String = ""
     ): Response<AIRecommendResponse>
 
-    @GET("api/v1/calendar/release")
+    @GET("api/calendar/release")
     suspend fun getReleaseCalendar(): Response<ReleaseCalendarResponse>
 }
 
@@ -192,7 +192,7 @@ data class PlayUrlResponse(
 )
 
 /**
- * 测速结�?
+ * 测速结?
  */
 data class SpeedTestResult(
     val url: String = "",
