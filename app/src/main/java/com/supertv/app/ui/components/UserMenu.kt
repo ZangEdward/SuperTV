@@ -33,6 +33,7 @@ import com.supertv.app.data.ApiNodeService
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.supertv.app.model.*
@@ -317,9 +318,9 @@ fun ReleaseCalendarMenu(onBack: () -> Unit) {
                 Text("暂无上映信息", color = TextTertiary, modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyColumn {
-                    items(calendarItems) { item ->
-                        CalendarItem(item.date, item.title, item.type)
-                    }
+                            items(calendarItems) { item ->
+                                CalendarItem(item.date, item.title, item.type)
+                            }
                 }
             }
         }
@@ -360,21 +361,21 @@ fun WatchHistoryMenu(onBack: () -> Unit) {
                 Text("暂无播放记录", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
             } else {
                 LazyColumn {
-                    items(history) { item ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(
-                                model = item.cover,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
-                                Text("第 ${item.index} 集 · ${item.sourceName}", color = TextSecondary, fontSize = 11.sp)
+                            items(history) { item ->
+                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = item.cover,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
+                                        Text("第 ${item.index} 集 · ${item.sourceName}", color = TextSecondary, fontSize = 11.sp)
+                                    }
+                                }
                             }
-                        }
-                    }
                 }
             }
         }
@@ -401,21 +402,21 @@ fun FavoritesMenu(onBack: () -> Unit) {
                 Text("暂无收藏内容", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
             } else {
                 LazyColumn {
-                    items(favorites) { item ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(
-                                model = item.cover,
-                                contentDescription = null,
-                                modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
-                                Text("${item.sourceName} · ${item.year}", color = TextSecondary, fontSize = 11.sp)
+                            items(favorites) { item ->
+                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(
+                                        model = item.cover,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(4.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
+                                        Text("${item.sourceName} · ${item.year}", color = TextSecondary, fontSize = 11.sp)
+                                    }
+                                }
                             }
-                        }
-                    }
                 }
             }
         }
@@ -515,47 +516,47 @@ fun NodeSelectionMenu(
         Spacer(Modifier.height(8.dp))
 
         LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-            items(nodes) { node ->
-                val isSelected = node.url == selectedUrl
-                val latency = latencies[node.url]
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onNodeSelected(node) }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
-                        contentDescription = null,
-                        tint = if (isSelected) PrimaryGreen else TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(node.label, color = if (isSelected) PrimaryGreen else TextPrimary, fontSize = 15.sp)
-                    }
-                    
-                    // 显示延迟而不是网址
-                    if (latency != null) {
-                        val latencyColor = when {
-                            latency < 0 -> ErrorRed
-                            latency < 100 -> PrimaryGreen
-                            latency < 300 -> Color(0xFFFF9800) // Orange
-                            else -> ErrorRed
+                    items(nodes) { node ->
+                        val isSelected = node.url == selectedUrl
+                        val latency = latencies[node.url]
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onNodeSelected(node) }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = if (isSelected) PrimaryGreen else TextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(node.label, color = if (isSelected) PrimaryGreen else TextPrimary, fontSize = 15.sp)
+                            }
+                            
+                            // 显示延迟而不是网址
+                            if (latency != null) {
+                                val latencyColor = when {
+                                    latency < 0 -> ErrorRed
+                                    latency < 100 -> PrimaryGreen
+                                    latency < 300 -> Color(0xFFFF9800) // Orange
+                                    else -> ErrorRed
+                                }
+                                Text(
+                                    text = if (latency < 0) "不可达" else "${latency}ms",
+                                    color = latencyColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            } else {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
+                            }
                         }
-                        Text(
-                            text = if (latency < 0) "不可达" else "${latency}ms",
-                            color = latencyColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else {
-                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
                     }
-                }
-            }
         }
     }
 }

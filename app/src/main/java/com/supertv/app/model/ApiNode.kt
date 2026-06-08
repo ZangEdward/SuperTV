@@ -198,6 +198,46 @@ data class AIRecommendResponse(
 )
 
 /**
+ * 收藏信息
+ */
+data class Favorite(
+    val title: String = "",
+    @SerializedName("source_name")
+    val sourceName: String = "",
+    @SerializedName("search_title")
+    val searchTitle: String = "",
+    val cover: String = "",
+    val year: String = "",
+    val rating: String = "",
+    val type: String = "",
+    @SerializedName("save_time")
+    val saveTime: Long = 0
+)
+
+/**
+ * 播放记录
+ */
+data class PlayRecord(
+    val title: String = "",
+    @SerializedName("source_name")
+    val sourceName: String = "",
+    @SerializedName("search_title")
+    val searchTitle: String = "",
+    val cover: String = "",
+    val year: String = "",
+    val index: Int = 0,
+    @SerializedName("total_episodes")
+    val totalEpisodes: Int = 0,
+    @SerializedName("play_time")
+    val playTime: Int = 0,
+    @SerializedName("total_time")
+    val totalTime: Int = 0,
+    @SerializedName("save_time")
+    val saveTime: Long = 0,
+    val type: String = ""
+)
+
+/**
  * 上映日历项
  */
 data class ReleaseItem(
@@ -205,6 +245,13 @@ data class ReleaseItem(
     val title: String = "",
     val type: String = "",
     val id: String = ""
+)
+
+/**
+ * 上映日历响应
+ */
+data class ReleaseCalendarResponse(
+    val items: List<ReleaseItem> = emptyList()
 )
 
 /**

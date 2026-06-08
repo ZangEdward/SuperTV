@@ -127,8 +127,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                     val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) // 1: Sun, 2: Mon, ...
                     val bangumiIndex = if (today == 1) 6 else today - 2
                     
-                    val items = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
-                    val results = items.map { it.toSearchResult() }
+                    val bangumiItems = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
+                    val results = bangumiItems.map { it.toSearchResult() }
                     _animeUpdates.value = results
                 } else {
                     // Fallback to Douban
@@ -209,8 +209,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             val resp = apiService.getBangumiData("calendar")
             if (resp.isSuccessful) {
                 val body = resp.body()
-                val allItems = body?.flatMap { it.items } ?: emptyList()
-                val results = allItems.map { it.toSearchResult() }.distinctBy { it.id }
+                val allBangumiItems = body?.flatMap { it.items } ?: emptyList()
+                val results = allBangumiItems.map { it.toSearchResult() }.distinctBy { it.id }
                 _animeUpdates.value = results
                 store.saveCategoryCache("动漫", results)
             }

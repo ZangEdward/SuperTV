@@ -62,9 +62,9 @@ class Store(private val context: Context) {
         }
     }
 
-    fun removeFavorite(title: String, sourceName: String) {
+    fun removeFavorite(titleOrSearchTitle: String, sourceName: String) {
         val list = getFavorites().toMutableList()
-        list.removeAll { it.title == title && it.sourceName == sourceName }
+        list.removeAll { (it.title == titleOrSearchTitle || it.searchTitle == titleOrSearchTitle) && it.sourceName == sourceName }
         saveFavorites(list)
     }
 

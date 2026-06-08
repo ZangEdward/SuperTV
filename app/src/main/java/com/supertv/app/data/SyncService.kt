@@ -46,10 +46,10 @@ class SyncService private constructor(context: Context) {
                     val remote = remoteResponse.body() ?: emptyList<Favorite>()
                     val local = store.getFavorites()
                     // 合并：以服务器为主，补充本地独有
-                    val remoteKeys = remote.map { it.searchTitle + it.sourceName }.toSet()
+                    val remoteKeys = remote.map { (it.searchTitle.ifBlank { it.title }) + it.sourceName }.toSet()
                     val merged = remote.toMutableList()
                     for (fav in local) {
-                        val key = fav.searchTitle + fav.sourceName
+                        val key = (fav.searchTitle.ifBlank { fav.title }) + fav.sourceName
                         if (key !in remoteKeys) merged.add(fav)
                     }
                     // 更新本地

@@ -48,25 +48,27 @@ class DetailFragment : Fragment() {
                         isFavorite = false,
                         cachedEpisodes = emptySet(),
                         onEpisodeClick = { episode ->
+                            val currentDetail = detail
                             val intent = PlayerActivity.createIntent(
                                 context = requireContext(),
                                 url = episode.url,
-                                title = detail?.title ?: title,
-                                source = detail?.source ?: source,
-                                id = detail?.id ?: id
+                                title = currentDetail?.title ?: title,
+                                source = currentDetail?.source ?: source,
+                                id = currentDetail?.id ?: id
                             )
                             startActivity(intent)
                         },
                         onToggleFavorite = { /* TODO */ },
                         onBack = { findNavController().navigateUp() },
                         onPlayAll = {
-                            detail?.episodes?.firstOrNull()?.let { episode ->
+                            val currentDetail = detail
+                            currentDetail?.episodes?.firstOrNull()?.let { episode ->
                                 val intent = PlayerActivity.createIntent(
                                     context = requireContext(),
                                     url = episode.url,
-                                    title = detail.title,
-                                    source = detail.source,
-                                    id = detail.id
+                                    title = currentDetail.title,
+                                    source = currentDetail.source,
+                                    id = currentDetail.id
                                 )
                                 startActivity(intent)
                             }
