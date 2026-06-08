@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                                 if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
                             },
                             onSearchClick = { 
-                                navController.navigate(R.id.nav_search) {
+                                val searchNavOptions = navOptions {
                                     anim {
                                         enter = R.anim.slide_in_right
                                         exit = R.anim.slide_out_left
@@ -129,9 +129,10 @@ class MainActivity : AppCompatActivity() {
                                         popExit = R.anim.slide_out_right
                                     }
                                 }
+                                navController.navigate(R.id.nav_search, null, searchNavOptions)
                             },
                             onDownloadClick = { 
-                                navController.navigate(R.id.nav_slideshow) {
+                                val slideshowNavOptions = navOptions {
                                     anim {
                                         enter = R.anim.slide_in_right
                                         exit = R.anim.slide_out_left
@@ -139,6 +140,7 @@ class MainActivity : AppCompatActivity() {
                                         popExit = R.anim.slide_out_right
                                     }
                                 }
+                                navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
                             },
                             onThemeToggle = { mainViewModel.toggleTheme() },
                             isDarkTheme = isDarkTheme
@@ -157,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                                         putString("source", source)
                                         putString("title", title)
                                     }
-                                    navController.navigate(R.id.nav_detail, bundle) {
+                                    val detailNavOptions = navOptions {
                                         anim {
                                             enter = R.anim.slide_in_right
                                             exit = R.anim.slide_out_left
@@ -165,9 +167,10 @@ class MainActivity : AppCompatActivity() {
                                             popExit = R.anim.slide_out_right
                                         }
                                     }
+                                    navController.navigate(R.id.nav_detail, bundle, detailNavOptions)
                                 },
                                 onNavigateToDownloads = {
-                                    navController.navigate(R.id.nav_slideshow) {
+                                    val downloadsNavOptions = navOptions {
                                         anim {
                                             enter = R.anim.slide_in_right
                                             exit = R.anim.slide_out_left
@@ -175,6 +178,7 @@ class MainActivity : AppCompatActivity() {
                                             popExit = R.anim.slide_out_right
                                         }
                                     }
+                                    navController.navigate(R.id.nav_slideshow, null, downloadsNavOptions)
                                 }
                             )
                         }
