@@ -31,7 +31,7 @@ class LiveFragment : Fragment() {
                 val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
                 val authRepo = remember { AuthRepository.getInstance(context) }
                 var showUserMenu by remember { mutableStateOf(false) }
-                val isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
+                var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                 var showLoginDialog by remember { mutableStateOf(false) }
 
                 SuperTVTheme(darkTheme = isDarkTheme) {
@@ -40,8 +40,28 @@ class LiveFragment : Fragment() {
                             onUserClick = { 
                                 if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
                             },
-                            onSearchClick = { findNavController().navigate(R.id.action_nav_live_to_search) },
-                            onDownloadClick = { findNavController().navigate(R.id.nav_slideshow) },
+                            onSearchClick = { 
+                                val navOptions = androidx.navigation.navOptions {
+                                    anim {
+                                        enter = com.supertv.app.R.anim.slide_in_right
+                                        exit = com.supertv.app.R.anim.slide_out_left
+                                        popEnter = com.supertv.app.R.anim.slide_in_left
+                                        popExit = com.supertv.app.R.anim.slide_out_right
+                                    }
+                                }
+                                findNavController().navigate(R.id.action_nav_live_to_search, null, navOptions) 
+                            },
+                            onDownloadClick = { 
+                                val navOptions = androidx.navigation.navOptions {
+                                    anim {
+                                        enter = com.supertv.app.R.anim.slide_in_right
+                                        exit = com.supertv.app.R.anim.slide_out_left
+                                        popEnter = com.supertv.app.R.anim.slide_in_left
+                                        popExit = com.supertv.app.R.anim.slide_out_right
+                                    }
+                                }
+                                findNavController().navigate(R.id.nav_slideshow, null, navOptions) 
+                            },
                             onThemeToggle = { mainViewModel.toggleTheme() },
                             isDarkTheme = isDarkTheme
                         )
@@ -52,7 +72,19 @@ class LiveFragment : Fragment() {
                             UserMenu(
                                 onClose = { showUserMenu = false },
                                 onLogout = {
-                                    // Handle logout logic if needed
+                                    isLoggedIn = false
+                                    showLoginDialog = true
+                                },
+                                onNavigateToDetail = { id, source, title ->
+                                    val bundle = Bundle().apply {
+                                        putString("id", id)
+                                        putString("source", source)
+                                        putString("title", title)
+                                    }
+                                    findNavController().navigate(R.id.action_nav_live_to_detail, bundle)
+                                },
+                                onNavigateToDownloads = {
+                                    findNavController().navigate(R.id.nav_slideshow)
                                 }
                             )
                         }
@@ -60,6 +92,7 @@ class LiveFragment : Fragment() {
                         if (showLoginDialog) {
                             LoginDialog(
                                 onLoginSuccess = {
+                                    isLoggedIn = true
                                     showLoginDialog = false
                                 },
                                 onDismiss = { showLoginDialog = false }

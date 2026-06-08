@@ -49,7 +49,9 @@ enum class MenuPage {
 @Composable
 fun UserMenu(
     onClose: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onNavigateToDetail: (id: String, source: String, title: String) -> Unit = { _, _, _ -> },
+    onNavigateToDownloads: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val store = remember { Store.getInstance(context) }
@@ -126,6 +128,10 @@ fun UserMenu(
                                 onNavigateToFavorites = { currentPage = MenuPage.Favorites },
                                 onNavigateToSettings = { currentPage = MenuPage.Settings },
                                 onNavigateToAbout = { currentPage = MenuPage.About },
+                                onNavigateToDownloads = {
+                                    onNavigateToDownloads()
+                                    onClose()
+                                },
                                 onLogout = {
                                     val scope = CoroutineScope(Dispatchers.Main)
                                     scope.launch {
@@ -148,8 +154,20 @@ fun UserMenu(
                             )
                             MenuPage.AIRecommend -> AIRecommendMenu(onBack = { currentPage = MenuPage.Main })
                             MenuPage.ReleaseCalendar -> ReleaseCalendarMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.WatchHistory -> WatchHistoryMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.Favorites -> FavoritesMenu(onBack = { currentPage = MenuPage.Main })
+                            MenuPage.WatchHistory -> WatchHistoryMenu(
+                                onBack = { currentPage = MenuPage.Main },
+                                onDetailClick = { id, src, title ->
+                                    onNavigateToDetail(id, src, title)
+                                    onClose()
+                                }
+                            )
+                            MenuPage.Favorites -> FavoritesMenu(
+                                onBack = { currentPage = MenuPage.Main },
+                                onDetailClick = { id, src, title ->
+                                    onNavigateToDetail(id, src, title)
+                                    onClose()
+                                }
+                            )
                             MenuPage.Settings -> SettingsMenu(onBack = { currentPage = MenuPage.Main })
                             MenuPage.About -> AboutMenu(onBack = { currentPage = MenuPage.Main })
                         }
@@ -169,6 +187,7 @@ fun MainMenu(
     onNavigateToFavorites: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAbout: () -> Unit,
+    onNavigateToDownloads: () -> Unit,
     onLogout: () -> Unit
 ) {
     Column {
@@ -216,6 +235,7 @@ fun MainMenu(
         MenuItem(icon = Icons.Rounded.CalendarMonth, title = "即将上映日历", onClick = onNavigateToCalendar)
         MenuItem(icon = Icons.Rounded.History, title = "观看历史", onClick = onNavigateToHistory)
         MenuItem(icon = Icons.Rounded.Favorite, title = "我的收藏", onClick = onNavigateToFavorites)
+        MenuItem(icon = Icons.Rounded.FileDownload, title = "离线缓存", onClick = onNavigateToDownloads)
         MenuItem(icon = Icons.Rounded.Dns, title = "服务器节点", onClick = onNavigateToNodes)
         MenuItem(icon = Icons.Rounded.Settings, title = "偏好设置", onClick = onNavigateToSettings)
         MenuItem(icon = Icons.Rounded.Info, title = "关于我们", onClick = onNavigateToAbout)
@@ -343,7 +363,7 @@ fun CalendarItem(date: String, title: String, type: String) {
 
 
 @Composable
-fun WatchHistoryMenu(onBack: () -> Unit) {
+fun WatchHistoryMenu(onBack: () -> Unit, onDetailClick: (String, String, String) -> Unit) {
     val context = LocalContext.current
     val store = remember { Store.getInstance(context) }
     val history = remember { store.getPlayRecords() }
@@ -362,7 +382,13 @@ fun WatchHistoryMenu(onBack: () -> Unit) {
             } else {
                 LazyColumn {
                             items(history) { item ->
-                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onDetailClick(item.searchTitle.ifBlank { item.title }, item.sourceName, item.title) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     AsyncImage(
                                         model = item.cover,
                                         contentDescription = null,
@@ -384,7 +410,7 @@ fun WatchHistoryMenu(onBack: () -> Unit) {
 }
 
 @Composable
-fun FavoritesMenu(onBack: () -> Unit) {
+fun FavoritesMenu(onBack: () -> Unit, onDetailClick: (String, String, String) -> Unit) {
     val context = LocalContext.current
     val store = remember { Store.getInstance(context) }
     val favorites = remember { store.getFavorites() }
@@ -403,7 +429,13 @@ fun FavoritesMenu(onBack: () -> Unit) {
             } else {
                 LazyColumn {
                             items(favorites) { item ->
-                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onDetailClick(item.searchTitle.ifBlank { item.title }, item.sourceName, item.title) }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     AsyncImage(
                                         model = item.cover,
                                         contentDescription = null,

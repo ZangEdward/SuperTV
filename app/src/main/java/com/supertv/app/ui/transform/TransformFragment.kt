@@ -95,6 +95,11 @@ class TransformFragment : Fragment() {
                                 onLoginSuccess = {
                                     isLoggedIn = true
                                     showLoginDialog = false
+                                    // 登录后同步数据
+                                    val syncService = com.supertv.app.data.SyncService.getInstance(requireContext())
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                        syncService.syncAll()
+                                    }
                                     viewModel.refresh()
                                 },
                                 onDismiss = {
@@ -109,6 +114,17 @@ class TransformFragment : Fragment() {
                                 onLogout = {
                                     isLoggedIn = false
                                     showLoginDialog = true
+                                },
+                                onNavigateToDetail = { id, source, title ->
+                                    val bundle = Bundle().apply {
+                                        putString("id", id)
+                                        putString("source", source)
+                                        putString("title", title)
+                                    }
+                                    findNavController().navigate(R.id.action_nav_transform_to_detail, bundle)
+                                },
+                                onNavigateToDownloads = {
+                                    findNavController().navigate(R.id.action_nav_transform_to_slideshow)
                                 }
                             )
                         }
@@ -136,8 +152,28 @@ class TransformFragment : Fragment() {
                                     onUserClick = { 
                                         if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
                                     },
-                                    onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
-                                    onDownloadClick = { findNavController().navigate(R.id.action_nav_transform_to_slideshow) },
+                                    onSearchClick = { 
+                                        val navOptions = androidx.navigation.navOptions {
+                                            anim {
+                                                enter = com.supertv.app.R.anim.slide_in_right
+                                                exit = com.supertv.app.R.anim.slide_out_left
+                                                popEnter = com.supertv.app.R.anim.slide_in_left
+                                                popExit = com.supertv.app.R.anim.slide_out_right
+                                            }
+                                        }
+                                        findNavController().navigate(R.id.action_nav_transform_to_search, null, navOptions) 
+                                    },
+                                    onDownloadClick = { 
+                                        val navOptions = androidx.navigation.navOptions {
+                                            anim {
+                                                enter = com.supertv.app.R.anim.slide_in_right
+                                                exit = com.supertv.app.R.anim.slide_out_left
+                                                popEnter = com.supertv.app.R.anim.slide_in_left
+                                                popExit = com.supertv.app.R.anim.slide_out_right
+                                            }
+                                        }
+                                        findNavController().navigate(R.id.action_nav_transform_to_slideshow, null, navOptions) 
+                                    },
                                     onThemeToggle = { mainViewModel.toggleTheme() },
                                     isDarkTheme = isDarkTheme
                                 )

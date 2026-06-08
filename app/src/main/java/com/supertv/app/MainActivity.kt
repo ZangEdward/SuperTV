@@ -45,6 +45,10 @@ import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.components.LoginDialog
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
+import com.supertv.app.data.SyncService
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 class MainActivity : AppCompatActivity() {
 
@@ -154,24 +158,10 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     SuperTVTheme(darkTheme = isDarkTheme) {
-                        Column {
-                            if (!useSidebar) {
-                                GlobalHeader(
-                                    onUserClick = { 
-                                        if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
-                                    },
-                                    onSearchClick = { navController.navigate(R.id.nav_search) },
-                                    onDownloadClick = { navController.navigate(R.id.nav_slideshow) },
-                                    onThemeToggle = { mainViewModel.toggleTheme() },
-                                    isDarkTheme = isDarkTheme
-                                )
-                            }
-                            
-                            if (useSidebar) {
-                                ComposeSideNavBar(navController)
-                            } else {
-                                ComposeBottomNavBar(navController)
-                            }
+                        if (useSidebar) {
+                            ComposeSideNavBar(navController)
+                        } else {
+                            ComposeBottomNavBar(navController)
                         }
 
                         if (showUserMenu) {
@@ -180,6 +170,17 @@ class MainActivity : AppCompatActivity() {
                                 onLogout = {
                                     isLoggedIn = false
                                     showLoginDialog = true
+                                },
+                                onNavigateToDetail = { id, source, title ->
+                                    val bundle = Bundle().apply {
+                                        putString("id", id)
+                                        putString("source", source)
+                                        putString("title", title)
+                                    }
+                                    navController.navigate(R.id.nav_detail, bundle)
+                                },
+                                onNavigateToDownloads = {
+                                    navController.navigate(R.id.nav_slideshow)
                                 }
                             )
                         }
@@ -189,6 +190,11 @@ class MainActivity : AppCompatActivity() {
                                 onLoginSuccess = {
                                     isLoggedIn = true
                                     showLoginDialog = false
+                                    // 登录后同步数据
+                                    val syncService = com.supertv.app.data.SyncService.getInstance(this@MainActivity)
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                        syncService.syncAll()
+                                    }
                                 },
                                 onDismiss = { showLoginDialog = false }
                             )
