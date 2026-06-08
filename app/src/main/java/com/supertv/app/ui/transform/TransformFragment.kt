@@ -248,6 +248,7 @@ fun HomeScreen(
     val recommended by viewModel.recommended.collectAsState(initial = emptyList())
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
+    val isLoading by viewModel.isLoading.collectAsState()
     
     Column(
         modifier = Modifier
@@ -296,6 +297,12 @@ fun HomeScreen(
                         VideoCardRow(items = animeUpdates, onClick = onItemClick)
                     }
                 }
+                "综艺" -> {
+                    item {
+                        SectionHeader("热门综艺")
+                        VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                    }
+                }
                 "短剧" -> {
                     item {
                         SectionHeader("热门短剧")
@@ -305,7 +312,11 @@ fun HomeScreen(
                 else -> {
                     item {
                         SectionHeader(selectedCategory)
-                        Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (isLoading) {
+                            Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

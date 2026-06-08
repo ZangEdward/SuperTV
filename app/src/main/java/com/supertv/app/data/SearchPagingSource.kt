@@ -14,8 +14,11 @@ class SearchPagingSource(
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, SearchResult> {
         val position = params.key ?: 1
         return try {
-            val response = apiService.search(query, source, position)
-            val results = if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
+            // 注意：supertvold 的 api/search 可能不支持分页参数，或者参数名不同
+            // 这里我们保持 position 但处理包装类
+            val response = apiService.search(query, source)
+            val body = response.body()
+            val results = body?.results ?: body?.data ?: emptyList()
             
             LoadResult.Page(
                 data = results,

@@ -37,6 +37,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 enum class MenuPage {
     Main, NodeSelection, AIRecommend, ReleaseCalendar
 }
@@ -71,24 +74,36 @@ fun UserMenu(
 
     Dialog(
         onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
     ) {
+        // 使用 fillMaxSize 并确保背景覆盖全屏
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f))
+                .background(Color.Black.copy(alpha = 0.7f))
                 .clickable { onClose() },
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier
-                    .width(320.dp)
+                    .widthIn(max = 400.dp)
+                    .fillMaxWidth(0.85f)
+                    .padding(vertical = 24.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .clickable(enabled = false) { },
                 color = BackgroundCard,
                 tonalElevation = 8.dp
             ) {
-                Column(modifier = Modifier.padding(vertical = 16.dp)) {
+                // 添加滚动支持，适配横屏
+                Column(
+                    modifier = Modifier
+                        .padding(vertical = 8.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     AnimatedContent(
                         targetState = currentPage,
                         transitionSpec = {

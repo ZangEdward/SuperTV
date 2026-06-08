@@ -8,25 +8,36 @@ import retrofit2.http.POST
 import retrofit2.http.Query
 
 /**
- * API接口定义 - 对应原项目的 services/api.ts
+ * API接口定义 - 对齐 supertvold & selene
  */
 interface ApiService {
 
     // ==================== 首页/豆瓣 ====================
 
-    @GET("api/douban/hot")
+    @GET("api/douban")
+    suspend fun getDoubanData(
+        @Query("type") type: String,
+        @Query("tag") tag: String,
+        @Query("pageSize") pageSize: Int = 20,
+        @Query("pageStart") pageStart: Int = 0
+    ): Response<DoubanResponse>
+
+    // 为了兼容旧代码，保留这些便捷方法，但内部调用 getDoubanData
+    @GET("api/douban?type=movie&tag=热门")
     suspend fun getDoubanHot(): Response<DoubanResponse>
 
-    @GET("api/douban/recommend")
+    @GET("api/douban?type=movie&tag=豆瓣高分")
     suspend fun getDoubanRecommend(): Response<DoubanResponse>
 
-    @GET("api/douban/new")
+    @GET("api/douban?type=movie&tag=最新")
     suspend fun getDoubanNew(): Response<DoubanResponse>
 
-    @GET("api/douban/category")
+    @GET("api/douban")
     suspend fun getDoubanCategory(
         @Query("type") type: String,
-        @Query("page") page: Int = 1
+        @Query("tag") tag: String,
+        @Query("pageSize") pageSize: Int = 20,
+        @Query("pageStart") pageStart: Int = 0
     ): Response<DoubanResponse>
 
     // ==================== 搜索 ====================
@@ -34,11 +45,10 @@ interface ApiService {
     @GET("api/search")
     suspend fun search(
         @Query("q") query: String,
-        @Query("source") source: String = "all",
-        @Query("page") page: Int = 1
-    ): Response<List<SearchResult>>
+        @Query("source") source: String = "all"
+    ): Response<SearchResponse>
 
-    @GET("api/search/suggest")
+    @GET("api/search/suggestions")
     suspend fun getSuggestions(
         @Query("q") query: String
     ): Response<List<String>>
@@ -70,12 +80,12 @@ interface ApiService {
 
     // ==================== 站点列表 ====================
 
-    @GET("api/sites")
+    @GET("api/search/resources")
     suspend fun getSites(): Response<List<ApiSite>>
 
-    // ==================== 服务器配?====================
+    // ==================== 服务器配置 ====================
 
-    @GET("api/config")
+    @GET("api/server-config")
     suspend fun getServerConfig(): Response<ServerConfig>
 
     // ==================== 网盘搜索 ====================
@@ -85,7 +95,7 @@ interface ApiService {
         @Query("q") query: String
     ): Response<List<NetDiskItem>>
 
-    // ==================== 测?====================
+    // ==================== 测速 ====================
 
     @POST("api/speedtest")
     suspend fun speedTest(
@@ -169,9 +179,9 @@ data class LoginRequest(
 
 data class LoginResponse(
     val ok: Boolean = false,
-    val success: Boolean = false, // 兼容性保留
+    val success: Boolean = false,
     val error: String = "",
-    val message: String = "", // 兼容性保留
+    val message: String = "",
     val token: String = "",
     val user: UserInfo? = null
 )
@@ -192,7 +202,7 @@ data class PlayUrlResponse(
 )
 
 /**
- * 测速结?
+ * 测速结果
  */
 data class SpeedTestResult(
     val url: String = "",

@@ -5,9 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.Store
-import com.supertv.app.model.DoubanItem
-import com.supertv.app.model.PlayRecord
-import com.supertv.app.model.SearchResult
+import com.supertv.app.model.*
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -26,14 +24,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _recommended = MutableStateFlow<List<SearchResult>>(emptyList())
     val recommended: StateFlow<List<SearchResult>> = _recommended.asStateFlow()
 
-    private val _newContent = MutableStateFlow<List<SearchResult>>(emptyList())
-    val newContent: StateFlow<List<SearchResult>> = _newContent.asStateFlow()
-
-    /** 动画每日更新 �?�?Selene 每日放�?*/
     private val _animeUpdates = MutableStateFlow<List<SearchResult>>(emptyList())
     val animeUpdates: StateFlow<List<SearchResult>> = _animeUpdates.asStateFlow()
 
-    /** 短剧分类 */
     private val _shortDramas = MutableStateFlow<List<SearchResult>>(emptyList())
     val shortDramas: StateFlow<List<SearchResult>> = _shortDramas.asStateFlow()
 
@@ -48,65 +41,114 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun selectCategory(category: String) {
-        _selectedCategory.value = category
+        if (_selectedCategory.value != category) {
+            _selectedCategory.value = category
+            loadData()
+        }
     }
 
     private fun loadData() {
+        val category = _selectedCategory.value
         viewModelScope.launch {
             _isLoading.value = true
 
-            // Load remote data in parallel
             try {
-                coroutineScope {
-                    launch {
-                        try {
-                            val hotResult = apiService.getDoubanHot()
-                            if (hotResult.isSuccessful) {
-                                _hotMovies.value = hotResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("TransformViewModel", "Failed to load hot movies", e)
-                        }
-                    }
-
-                    launch {
-                        try {
-                            val recommendResult = apiService.getDoubanRecommend()
-                            if (recommendResult.isSuccessful) {
-                                _recommended.value = recommendResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("TransformViewModel", "Failed to load recommended", e)
-                        }
-                    }
-
-                    launch {
-                        try {
-                            val animeResult = apiService.getDoubanCategory("anime", 1)
-                            if (animeResult.isSuccessful) {
-                                _animeUpdates.value = animeResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("TransformViewModel", "Failed to load anime updates", e)
-                        }
-                    }
-
-                    launch {
-                        try {
-                            val shortDramaResult = apiService.getShortDramaHot(1)
-                            if (shortDramaResult.isSuccessful) {
-                                _shortDramas.value = shortDramaResult.body()?.items?.map { it.toSearchResult() } ?: emptyList()
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("TransformViewModel", "Failed to load short dramas", e)
-                        }
-                    }
+                if (category == "热门") {
+                    loadHomeData()
+                } else {
+                    loadCategoryData(category)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("TransformViewModel", "Fatal error in loadData", e)
+                android.util.Log.e("TransformViewModel", "Error in loadData for $category", e)
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    private suspend fun loadHomeData() = coroutineScope {
+        launch {
+            try {
+                val resp = apiService.getDoubanData("movie", "热门")
+                if (resp.isSuccessful) {
+                    val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                    _hotMovies.value = items.map { it.toSearchResult() }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TransformViewModel", "Failed to load hot movies", e)
+            }
+        }
+
+        launch {
+            try {
+                val resp = apiService.getDoubanData("movie", "豆瓣高分")
+                if (resp.isSuccessful) {
+                    val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                    _recommended.value = items.map { it.toSearchResult() }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TransformViewModel", "Failed to load recommended", e)
+            }
+        }
+
+        launch {
+            try {
+                val resp = apiService.getDoubanData("tv", "动漫")
+                if (resp.isSuccessful) {
+                    val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                    _animeUpdates.value = items.map { it.toSearchResult() }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TransformViewModel", "Failed to load anime", e)
+            }
+        }
+
+        launch {
+            try {
+                val resp = apiService.getShortDramaHot(1)
+                if (resp.isSuccessful) {
+                    val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                    _shortDramas.value = items.map { it.toSearchResult() }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("TransformViewModel", "Failed to load short dramas", e)
+            }
+        }
+    }
+
+    private suspend fun loadCategoryData(category: String) {
+        val (type, tag) = when (category) {
+            "电影" -> "movie" to "热门"
+            "剧集" -> "tv" to "热门"
+            "动漫" -> "tv" to "动漫"
+            "综艺" -> "tv" to "综艺"
+            "短剧" -> {
+                val resp = apiService.getShortDramaHot(1)
+                if (resp.isSuccessful) {
+                    val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                    _shortDramas.value = items.map { it.toSearchResult() }
+                }
+                return
+            }
+            else -> "movie" to category
+        }
+
+        try {
+            val resp = apiService.getDoubanData(type, tag)
+            if (resp.isSuccessful) {
+                val items = resp.body()?.list?.ifEmpty { resp.body()?.items } ?: emptyList()
+                val results = items.map { it.toSearchResult() }
+                
+                // 根据分类更新对应的 StateFlow，以便 Fragment 显示
+                when (category) {
+                    "电影" -> _recommended.value = results
+                    "剧集" -> _hotMovies.value = results
+                    "动漫" -> _animeUpdates.value = results
+                    "综艺" -> _animeUpdates.value = results // 借用 animeUpdates 展示综艺
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TransformViewModel", "Failed to load category $category", e)
         }
     }
 
@@ -118,9 +160,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 private fun DoubanItem.toSearchResult() = SearchResult(
     id = id,
     title = title,
-    cover = cover,
+    cover = cover.ifBlank { poster },
     year = year,
-    rating = rating,
+    rating = rating.ifBlank { rate },
     source = "douban",
     sourceName = sourceName.ifBlank { "豆瓣" },
     desc = desc

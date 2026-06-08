@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
@@ -94,23 +96,34 @@ class MainActivity : AppCompatActivity() {
                                 constraintSet.clone(layout)
                                 
                                 if (useSidebar) {
-                                    // 侧边栏模式 (Tablet)
+                                    // 侧边栏模式 (Tablet / Landscape)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.TOP)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
                                     constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
                                     
+                                    // 确保 NavHost 铺满剩余空间
                                     constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END)
+                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
                                     constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
+                                    
+                                    // 更新宽度
+                                    constraintSet.constrainWidth(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
+                                    constraintSet.constrainHeight(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.MATCH_CONSTRAINT)
                                 } else {
-                                    // 底部栏模式 (Mobile)
+                                    // 底部栏模式 (Mobile / Portrait)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
                                     constraintSet.connect(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.BOTTOM)
                                     constraintSet.clear(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
                                     
                                     constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.START, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.START)
+                                    constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.END, androidx.constraintlayout.widget.ConstraintSet.PARENT_ID, androidx.constraintlayout.widget.ConstraintSet.END)
                                     constraintSet.connect(R.id.nav_host_fragment_content_main, androidx.constraintlayout.widget.ConstraintSet.BOTTOM, R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.TOP)
+                                    
+                                    // 更新尺寸
+                                    constraintSet.constrainWidth(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.MATCH_CONSTRAINT)
+                                    constraintSet.constrainHeight(R.id.bottom_nav_compose, androidx.constraintlayout.widget.ConstraintSet.WRAP_CONTENT)
                                 }
                                 constraintSet.applyTo(layout)
                             }
@@ -143,7 +156,7 @@ class MainActivity : AppCompatActivity() {
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth().height(80.dp)
+            modifier = Modifier.fillMaxWidth().height(72.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -160,7 +173,7 @@ class MainActivity : AppCompatActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(72.dp)
+                            .width(80.dp)
                             .clickable {
                                 if (currentDestination?.id != item.id) {
                                     navController.navigate(item.id)
@@ -176,7 +189,7 @@ class MainActivity : AppCompatActivity() {
                                 imageVector = item.icon,
                                 contentDescription = stringResource(item.labelRes),
                                 tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
@@ -208,7 +221,7 @@ class MainActivity : AppCompatActivity() {
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
             },
-            modifier = Modifier.fillMaxHeight()
+            modifier = Modifier.fillMaxHeight().width(80.dp)
         ) {
             val items = getNavItems()
 
@@ -216,10 +229,10 @@ class MainActivity : AppCompatActivity() {
                 val isSelected = currentDestination?.id == item.id
                 NavigationRailItem(
                     icon = {
-                        Icon(item.icon, contentDescription = stringResource(item.labelRes))
+                        Icon(item.icon, contentDescription = stringResource(item.labelRes), modifier = Modifier.size(26.dp))
                     },
                     label = {
-                        Text(stringResource(item.labelRes))
+                        Text(stringResource(item.labelRes), fontSize = 11.sp)
                     },
                     selected = isSelected,
                     onClick = {

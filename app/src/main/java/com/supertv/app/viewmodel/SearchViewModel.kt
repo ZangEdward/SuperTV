@@ -112,7 +112,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val response = apiService.search(query)
                 if (response.isSuccessful) {
-                    _results.value = response.body() ?: emptyList()
+                    val body = response.body()
+                    _results.value = body?.results ?: body?.data ?: emptyList()
                 } else {
                     _error.value = "搜索失败: ${response.code()}"
                 }

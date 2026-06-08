@@ -10,14 +10,8 @@ object ApiNodeService {
 
     fun getNodes(context: Context): Array<ApiNode> {
         return try {
-            // 显式使用 UTF-8 编码读取，并处理可能的异常
-            val inputStream = context.assets.open(ASSET_FILE)
-            val size = inputStream.available()
-            val buffer = ByteArray(size)
-            inputStream.read(buffer)
-            inputStream.close()
-            val json = String(buffer, Charset.forName("UTF-8"))
-            
+            // 使用 bufferedReader 并指定 UTF-8 确保编码正确
+            val json = context.assets.open(ASSET_FILE).bufferedReader(Charsets.UTF_8).use { it.readText() }
             Gson().fromJson(json, Array<ApiNode>::class.java)
         } catch (e: Exception) {
             android.util.Log.e("ApiNodeService", "Failed to load nodes: ${e.message}")

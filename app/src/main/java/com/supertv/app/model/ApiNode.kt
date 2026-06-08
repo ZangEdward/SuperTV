@@ -20,19 +20,30 @@ data class ApiNode(
 )
 
 /**
- * 视频搜索结果�?
+ * 视频搜索结果
  */
 data class SearchResult(
     val title: String = "",
     val cover: String = "",
+    val poster: String = "", // 兼容 supertvold
     val source: String = "",
+    @SerializedName("source_name")
     val sourceName: String = "",
     val id: String = "",
     val year: String = "",
     val rating: String = "",
+    val rate: String = "", // 兼容 supertvold
     val desc: String = "",
     val type: String = "",
     val episodes: List<Episode> = emptyList()
+)
+
+/**
+ * 搜索响应包装 (supertvold 风格)
+ */
+data class SearchResponse(
+    val results: List<SearchResult>? = null,
+    val data: List<SearchResult>? = null // 兼容部分 API 返回 data 字段
 )
 
 /**
@@ -52,15 +63,19 @@ data class VideoDetail(
     val id: String = "",
     val title: String = "",
     val cover: String = "",
+    val poster: String = "", // 兼容 supertvold
     val desc: String = "",
     val year: String = "",
     val area: String = "",
     val director: String = "",
     val actor: String = "",
     val source: String = "",
+    @SerializedName("source_name")
     val sourceName: String = "",
     val episodes: List<Episode> = emptyList(),
+    @SerializedName("episodes_titles")
     val episodesTitles: List<String> = emptyList(),
+    @SerializedName("total_episodes")
     val totalEpisodes: Int = 0
 )
 
@@ -71,45 +86,23 @@ data class DoubanItem(
     val id: String = "",
     val title: String = "",
     val cover: String = "",
+    val poster: String = "", // 兼容 supertvold
     val year: String = "",
     val rating: String = "",
+    val rate: String = "", // 兼容 supertvold
     val desc: String = "",
+    @SerializedName("source_name")
     val sourceName: String = ""
 )
 
 /**
- * 豆瓣响应
+ * 豆瓣响应 (supertvold 风格)
  */
 data class DoubanResponse(
-    val items: List<DoubanItem> = emptyList()
-)
-
-/**
- * 收藏�?
- */
-data class Favorite(
-    val cover: String = "",
-    val title: String = "",
-    val sourceName: String = "",
-    val totalEpisodes: Int = 0,
-    val searchTitle: String = "",
-    val year: String = "",
-    val saveTime: Long = 0L
-)
-
-/**
- * 播放记录
- */
-data class PlayRecord(
-    val title: String = "",
-    val sourceName: String = "",
-    val cover: String = "",
-    val index: Int = 0,
-    val totalEpisodes: Int = 0,
-    val playTime: Long = 0L,
-    val totalTime: Long = 0L,
-    val saveTime: Long = 0L,
-    val year: String = ""
+    val code: Int = 0,
+    val message: String = "",
+    val list: List<DoubanItem> = emptyList(),
+    val items: List<DoubanItem> = emptyList() // 兼容性保留
 )
 
 /**
@@ -123,10 +116,11 @@ data class ApiSite(
 )
 
 /**
- * 服务器配�?
+ * 服务器配置
  */
 data class ServerConfig(
     val SiteName: String = "",
+    @SerializedName("StorageType")
     val StorageType: String = "localstorage"
 )
 
@@ -143,7 +137,7 @@ data class DLNADevice(
 )
 
 /**
- * 网盘搜索�?
+ * 网盘搜索项
  */
 data class NetDiskItem(
     val source: String = "",
@@ -197,4 +191,3 @@ data class ReleaseItem(
 data class ReleaseCalendarResponse(
     val items: List<ReleaseItem> = emptyList()
 )
-
