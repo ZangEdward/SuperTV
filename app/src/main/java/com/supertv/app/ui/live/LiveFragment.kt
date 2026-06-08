@@ -18,8 +18,10 @@ import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.viewmodel.MainViewModel
 import com.supertv.app.data.AuthRepository
 
+import androidx.fragment.app.activityViewModels
+
 class LiveFragment : Fragment() {
-    private val mainViewModel: MainViewModel by viewModels()
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,

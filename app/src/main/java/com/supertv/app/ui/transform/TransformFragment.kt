@@ -54,9 +54,11 @@ import kotlinx.coroutines.launch
 import com.supertv.app.ui.components.GlobalHeader
 import com.supertv.app.viewmodel.MainViewModel
 
+import androidx.fragment.app.activityViewModels
+
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
-    private val mainViewModel: MainViewModel by viewModels()
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
