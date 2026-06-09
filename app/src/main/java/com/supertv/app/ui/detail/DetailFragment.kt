@@ -12,6 +12,8 @@ import androidx.navigation.fragment.findNavController
 import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.ui.player.PlayerActivity
 import com.supertv.app.viewmodel.SearchViewModel
+import com.supertv.app.viewmodel.MainViewModel
+import androidx.fragment.app.activityViewModels
 
 /**
  * 视频详情 Fragment
@@ -19,6 +21,7 @@ import com.supertv.app.viewmodel.SearchViewModel
 class DetailFragment : Fragment() {
 
     private val viewModel: SearchViewModel by viewModels()
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -38,7 +41,8 @@ class DetailFragment : Fragment() {
 
         return ComposeView(requireContext()).apply {
             setContent {
-                SuperTVTheme {
+                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                SuperTVTheme(darkTheme = isDarkTheme) {
                     val detail by viewModel.detail.collectAsState()
                     val isLoading by viewModel.isLoadingDetail.collectAsState()
                     val allSources by viewModel.allSources.collectAsState()

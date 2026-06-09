@@ -88,6 +88,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadHomeData() = coroutineScope {
+        val repository = com.supertv.app.data.SearchRepository(apiService)
+
         launch {
             try {
                 val resp = apiService.getDoubanData("movie", "热门")
@@ -98,6 +100,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                     _hotMovies.value = results
                     // 只有热门主数据缓存
                     store.saveCategoryCache("热门", results)
+                    
+                    launch {
+                        val matched = results.map { item ->
+                            repository.aggressiveSearch(item.title).firstOrNull() ?: item
+                        }
+                        _hotMovies.value = matched
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TransformViewModel", "Failed to load hot movies", e)
@@ -110,7 +119,15 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    _recommended.value = items.map { it.toSearchResult() }
+                    val results = items.map { it.toSearchResult() }
+                    _recommended.value = results
+                    
+                    launch {
+                        val matched = results.map { item ->
+                            repository.aggressiveSearch(item.title).firstOrNull() ?: item
+                        }
+                        _recommended.value = matched
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TransformViewModel", "Failed to load recommended", e)
@@ -123,20 +140,33 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val resp = apiService.getBangumiData("calendar")
                 if (resp.isSuccessful) {
                     val body = resp.body()
-                    // 取今天的更新 (0: Mon, 1: Tue, ..., 6: Sun)
-                    val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) // 1: Sun, 2: Mon, ...
+                    val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
                     val bangumiIndex = if (today == 1) 6 else today - 2
                     
                     val bangumiItems = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
                     val results = bangumiItems.map { it.toSearchResult() }
                     _animeUpdates.value = results
+                    
+                    launch {
+                        val matched = results.map { item ->
+                            repository.aggressiveSearch(item.title).firstOrNull() ?: item
+                        }
+                        _animeUpdates.value = matched
+                    }
                 } else {
-                    // Fallback to Douban
                     val doubanResp = apiService.getDoubanData("tv", "动漫")
                     if (doubanResp.isSuccessful) {
                         val body = doubanResp.body()
                         val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                        _animeUpdates.value = items.map { it.toSearchResult() }
+                        val results = items.map { it.toSearchResult() }
+                        _animeUpdates.value = results
+                        
+                        launch {
+                            val matched = results.map { item ->
+                                repository.aggressiveSearch(item.title).firstOrNull() ?: item
+                            }
+                            _animeUpdates.value = matched
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -150,7 +180,15 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    _shortDramas.value = items.map { it.toSearchResult() }
+                    val results = items.map { it.toSearchResult() }
+                    _shortDramas.value = results
+                    
+                    launch {
+                        val matched = results.map { item ->
+                            repository.aggressiveSearch(item.title).firstOrNull() ?: item
+                        }
+                        _shortDramas.value = matched
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TransformViewModel", "Failed to load short dramas", e)
@@ -189,18 +227,33 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 
-                // 保存缓存
+                // 保存基础缓存 (豆瓣元数据)
                 store.saveCategoryCache(category, results)
 
-                // 根据分类更新对应的 StateFlow，以便 Fragment 显示
-                when (category) {
-                    "电影" -> _recommended.value = results
-                    "剧集" -> _hotMovies.value = results
-                    "综艺" -> _animeUpdates.value = results // 借用 animeUpdates 展示综艺
+                // 立即更新 UI (先显示豆瓣数据)
+                updateCategoryFlow(category, results)
+
+                // 后台匹配播放源 (对齐 supertvold 逻辑)
+                viewModelScope.launch {
+                    val repository = com.supertv.app.data.SearchRepository(apiService)
+                    val matchedResults = results.map { item ->
+                        // 激进搜索匹配后台
+                        val playable = repository.aggressiveSearch(item.title)
+                        playable.firstOrNull() ?: item
+                    }
+                    updateCategoryFlow(category, matchedResults)
                 }
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load category $category", e)
+        }
+    }
+
+    private fun updateCategoryFlow(category: String, results: List<SearchResult>) {
+        when (category) {
+            "电影" -> _recommended.value = results
+            "剧集" -> _hotMovies.value = results
+            "综艺" -> _animeUpdates.value = results
         }
     }
 

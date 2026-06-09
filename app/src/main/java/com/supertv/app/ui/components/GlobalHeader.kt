@@ -56,7 +56,7 @@ fun GlobalHeader(
                 .height(40.dp)
                 .clickable { onSearchClick() },
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
             border = null
         ) {
             Row(

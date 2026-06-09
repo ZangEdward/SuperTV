@@ -448,12 +448,15 @@ fun SectionHeader(title: String) {
 @Composable
 fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
     if (isGrid) {
+        val configuration = LocalConfiguration.current
+        val columns = if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 5 else 3
+        
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.heightIn(max = 2000.dp) // 给一个足够大的高度限制
+            columns = GridCells.Fixed(columns),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.heightIn(max = 5000.dp)
         ) {
             items(items) { item ->
                 PosterCard(result = item, onClick = { onClick(item) })

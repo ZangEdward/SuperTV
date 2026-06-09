@@ -97,8 +97,8 @@ class MainActivity : AppCompatActivity() {
 
                 // 绑定 全局 Header
                 binding.appBarMain.contentMain?.globalHeaderCompose?.setContent {
-                    val mainViewModel: MainViewModel = viewModel()
-                    val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                    val viewModel: MainViewModel = viewModel()
+                    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
                     val authRepo = remember { AuthRepository.getInstance(this@MainActivity) }
                     var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                     var showUserMenu by remember { mutableStateOf(false) }
@@ -120,36 +120,41 @@ class MainActivity : AppCompatActivity() {
                     val showHeader = currentDestination?.id == R.id.nav_transform
 
                     SuperTVTheme(darkTheme = isDarkTheme) {
-                        if (showHeader) {
-                            GlobalHeader(
-                                onUserClick = { 
-                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
-                                },
-                                onSearchClick = { 
-                                    val searchNavOptions = navOptions {
-                                        anim {
-                                            enter = R.anim.slide_in_right
-                                            exit = R.anim.slide_out_left
-                                            popEnter = R.anim.slide_in_left
-                                            popExit = R.anim.slide_out_right
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            if (showHeader) {
+                                GlobalHeader(
+                                    onUserClick = { 
+                                        if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
+                                    },
+                                    onSearchClick = { 
+                                        val searchNavOptions = navOptions {
+                                            anim {
+                                                enter = R.anim.slide_in_right
+                                                exit = R.anim.slide_out_left
+                                                popEnter = R.anim.slide_in_left
+                                                popExit = R.anim.slide_out_right
+                                            }
                                         }
-                                    }
-                                    navController.navigate(R.id.nav_search, null, searchNavOptions)
-                                },
-                                onDownloadClick = { 
-                                    val slideshowNavOptions = navOptions {
-                                        anim {
-                                            enter = R.anim.slide_in_right
-                                            exit = R.anim.slide_out_left
-                                            popEnter = R.anim.slide_in_left
-                                            popExit = R.anim.slide_out_right
+                                        navController.navigate(R.id.nav_search, null, searchNavOptions)
+                                    },
+                                    onDownloadClick = { 
+                                        val slideshowNavOptions = navOptions {
+                                            anim {
+                                                enter = R.anim.slide_in_right
+                                                exit = R.anim.slide_out_left
+                                                popEnter = R.anim.slide_in_left
+                                                popExit = R.anim.slide_out_right
+                                            }
                                         }
-                                    }
-                                    navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
-                                },
-                                onThemeToggle = { mainViewModel.toggleTheme() },
-                                isDarkTheme = isDarkTheme
-                            )
+                                        navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
+                                    },
+                                    onThemeToggle = { viewModel.toggleTheme() },
+                                    isDarkTheme = isDarkTheme
+                                )
+                            }
                         }
 
                         if (showUserMenu) {
@@ -207,8 +212,8 @@ class MainActivity : AppCompatActivity() {
 
                 // 绑定 Compose 导航栏 (自适应手机/平板)
                 binding.appBarMain.contentMain?.bottomNavCompose?.setContent {
-                    val mainViewModel: MainViewModel = viewModel()
-                    val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                    val viewModel: MainViewModel = viewModel()
+                    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
                     val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
                     val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
                     
@@ -256,10 +261,12 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     SuperTVTheme(darkTheme = isDarkTheme) {
-                        if (useSidebar) {
-                            ComposeSideNavBar(navController)
-                        } else {
-                            ComposeBottomNavBar(navController)
+                        Surface(color = MaterialTheme.colorScheme.surface) {
+                            if (useSidebar) {
+                                ComposeSideNavBar(navController)
+                            } else {
+                                ComposeBottomNavBar(navController)
+                            }
                         }
                     }
                 }
@@ -287,10 +294,11 @@ class MainActivity : AppCompatActivity() {
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 8.dp,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            // 修改为方形，防止漏出背景色
+            shape = androidx.compose.ui.graphics.RectangleShape,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp + 12.dp) // 增加高度以覆盖底部 safe area
+                .height(68.dp + 12.dp)
         ) {
             Row(
                 modifier = Modifier

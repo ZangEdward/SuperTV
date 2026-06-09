@@ -16,12 +16,16 @@ import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.ui.player.PlayerActivity
 import com.supertv.app.viewmodel.SearchViewModel
 
+import com.supertv.app.viewmodel.MainViewModel
+import androidx.fragment.app.activityViewModels
+
 /**
  * 搜索 Fragment
  */
 class SearchFragment : Fragment() {
 
     private val viewModel: SearchViewModel by viewModels()
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -30,7 +34,8 @@ class SearchFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                SuperTVTheme {
+                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                SuperTVTheme(darkTheme = isDarkTheme) {
                     val context = LocalContext.current
                     val isTv = remember {
                         val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager

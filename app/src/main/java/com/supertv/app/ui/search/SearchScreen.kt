@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,7 +50,7 @@ fun SearchScreen(
 ) {
     SuperTVTheme {
         val query by viewModel.query.collectAsState()
-        val pagingItems = viewModel.searchPagingData.collectAsLazyPagingItems()
+        val results by viewModel.results.collectAsState()
         val netDiskResults by viewModel.netDiskResults.collectAsState()
         val searchMode by viewModel.searchMode.collectAsState()
         val searchHistory by viewModel.searchHistory.collectAsState()
@@ -146,21 +147,16 @@ fun SearchScreen(
                     }
                 }
 
-                searchMode == 0 && pagingItems.itemCount > 0 -> {
+                searchMode == 0 && results.isNotEmpty() -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(2), // 移动端 2 列视觉效果更好
+                        columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(
-                            count = pagingItems.itemCount,
-                            key = pagingItems.itemKey { "${it.id}${it.source}" }
-                        ) { index ->
-                            pagingItems[index]?.let { item ->
-                                VideoCard(result = item, onClick = { onResultClick(item) })
-                            }
+                        items(results, key = { "${it.id}${it.source}" }) { item ->
+                            VideoCard(result = item, onClick = { onResultClick(item) })
                         }
                     }
                 }

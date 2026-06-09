@@ -3,6 +3,7 @@ package com.supertv.app.data
 import com.supertv.app.api.ApiService
 import com.supertv.app.model.SearchResult
 import com.supertv.app.model.VideoDetail
+import com.supertv.app.utils.SearchUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -10,8 +11,6 @@ import kotlinx.coroutines.withTimeout
 
 /**
  * 搜索仓库 - 对应原项目的 services/api.ts 搜索相关逻辑
- *
- * 封装搜索业务逻辑，支持多源并发搜�?
  */
 class SearchRepository(private val apiService: ApiService) {
 
@@ -20,10 +19,10 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
-     * 执行搜索，支持多源并�?
+     * 执行搜索，并按标题合并去重
      */
     suspend fun search(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
-        return coroutineScope {
+        val allResults = coroutineScope {
             val deferredList = sources.map { source ->
                 async(Dispatchers.IO) {
                     try {
@@ -40,27 +39,26 @@ class SearchRepository(private val apiService: ApiService) {
                 }
             }
             deferredList.flatMap { it.await() }
-                .distinctBy { it.id }
-                .sortedByDescending { it.year }
         }
+        return SearchUtils.mergeResults(allResults)
     }
 
     /**
-     * 去尾搜索匹配 �?�?"abcd" 无结果则尝试 "abc"�?ab"
+     * 激进搜索：精准匹配 -> 去尾搜索
      */
-    suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
-        if (query.length <= 1) return emptyList()
-
+    suspend fun aggressiveSearch(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        // 1. 精准搜索
         var results = search(query, sources)
-        var trimmed = query
-
-        // 逐位去尾重试，直到有结果或只�?个字
-        while (results.isEmpty() && trimmed.length > 1) {
-            trimmed = trimmed.dropLast(1)
-            if (trimmed.length >= 1) {
-                results = search(trimmed, sources)
+        
+        // 2. 如果无结果，尝试去尾搜索
+        if (results.isEmpty()) {
+            val variants = SearchUtils.generateTailTrimTerms(query)
+            for (term in variants) {
+                results = search(term, sources)
+                if (results.isNotEmpty()) break
             }
         }
+
         return results
     }
 
