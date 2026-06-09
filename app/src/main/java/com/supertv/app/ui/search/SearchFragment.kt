@@ -10,14 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
-import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.ui.player.PlayerActivity
-import com.supertv.app.viewmodel.SearchViewModel
-
+import com.supertv.app.ui.theme.SuperTVTheme
 import com.supertv.app.viewmodel.MainViewModel
-import androidx.fragment.app.activityViewModels
+import com.supertv.app.viewmodel.SearchViewModel
 
 /**
  * 搜索 Fragment
@@ -91,7 +90,7 @@ class SearchFragment : Fragment() {
                             viewModel = viewModel,
                             onResultClick = { result ->
                                 val sourcesJson = com.google.gson.Gson().toJson(listOf(result)) // 简单包装
-                                val intent = com.supertv.app.ui.player.PlayerActivity.createIntent(
+                                val intent = PlayerActivity.createIntent(
                                     context = requireContext(),
                                     url = result.episodes.firstOrNull()?.url ?: "",
                                     title = result.title,

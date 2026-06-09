@@ -9,11 +9,11 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
-import com.supertv.app.ui.theme.SuperTVTheme
-import com.supertv.app.ui.player.PlayerActivity
-import com.supertv.app.viewmodel.SearchViewModel
-import com.supertv.app.viewmodel.MainViewModel
 import androidx.fragment.app.activityViewModels
+import com.supertv.app.ui.player.PlayerActivity
+import com.supertv.app.ui.theme.SuperTVTheme
+import com.supertv.app.viewmodel.MainViewModel
+import com.supertv.app.viewmodel.SearchViewModel
 
 /**
  * 视频详情 Fragment
