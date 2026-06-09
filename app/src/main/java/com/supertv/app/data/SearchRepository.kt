@@ -63,6 +63,13 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
+     * 去尾搜索匹配 (别名，用于兼容旧代码)
+     */
+    suspend fun searchWithTailTrim(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        return aggressiveSearch(query, sources)
+    }
+
+    /**
      * 获取搜索建议
      */
     suspend fun getSuggestions(query: String): List<String> {
