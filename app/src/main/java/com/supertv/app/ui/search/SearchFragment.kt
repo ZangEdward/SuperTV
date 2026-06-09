@@ -35,6 +35,28 @@ class SearchFragment : Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                
+                // 监听自动跳转详情页事件
+                LaunchedEffect(Unit) {
+                    viewModel.navigateToDetail.collect { result ->
+                        val bundle = Bundle().apply {
+                            putString("id", result.id)
+                            putString("source", result.source)
+                            putString("title", result.title)
+                            putString("cover", result.cover.ifBlank { result.poster })
+                        }
+                        val navOptions = androidx.navigation.navOptions {
+                            anim {
+                                enter = com.supertv.app.R.anim.slide_in_right
+                                exit = com.supertv.app.R.anim.slide_out_left
+                                popEnter = com.supertv.app.R.anim.slide_in_left
+                                popExit = com.supertv.app.R.anim.slide_out_right
+                            }
+                        }
+                        findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle, navOptions)
+                    }
+                }
+
                 SuperTVTheme(darkTheme = isDarkTheme) {
                     val context = LocalContext.current
                     val isTv = remember {

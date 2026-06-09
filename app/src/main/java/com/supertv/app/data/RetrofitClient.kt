@@ -25,21 +25,21 @@ object RetrofitClient {
     private var authToken: String? = null
     private var authCookies: String? = null
     private var onUnauthorized: (() -> Unit)? = null
+    private var store: Store? = null
 
     /**
      * 预初始化，从存储中恢复节点
      */
     fun init(context: android.content.Context) {
-        val store = Store.getInstance(context)
-        val savedUrl = store.getApiBaseUrl()
+        this.store = Store.getInstance(context)
+        val savedUrl = store?.getApiBaseUrl()
         if (!savedUrl.isNullOrBlank()) {
-            switchBaseUrl(savedUrl)
+            switchBaseUrl(savedUrl, false) // 初始化时不重复保存
         } else {
             val nodes = ApiNodeService.getNodes(context)
             if (nodes.isNotEmpty()) {
                 val firstUrl = nodes.first().url
-                store.saveApiBaseUrl(firstUrl)
-                switchBaseUrl(firstUrl)
+                switchBaseUrl(firstUrl, true)
             }
         }
     }
@@ -156,17 +156,28 @@ object RetrofitClient {
 
     /**
      * 切换API节点
+     * @param saveToStore 是否持久化到存储
      */
     @Synchronized
-    fun switchBaseUrl(newBaseUrl: String) {
+    fun switchBaseUrl(newBaseUrl: String, saveToStore: Boolean = true) {
         val url = if (newBaseUrl.endsWith("/")) newBaseUrl else "$newBaseUrl/"
-        if (url == currentBaseUrl) return
         
         if (!url.startsWith("http://") && !url.startsWith("https://")) return
+
+        if (saveToStore) {
+            store?.saveApiBaseUrl(url)
+            android.util.Log.d("RetrofitClient", "Saved to Store: $url")
+        }
+
+        if (url == currentBaseUrl && apiService != null) {
+            android.util.Log.d("RetrofitClient", "URL same as current, skipping recreation")
+            return
+        }
         
         currentBaseUrl = url
         retrofit = null
         apiService = null
+        android.util.Log.d("RetrofitClient", "Switched currentBaseUrl to: $url")
     }
 
     /**

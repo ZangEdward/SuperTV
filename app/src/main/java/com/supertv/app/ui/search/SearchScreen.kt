@@ -32,6 +32,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.supertv.app.model.NetDiskItem
 import com.supertv.app.model.SearchResult
 import com.supertv.app.ui.components.ShimmerGrid
@@ -248,12 +251,16 @@ private fun getNetDiskName(type: String): String {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NetDiskResultItem(item: NetDiskItem) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
-
+    
+    val info = item.parsedInfo
+    val displayTitle = if (info.title.isNotBlank()) info.title else item.title.ifBlank { item.name }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -266,14 +273,22 @@ fun NetDiskResultItem(item: NetDiskItem) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Surface(
+                    color = PrimaryGreen.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = item.source.uppercase(),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        color = PrimaryGreen,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                val displayDate = if (item.datetime.startsWith("0001")) "未知日期" else item.datetime.take(10)
                 Text(
-                    text = item.source,
-                    color = PrimaryGreen,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = item.datetime.take(10), // 只显示日期
+                    text = displayDate,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontSize = 11.sp
                 )
@@ -282,25 +297,93 @@ fun NetDiskResultItem(item: NetDiskItem) {
             Spacer(Modifier.height(8.dp))
             
             Text(
-                text = item.title,
+                text = displayTitle,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 15.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                lineHeight = 20.sp
+                lineHeight = 22.sp
             )
             
+            // 解析出的标签
+            FlowRow(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (info.type.isNotBlank()) {
+                    TagItem(info.type, MaterialTheme.colorScheme.secondary)
+                }
+                if (info.quality.isNotBlank()) {
+                    TagItem(info.quality, PrimaryGreen)
+                }
+                if (info.year.isNotBlank()) {
+                    TagItem(info.year, MaterialTheme.colorScheme.tertiary)
+                }
+                if (info.language.isNotBlank()) {
+                    TagItem(info.language, MaterialTheme.colorScheme.outline)
+                }
+                if (info.episode.isNotBlank()) {
+                    TagItem(info.episode, Color(0xFFFFA000))
+                }
+            }
+
             if (item.note.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = item.note,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                     fontSize = 13.sp,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 18.sp
                 )
+            }
+            
+            if (item.password.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.clickable {
+                        clipboardManager.setText(AnnotatedString(item.password))
+                        Toast.makeText(context, "提取码已复制: ${item.password}", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.VpnKey, null, modifier = Modifier.size(14.dp), tint = PrimaryGreen)
+                        Spacer(Modifier.width(6.dp))
+                        Text("提取码: ${item.password}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // 图片预览 (如果有)
+            if (!item.images.isNullOrEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(item.images) { imgUrl ->
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(imgUrl)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(100.dp, 140.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    }
+                }
             }
             
             Spacer(Modifier.height(16.dp))
@@ -309,7 +392,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
                 OutlinedButton(
                     onClick = { 
                         clipboardManager.setText(AnnotatedString(item.url))
-                        Toast.makeText(context, "已复制链接", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "链接已复制", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(8.dp),
@@ -335,10 +418,27 @@ fun NetDiskResultItem(item: NetDiskItem) {
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                     Spacer(Modifier.width(6.dp))
-                    Text("直接打开", fontSize = 12.sp, color = Color.White)
+                    Text("打开资源", fontSize = 12.sp, color = Color.White)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TagItem(text: String, color: Color) {
+    Surface(
+        color = color.copy(alpha = 0.1f),
+        shape = RoundedCornerShape(4.dp),
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, color.copy(alpha = 0.3f))
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            color = color,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

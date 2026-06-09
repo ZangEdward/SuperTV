@@ -69,7 +69,11 @@ class DetailFragment : Fragment() {
                                 source = currentDetail?.source ?: source,
                                 id = currentDetail?.id ?: id
                             )
-                            startActivity(intent)
+                            if (episode.url.isNotBlank()) {
+                                startActivity(intent)
+                            } else {
+                                android.widget.Toast.makeText(context, "播放链接无效", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         },
                         onToggleFavorite = { /* TODO */ },
                         onBack = { findNavController().navigateUp() },

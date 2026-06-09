@@ -145,8 +145,23 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         
         viewModelScope.launch {
             try {
-                // 使用仓库的激进搜索（精准 -> 去尾）
-                _results.value = repository.aggressiveSearch(query)
+                // 1. 尝试精准匹配
+                val exactResults = repository.aggressiveSearch(query, onlyExact = true)
+                val validExactResults = exactResults.filter { 
+                    it.source != "douban" && it.source != "bangumi" || it.episodes.isNotEmpty() 
+                }
+
+                if (validExactResults.isNotEmpty()) {
+                    val bestMatch = validExactResults.maxByOrNull { it.episodes.size } ?: validExactResults.first()
+                    _results.value = validExactResults
+                    _navigateToDetail.emit(bestMatch)
+                    
+                    launch {
+                        _results.value = repository.aggressiveSearch(query)
+                    }
+                } else {
+                    _results.value = repository.aggressiveSearch(query)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("SearchViewModel", "searchTV failed", e)
                 _error.value = "网络异常: ${e.message}"
@@ -173,6 +188,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // 自动跳转详情页事件
+    private val _navigateToDetail = MutableSharedFlow<SearchResult>()
+    val navigateToDetail: SharedFlow<SearchResult> = _navigateToDetail.asSharedFlow()
+
     /**
      * 执行搜索
      */
@@ -186,8 +205,37 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 if (_searchMode.value == 0) {
-                    // 全网聚合使用激进搜索
-                    _results.value = repository.aggressiveSearch(query)
+                    // 1. 首先尝试精准匹配 (清洗逻辑：先去空格，再去符号)
+                    val exactResults = repository.aggressiveSearch(query, onlyExact = true)
+                    
+                    // 排除 douban/bangumi 作为【自动跳转】目标，因为它们不能作为播放源
+                    val playbackExactResults = exactResults.filter { 
+                        it.source != "douban" && it.source != "bangumi"
+                    }
+
+                    if (playbackExactResults.isNotEmpty()) {
+                        // 发现精准匹配的播放源，立即通知 UI 跳转
+                        val bestMatch = playbackExactResults.maxByOrNull { it.episodes.size } ?: playbackExactResults.first()
+                        _results.value = exactResults // 列表可以包含豆瓣等元数据源供查看
+                        _navigateToDetail.emit(bestMatch)
+                        
+                        // 后台继续加载完整结果（模糊匹配）
+                        launch {
+                            val fuzzyResults = repository.aggressiveSearch(query, onlyExact = false)
+                            _results.value = fuzzyResults
+                        }
+                    } else if (exactResults.isNotEmpty()) {
+                        // 虽然有精准匹配，但全是元数据源（豆瓣/Bangumi），则展示列表而不自动跳转
+                        // 或者根据需求也可以跳转，但通常用户希望直接播放，所以此处仅更新列表
+                        _results.value = exactResults
+                        launch {
+                            val fuzzyResults = repository.aggressiveSearch(query, onlyExact = false)
+                            _results.value = fuzzyResults
+                        }
+                    } else {
+                        // 无精准匹配，直接执行模糊匹配
+                        _results.value = repository.aggressiveSearch(query)
+                    }
                 } else {
                     performNetDiskSearch(query)
                 }
@@ -317,8 +365,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     val detail = repository.getDetail(bestSource.id, bestSource.source)
                     if (detail != null) {
                         if (currentDetail != null) {
-                            // 保持元数据，合并播放源和剧集
+                            // 保持元数据，合并播放源、ID和剧集
                             _detail.value = currentDetail.copy(
+                                id = detail.id,
                                 episodesList = detail.episodes,
                                 source = detail.source,
                                 sourceName = detail.sourceName,
@@ -361,18 +410,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val detail = repository.getDetail(result.id, result.source)
                 if (detail != null) {
                     if (currentDetail != null && (currentDetail.source == "douban" || currentDetail.source == "bangumi")) {
-                        // 保持元数据，仅更新播放源和剧集
+                        // 保持元数据，仅更新播放源、ID和剧集
                         _detail.value = currentDetail.copy(
-                            id = detail.id,
+                            id = detail.id, // 重要：切换到真实播放源的ID
                             source = detail.source,
                             sourceName = detail.sourceName,
-                            episodesList = detail.episodes
+                            episodesList = detail.episodes // 使用计算后的 episodes 列表赋值给 episodesList
                         )
                     } else {
                         _detail.value = detail
                     }
+                    android.util.Log.d("SearchViewModel", "Switched to source: ${detail.sourceName}, episodes: ${detail.episodes.size}")
                 }
             } catch (e: Exception) {
+                android.util.Log.e("SearchViewModel", "Switch source failed", e)
                 _error.value = "切换源失败"
             } finally {
                 _isLoadingDetail.value = false

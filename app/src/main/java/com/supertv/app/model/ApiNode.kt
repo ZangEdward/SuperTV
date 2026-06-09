@@ -288,17 +288,93 @@ data class NetDiskData(
  * 网盘搜索项
  */
 data class NetDiskItem(
-    val source: String = "",
-    val type: String = "",
     val url: String = "",
-    val title: String = "",
-    val datetime: String = "",
-    val size: String = "",
-    val name: String = "", // 兼容不同 API
+    val password: String = "",
     val note: String = "",
+    val datetime: String = "",
+    val source: String = "",
+    val images: List<String>? = null,
+    // 兼容旧字段
+    val type: String = "",
+    val title: String = "",
+    val size: String = "",
+    val name: String = "",
     @SerializedName("update_time")
     val updateTime: String = ""
+) {
+    /**
+     * 解析后的网盘信息
+     */
+    val parsedInfo: ParsedNote by lazy { NetDiskParser.parse(note) }
+}
+
+/**
+ * 解析后的网盘描述信息
+ */
+data class ParsedNote(
+    val title: String = "",
+    val type: String = "", // 动漫、电影、剧集、游戏
+    val episode: String = "", // S01、第1-7季、全24集
+    val year: String = "",
+    val quality: String = "", // 1080P、4K
+    val language: String = "", // 国语、日语中字
+    val tags: List<String> = emptyList()
 )
+
+object NetDiskParser {
+    fun parse(note: String): ParsedNote {
+        if (note.isBlank()) return ParsedNote()
+
+        var type = ""
+        var episode = ""
+        var year = ""
+        var quality = ""
+        var language = ""
+        val tags = mutableListOf<String>()
+
+        // 1. 尝试提取年份 (4位数字)
+        val yearRegex = Regex("(19|20)\\d{2}")
+        year = yearRegex.find(note)?.value ?: ""
+
+        // 2. 尝试提取质量/清晰度
+        val qualityRegex = Regex("(?i)(4K|2160P|1080P|720P|BDRip|Remux|Web-DL|HDR|DV|HEVC|x26[45]|AVC)")
+        quality = qualityRegex.find(note)?.value ?: ""
+
+        // 3. 尝试提取季/集数
+        val episodeRegex = Regex("(?i)(S\\d+E\\d+|S\\d+|EP\\d+|第[\\d-]+[季集]|全\\d+[季集]|第\\d+部|Season \\d+)")
+        episode = episodeRegex.find(note)?.value ?: ""
+
+        // 4. 尝试提取语言
+        val langRegex = Regex("(国语|粤语|日语|英语|韩语|中字|中英字幕|内封字幕|简繁中字|简日双语|日语中字)")
+        language = langRegex.find(note)?.value ?: ""
+
+        // 5. 尝试提取类型
+        val typeRegex = Regex("(动漫|电影|剧集|电视剧|美剧|日剧|韩剧|国产剧|综艺|游戏|纪录片)")
+        type = typeRegex.find(note)?.value ?: ""
+
+        // 6. 提取标题 (通常在第一个分隔符前)
+        // 简单处理：取第一个空格或特殊字符前的内容作为标题
+        val cleanNote = note.replace(year, "").replace(quality, "").replace(episode, "")
+            .replace(language, "").replace(type, "").trim()
+        
+        // 修正正则表达式警告：在 [] 中 ( ) 不需要转义，[ ] 需要转义
+        val parts = cleanNote.split(Regex("[\\s()（）\\[\\]\\-_]")).filter { it.isNotBlank() }
+        val title = if (parts.isNotEmpty()) parts[0] else ""
+        if (parts.size > 1) {
+            tags.addAll(parts.drop(1))
+        }
+
+        return ParsedNote(
+            title = title,
+            type = type,
+            episode = episode,
+            year = year,
+            quality = quality,
+            language = language,
+            tags = tags
+        )
+    }
+}
 
 /**
  * 更新信息
