@@ -61,6 +61,24 @@ app/src/main/
 - [x] **乱码深度兼容**: `ApiNodeService` 新增启发式编码检测，支持 UTF-8 与 GBK (ANSI) 自动切换，彻底告别 Windows 环境下手动编辑导致的中文乱码。
 - [x] **导航稳定性修复**: 修复了在首页分类频道下点击剧集卡片导致的闪退问题，优化了 Navigation Action 的分发逻辑。
 
+## 开发者知识库 (上下文记忆)
+
+为了方便后续维护和上下文清除后的快速恢复，以下是本项目核心逻辑的“阅读经验”：
+
+### 1. 架构关联
+*   **后端对齐**: 本项目逻辑深度参考了 `.gradle/SuperTV_old-master`。`SearchViewModel` 对应原项目的 `stores/netdiskStore` 和 `stores/searchStore`。
+*   **数据流**: 搜索采用 **Paging 3** 分页。网盘搜索结果是 `Map<String, List<NetDiskItem>>`，需要按 Key 分类展示。
+*   **双模式详情**: 豆瓣/Bangumi 源仅提供元数据。进入详情页时，必须调用 `SearchViewModel.loadAllSources()` 触发全网激进检索，以补全播放链接。
+
+### 2. 核心避坑指南
+*   **编码问题**: `api_nodes.json` 经常在 Windows 下被保存为 GBK。`ApiNodeService` 必须包含 `\ufffd` 启发式检测或多重编码尝试读取。
+*   **图片防盗链**: 豆瓣图片必须带 `Referer: https://movie.douban.com/` 和特定 UA，由 `ImageUrlHelper` 统一处理。
+*   **导航陷阱**: 本项目多个标签页共享 `TransformFragment`。在 XML 中定义的 Action（如 `action_nav_tv_to_detail`）必须与当前所在的 `id` 匹配，否则会抛出 `IllegalArgumentException`。在 `onItemClick` 中应动态判断 `findNavController().currentDestination?.id`。
+*   **沉浸式适配**: `GlobalHeader` 在搜索和详情页应隐藏。底部 `ComposeBottomNavBar` 需要手动处理 `windowInsetsPadding(WindowInsets.navigationBars)` 且背景 `Surface` 需额外高度以防系统小白条处漏色。
+
+### 3. 动画逻辑
+*   **方向感交互**: 页面切换动画（`slide_in/out`）并非固定。在 `MainActivity` 和 `TransformFragment` 中，通过对比 `targetIndex` 与 `currentIndex` 来决定是从右往左还是从左往右滑。
+
 ## 已完成里程碑
 - [x] **架构迁移**：完全移除 React Native/Expo 依赖，建立纯原生 Kotlin 工程。
 - [x] **SDK 兼容性适配**：支持 Android 7.0+ (`minSdk 24`)。

@@ -115,7 +115,9 @@ class MainActivity : AppCompatActivity() {
 
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentDestination = navBackStackEntry?.destination
-                    val showHeader = currentDestination?.id != R.id.nav_detail && currentDestination?.id != R.id.nav_search
+                    
+                    // 仅在首页展示固定顶栏
+                    val showHeader = currentDestination?.id == R.id.nav_transform
 
                     SuperTVTheme(darkTheme = isDarkTheme) {
                         if (showHeader) {

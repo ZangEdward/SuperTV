@@ -169,58 +169,27 @@ class TransformFragment : Fragment() {
                                 }
                             )
                         } else {
-                            Column {
-                                GlobalHeader(
-                                    onUserClick = { 
-                                        if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
-                                    },
-                                    onSearchClick = { 
-                                        val navOptions = androidx.navigation.navOptions {
-                                            anim {
-                                                enter = R.anim.slide_in_right
-                                                exit = R.anim.slide_out_left
-                                                popEnter = R.anim.slide_in_left
-                                                popExit = R.anim.slide_out_right
-                                            }
-                                        }
-                                        findNavController().navigate(R.id.action_nav_transform_to_search, null, navOptions) 
-                                    },
-                                    onDownloadClick = { 
-                                        val navOptions = androidx.navigation.navOptions {
-                                            anim {
-                                                enter = R.anim.slide_in_right
-                                                exit = R.anim.slide_out_left
-                                                popEnter = R.anim.slide_in_left
-                                                popExit = R.anim.slide_out_right
-                                            }
-                                        }
-                                        findNavController().navigate(R.id.action_nav_transform_to_slideshow, null, navOptions) 
-                                    },
-                                    onThemeToggle = { mainViewModel.toggleTheme() },
-                                    isDarkTheme = isDarkTheme
-                                )
-                                HomeScreen(
-                                    viewModel = viewModel,
-                                    onItemClick = { result ->
-                                        val bundle = Bundle().apply {
-                                            putString("id", result.id)
-                                            putString("source", result.source)
-                                            putString("title", result.title)
-                                            putString("cover", result.cover.ifBlank { result.poster })
-                                        }
-                                        val currentDest = findNavController().currentDestination?.id
-                                        val actionId = when (currentDest) {
-                                            R.id.nav_movie -> R.id.action_nav_movie_to_detail
-                                            R.id.nav_tv -> R.id.action_nav_tv_to_detail
-                                            R.id.nav_anime -> R.id.action_nav_anime_to_detail
-                                            R.id.nav_show -> R.id.action_nav_show_to_detail
-                                            R.id.nav_short_drama -> R.id.action_nav_short_drama_to_detail
-                                            else -> R.id.action_nav_transform_to_detail
-                                        }
-                                        findNavController().navigate(actionId, bundle)
+                            HomeScreen(
+                                viewModel = viewModel,
+                                onItemClick = { result ->
+                                    val bundle = Bundle().apply {
+                                        putString("id", result.id)
+                                        putString("source", result.source)
+                                        putString("title", result.title)
+                                        putString("cover", result.cover.ifBlank { result.poster })
                                     }
-                                )
-                            }
+                                    val destId = findNavController().currentDestination?.id
+                                    val actionId = when (destId) {
+                                        R.id.nav_movie -> R.id.action_nav_movie_to_detail
+                                        R.id.nav_tv -> R.id.action_nav_tv_to_detail
+                                        R.id.nav_anime -> R.id.action_nav_anime_to_detail
+                                        R.id.nav_show -> R.id.action_nav_show_to_detail
+                                        R.id.nav_short_drama -> R.id.action_nav_short_drama_to_detail
+                                        else -> R.id.action_nav_transform_to_detail
+                                    }
+                                    findNavController().navigate(actionId, bundle)
+                                }
+                            )
                         }
                     }
                 }
@@ -361,26 +330,29 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
-            AnimatedContent(
-                targetState = selectedCategory,
-                transitionSpec = {
-                    val oldIndex = categories.indexOf(initialState)
-                    val newIndex = categories.indexOf(targetState)
-                    if (newIndex > oldIndex) {
-                        (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
-                    } else {
-                        (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
-                    }.using(SizeTransform(clip = false))
-                },
-                label = "CategoryAnimation",
-                modifier = Modifier.fillMaxSize()
-            ) { targetCategory ->
+    AnimatedContent(
+        targetState = selectedCategory,
+        transitionSpec = {
+            val oldIndex = categories.indexOf(initialState)
+            val newIndex = categories.indexOf(targetState)
+            if (newIndex > oldIndex) {
+                // 向左滑入 (Forward)
+                (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+            } else {
+                // 向右滑入 (Backward)
+                (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+            }.using(SizeTransform(clip = false))
+        },
+        label = "CategoryAnimation",
+        modifier = Modifier.fillMaxSize()
+    ) { targetCategory ->
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (targetCategory) {
                         "热门" -> {
@@ -404,31 +376,31 @@ fun HomeScreen(
                         "电影" -> {
                             item {
                                 SectionHeader("精品电影")
-                                VideoCardRow(items = recommended, onClick = onItemClick)
+                                VideoCardRow(items = recommended, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "剧集" -> {
                             item {
                                 SectionHeader("最新剧集")
-                                VideoCardRow(items = hotMovies, onClick = onItemClick)
+                                VideoCardRow(items = hotMovies, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "动漫" -> {
                             item {
                                 SectionHeader("热门动漫")
-                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                                VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "综艺" -> {
                             item {
                                 SectionHeader("热门综艺")
-                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
+                                VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "短剧" -> {
                             item {
                                 SectionHeader("热门短剧")
-                                VideoCardRow(items = shortDramas, onClick = onItemClick)
+                                VideoCardRow(items = shortDramas, onClick = onItemClick, isGrid = true)
                             }
                         }
                         else -> {
@@ -439,7 +411,7 @@ fun HomeScreen(
                                 } else if (recommended.isEmpty()) {
                                     Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 } else {
-                                    VideoCardRow(items = recommended, onClick = onItemClick)
+                                    VideoCardRow(items = recommended, onClick = onItemClick, isGrid = true)
                                 }
                             }
                         }
@@ -474,13 +446,27 @@ fun SectionHeader(title: String) {
 }
 
 @Composable
-fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(items) { item ->
-            PosterCard(result = item, onClick = { onClick(item) })
+fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
+    if (isGrid) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.heightIn(max = 2000.dp) // 给一个足够大的高度限制
+        ) {
+            items(items) { item ->
+                PosterCard(result = item, onClick = { onClick(item) })
+            }
+        }
+    } else {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(items) { item ->
+                PosterCard(result = item, onClick = { onClick(item) })
+            }
         }
     }
 }
