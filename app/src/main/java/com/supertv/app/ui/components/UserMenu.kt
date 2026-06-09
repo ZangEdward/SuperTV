@@ -57,6 +57,9 @@ fun UserMenu(
     val authRepo = remember { AuthRepository.getInstance(context) }
     val nodes = remember { ApiNodeService.getNodes(context) }
     
+    // 获取全局主题状态
+    val isDarkTheme = store.getBoolean("is_dark_theme", true)
+
     var currentPage by remember { mutableStateOf(MenuPage.Main) }
     var selectedNodeUrl by remember { 
         mutableStateOf(store.getApiBaseUrl() ?: nodes.firstOrNull()?.url ?: "") 
@@ -75,102 +78,104 @@ fun UserMenu(
         }
     }
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
-    ) {
-        // 使用 fillMaxSize 并确保背景覆盖全屏
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.7f))
-                .clickable { onClose() },
-            contentAlignment = Alignment.Center
+    SuperTVTheme(darkTheme = isDarkTheme) {
+        Dialog(
+            onDismissRequest = onClose,
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true
+            )
         ) {
-            Surface(
+            // 使用 fillMaxSize 并确保背景覆盖全屏
+            Box(
                 modifier = Modifier
-                    .widthIn(max = 400.dp)
-                    .fillMaxWidth(0.85f)
-                    .padding(vertical = 24.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable(enabled = false) { },
-                color = BackgroundCard,
-                tonalElevation = 8.dp
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
             ) {
-                // 添加滚动支持，适配横屏
-                Column(
+                Surface(
                     modifier = Modifier
-                        .padding(vertical = 8.dp)
-                        .verticalScroll(rememberScrollState())
+                        .widthIn(max = 400.dp)
+                        .fillMaxWidth(0.85f)
+                        .padding(vertical = 24.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(enabled = false) { },
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
                 ) {
-                    AnimatedContent(
-                        targetState = currentPage,
-                        transitionSpec = {
-                            if (targetState == MenuPage.Main) {
-                                (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
-                            } else {
-                                (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
-                            }
-                        },
-                        label = "MenuPageTransition"
-                    ) { page ->
-                        when (page) {
-                            MenuPage.Main -> MainMenu(
-                                onNavigateToNodes = { currentPage = MenuPage.NodeSelection },
-                                onNavigateToAI = { currentPage = MenuPage.AIRecommend },
-                                onNavigateToCalendar = { currentPage = MenuPage.ReleaseCalendar },
-                                onNavigateToHistory = { currentPage = MenuPage.WatchHistory },
-                                onNavigateToFavorites = { currentPage = MenuPage.Favorites },
-                                onNavigateToSettings = { currentPage = MenuPage.Settings },
-                                onNavigateToAbout = { currentPage = MenuPage.About },
-                                onNavigateToStats = { currentPage = MenuPage.Stats },
-                                onNavigateToDownloads = {
-                                    onNavigateToDownloads()
-                                    onClose()
-                                },
-                                onLogout = {
-                                    val scope = CoroutineScope(Dispatchers.Main)
-                                    scope.launch {
-                                        authRepo.logout(RetrofitClient.getApiService())
-                                        onLogout()
+                    // 添加滚动支持，适配横屏
+                    Column(
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        AnimatedContent(
+                            targetState = currentPage,
+                            transitionSpec = {
+                                if (targetState == MenuPage.Main) {
+                                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                                } else {
+                                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                                }
+                            },
+                            label = "MenuPageTransition"
+                        ) { page ->
+                            when (page) {
+                                MenuPage.Main -> MainMenu(
+                                    onNavigateToNodes = { currentPage = MenuPage.NodeSelection },
+                                    onNavigateToAI = { currentPage = MenuPage.AIRecommend },
+                                    onNavigateToCalendar = { currentPage = MenuPage.ReleaseCalendar },
+                                    onNavigateToHistory = { currentPage = MenuPage.WatchHistory },
+                                    onNavigateToFavorites = { currentPage = MenuPage.Favorites },
+                                    onNavigateToSettings = { currentPage = MenuPage.Settings },
+                                    onNavigateToAbout = { currentPage = MenuPage.About },
+                                    onNavigateToStats = { currentPage = MenuPage.Stats },
+                                    onNavigateToDownloads = {
+                                        onNavigateToDownloads()
+                                        onClose()
+                                    },
+                                    onLogout = {
+                                        val scope = CoroutineScope(Dispatchers.Main)
+                                        scope.launch {
+                                            authRepo.logout(RetrofitClient.getApiService())
+                                            onLogout()
+                                            onClose()
+                                        }
+                                    }
+                                )
+                                MenuPage.NodeSelection -> NodeSelectionMenu(
+                                    nodes = nodes.toList(),
+                                    selectedUrl = selectedNodeUrl,
+                                    onNodeSelected = { node ->
+                                        store.saveApiBaseUrl(node.url)
+                                        RetrofitClient.switchBaseUrl(node.url)
+                                        selectedNodeUrl = node.url
+                                        currentPage = MenuPage.Main
+                                    },
+                                    onBack = { currentPage = MenuPage.Main }
+                                )
+                                MenuPage.AIRecommend -> AIRecommendMenu(onBack = { currentPage = MenuPage.Main })
+                                MenuPage.ReleaseCalendar -> ReleaseCalendarMenu(onBack = { currentPage = MenuPage.Main })
+                                MenuPage.WatchHistory -> WatchHistoryMenu(
+                                    onBack = { currentPage = MenuPage.Main },
+                                    onDetailClick = { id, src, title ->
+                                        onNavigateToDetail(id, src, title)
                                         onClose()
                                     }
-                                }
-                            )
-                            MenuPage.NodeSelection -> NodeSelectionMenu(
-                                nodes = nodes.toList(),
-                                selectedUrl = selectedNodeUrl,
-                                onNodeSelected = { node ->
-                                    store.saveApiBaseUrl(node.url)
-                                    RetrofitClient.switchBaseUrl(node.url)
-                                    selectedNodeUrl = node.url
-                                    currentPage = MenuPage.Main
-                                },
-                                onBack = { currentPage = MenuPage.Main }
-                            )
-                            MenuPage.AIRecommend -> AIRecommendMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.ReleaseCalendar -> ReleaseCalendarMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.WatchHistory -> WatchHistoryMenu(
-                                onBack = { currentPage = MenuPage.Main },
-                                onDetailClick = { id, src, title ->
-                                    onNavigateToDetail(id, src, title)
-                                    onClose()
-                                }
-                            )
-                            MenuPage.Favorites -> FavoritesMenu(
-                                onBack = { currentPage = MenuPage.Main },
-                                onDetailClick = { id, src, title ->
-                                    onNavigateToDetail(id, src, title)
-                                    onClose()
-                                }
-                            )
-                            MenuPage.Settings -> SettingsMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.About -> AboutMenu(onBack = { currentPage = MenuPage.Main })
-                            MenuPage.Stats -> StatsMenu(onBack = { currentPage = MenuPage.Main })
+                                )
+                                MenuPage.Favorites -> FavoritesMenu(
+                                    onBack = { currentPage = MenuPage.Main },
+                                    onDetailClick = { id, src, title ->
+                                        onNavigateToDetail(id, src, title)
+                                        onClose()
+                                    }
+                                )
+                                MenuPage.Settings -> SettingsMenu(onBack = { currentPage = MenuPage.Main })
+                                MenuPage.About -> AboutMenu(onBack = { currentPage = MenuPage.Main })
+                                MenuPage.Stats -> StatsMenu(onBack = { currentPage = MenuPage.Main })
+                            }
                         }
                     }
                 }
@@ -214,7 +219,7 @@ fun MainMenu(
                 val authRepo = remember { AuthRepository.getInstance(context) }
                 val userInfo = authRepo.getUserInfo()
                 
-                Text("当前用户", fontSize = 12.sp, color = TextSecondary)
+                Text("当前用户", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val displayName = when {
                         !userInfo?.nickname.isNullOrBlank() -> userInfo?.nickname
@@ -222,7 +227,7 @@ fun MainMenu(
                         authRepo.getSavedUsername().isNotBlank() -> authRepo.getSavedUsername()
                         else -> "已登录"
                     }
-                    Text(displayName ?: "", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(displayName ?: "", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Spacer(Modifier.width(8.dp))
                     Surface(color = PrimaryGreen.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp)) {
                         Text("V2", color = PrimaryGreen, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
@@ -231,7 +236,7 @@ fun MainMenu(
             }
         }
 
-        HorizontalDivider(color = BackgroundSurface, thickness = 1.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
 
         MenuItem(icon = Icons.Rounded.AutoAwesome, title = "AI 智能推荐", iconColor = PrimaryGreen, onClick = onNavigateToAI)
         MenuItem(icon = Icons.Rounded.CalendarMonth, title = "即将上映日历", onClick = onNavigateToCalendar)
@@ -244,7 +249,7 @@ fun MainMenu(
         MenuItem(icon = Icons.Rounded.Info, title = "关于我们", onClick = onNavigateToAbout)
         
         Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = BackgroundSurface, thickness = 1.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
         
         MenuItem(
             icon = Icons.AutoMirrored.Rounded.Logout, 
@@ -276,21 +281,21 @@ fun AIRecommendMenu(onBack: () -> Unit) {
 
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("AI 智能推荐", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("AI 智能推荐", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(16.dp))
         
         Surface(
-            color = BackgroundSurface,
+            color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp)
         ) {
             Text(
                 aiResponse, 
                 modifier = Modifier.padding(12.dp),
-                color = TextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
@@ -324,11 +329,11 @@ fun ReleaseCalendarMenu(onBack: () -> Unit) {
 
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("即将上映日历", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("即将上映日历", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
-        Text("2026年发布数据", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
+        Text("2026年发布数据", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp))
         
         Spacer(Modifier.height(8.dp))
         
@@ -358,8 +363,8 @@ fun CalendarItem(date: String, title: String, type: String) {
         Text(date, color = PrimaryGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(title, color = TextPrimary, fontSize = 14.sp)
-            Text(type, color = TextTertiary, fontSize = 10.sp)
+            Text(title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+            Text(type, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), fontSize = 10.sp)
         }
     }
 }
@@ -373,15 +378,15 @@ fun WatchHistoryMenu(onBack: () -> Unit, onDetailClick: (String, String, String)
 
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("观看历史", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("观看历史", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(8.dp))
         
         Box(modifier = Modifier.heightIn(max = 400.dp)) {
             if (history.isEmpty()) {
-                Text("暂无播放记录", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
+                Text("暂无播放记录", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
             } else {
                 LazyColumn {
                             items(history) { item ->
@@ -400,8 +405,8 @@ fun WatchHistoryMenu(onBack: () -> Unit, onDetailClick: (String, String, String)
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
-                                        Text("第 ${item.index} 集 · ${item.sourceName}", color = TextSecondary, fontSize = 11.sp)
+                                        Text(item.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, maxLines = 1)
+                                        Text("第 ${item.index} 集 · ${item.sourceName}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -420,15 +425,15 @@ fun FavoritesMenu(onBack: () -> Unit, onDetailClick: (String, String, String) ->
 
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("我的收藏", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("我的收藏", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(8.dp))
         
         Box(modifier = Modifier.heightIn(max = 400.dp)) {
             if (favorites.isEmpty()) {
-                Text("暂无收藏内容", color = TextTertiary, modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
+                Text("暂无收藏内容", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.Center).padding(vertical = 32.dp))
             } else {
                 LazyColumn {
                             items(favorites) { item ->
@@ -447,8 +452,8 @@ fun FavoritesMenu(onBack: () -> Unit, onDetailClick: (String, String, String) ->
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(item.title, color = TextPrimary, fontSize = 14.sp, maxLines = 1)
-                                        Text("${item.sourceName} · ${item.year}", color = TextSecondary, fontSize = 11.sp)
+                                        Text(item.title, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, maxLines = 1)
+                                        Text("${item.sourceName} · ${item.year}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -463,8 +468,8 @@ fun FavoritesMenu(onBack: () -> Unit, onDetailClick: (String, String, String) ->
 fun SettingsMenu(onBack: () -> Unit) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("偏好设置", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("偏好设置", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(8.dp))
@@ -481,8 +486,8 @@ fun SettingsMenu(onBack: () -> Unit) {
 fun AboutMenu(onBack: () -> Unit) {
     Column(modifier = Modifier.padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("关于我们", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("关于我们", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(24.dp))
@@ -498,14 +503,14 @@ fun AboutMenu(onBack: () -> Unit) {
         }
         
         Spacer(Modifier.height(16.dp))
-        Text("SuperTV 原生版", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-        Text("Version 1.2.0 (LunaTV Core)", fontSize = 12.sp, color = TextSecondary)
+        Text("SuperTV 原生版", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Text("Version 1.2.0 (LunaTV Core)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         
         Spacer(Modifier.height(24.dp))
         Text(
             "本项目仅供学习交流使用。所有视频内容均来自第三方接口，本应用不存储任何视频资源。",
             fontSize = 12.sp,
-            color = TextTertiary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 16.dp)
         )
@@ -543,9 +548,9 @@ fun NodeSelectionMenu(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextPrimary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
             }
-            Text("选择服务器节点", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("选择服务器节点", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
 
         Spacer(Modifier.height(8.dp))
@@ -565,12 +570,12 @@ fun NodeSelectionMenu(
                             Icon(
                                 if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
                                 contentDescription = null,
-                                tint = if (isSelected) PrimaryGreen else TextSecondary,
+                                tint = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(node.label, color = if (isSelected) PrimaryGreen else TextPrimary, fontSize = 15.sp)
+                                Text(node.label, color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
                             }
                             
                             // 显示延迟而不是网址
@@ -600,10 +605,13 @@ fun NodeSelectionMenu(
 fun MenuItem(
     icon: ImageVector,
     title: String,
-    textColor: Color = TextPrimary,
-    iconColor: Color = TextSecondary,
+    textColor: Color = Color.Unspecified, // 默认使用父组件颜色
+    iconColor: Color = Color.Unspecified, // 默认使用父组件颜色
     onClick: () -> Unit
 ) {
+    val finalTextColor = if (textColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else textColor
+    val finalIconColor = if (iconColor == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else iconColor
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -611,11 +619,11 @@ fun MenuItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = finalIconColor, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
-        Text(title, color = textColor, fontSize = 15.sp)
+        Text(title, color = finalTextColor, fontSize = 15.sp)
         Spacer(Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextTertiary, modifier = Modifier.size(16.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
     }
 }
 
@@ -631,8 +639,8 @@ fun StatsMenu(onBack: () -> Unit) {
     
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = TextPrimary) }
-            Text("数据统计", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+            Text("数据统计", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
         
         Spacer(Modifier.height(16.dp))
@@ -649,7 +657,7 @@ fun StatsMenu(onBack: () -> Unit) {
 @Composable
 fun StatItem(label: String, value: String, icon: ImageVector, color: Color) {
     Surface(
-        color = BackgroundSurface,
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
@@ -665,8 +673,8 @@ fun StatItem(label: String, value: String, icon: ImageVector, color: Color) {
             }
             Spacer(Modifier.width(16.dp))
             Column {
-                Text(label, fontSize = 12.sp, color = TextSecondary)
-                Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }

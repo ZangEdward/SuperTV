@@ -290,24 +290,36 @@ class MainActivity : AppCompatActivity() {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
         val items = remember { getNavItems() }
+        
+        // 记录上一次选中的索引，用于判断方向
+        var lastSelectedIndex by remember { 
+            mutableIntStateOf(items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)) 
+        }
+
+        // 监听目的地变化，更新当前索引
+        LaunchedEffect(currentDestination?.id) {
+            val idx = items.indexOfFirst { it.id == currentDestination?.id }
+            if (idx != -1) {
+                lastSelectedIndex = idx
+            }
+        }
 
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 8.dp,
-            // 修改为方形，防止漏出背景色
             shape = androidx.compose.ui.graphics.RectangleShape,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp + 12.dp)
+                .height(56.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.navigationBars) // 在内部处理缩进
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.Start
             ) {
                 items.forEachIndexed { index, item ->
                     val isSelected = currentDestination?.id == item.id
@@ -315,13 +327,13 @@ class MainActivity : AppCompatActivity() {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
-                            .width(64.dp)
-                            .padding(vertical = 4.dp)
-                            .clip(RoundedCornerShape(16.dp)) // 点击效果也圆角化
+                            .width(62.dp)
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 if (currentDestination?.id != item.id) {
-                                    val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
-                                    val isForward = index > currentIndex
+                                    // 根据索引关系决定滑动方向
+                                    val isForward = index > lastSelectedIndex
 
                                     val navOptions = navOptions {
                                         anim {
@@ -355,23 +367,16 @@ class MainActivity : AppCompatActivity() {
                             Icon(
                                 imageVector = item.icon,
                                 contentDescription = stringResource(item.labelRes),
-                                tint = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier.size(24.dp)
+                                tint = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(22.dp)
                             )
-                            if (isSelected) {
-                                Text(
-                                    text = stringResource(item.labelRes),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = PrimaryGreen
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 2.dp)
-                                        .size(4.dp)
-                                        .background(PrimaryGreen, CircleShape)
-                                )
-                            }
+                            Text(
+                                text = stringResource(item.labelRes),
+                                fontSize = 9.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                maxLines = 1
+                            )
                         }
                     }
                 }

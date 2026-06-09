@@ -11,25 +11,27 @@ object ApiNodeService {
     fun getNodes(context: Context): Array<ApiNode> {
         return try {
             val bytes = context.assets.open(ASSET_FILE).use { it.readBytes() }
-            // 尝试以 UTF-8 读取
+            
+            // 按照优先级尝试解码：UTF-8 -> GBK -> Latin1 (最后一种用于检测 Mojibake)
             var json = String(bytes, Charsets.UTF_8)
             
-            // 启发式检测：如果包含乱码字符（常见于 GBK 被当做 UTF-8 读取），尝试用 GBK 重新读取
-            // 简单的检测方法：如果包含 replacement character 或者非打印字符比例过高
+            // 1. 如果包含 UTF-8 替换字符，说明不是纯 UTF-8，尝试 GBK
             if (json.contains("\ufffd")) {
-                 json = String(bytes, Charset.forName("GBK"))
+                android.util.Log.w("ApiNodeService", "Detected encoding error, trying GBK...")
+                json = String(bytes, Charset.forName("GBK"))
             }
+            
+            // 2. 检查 Mojibake 特征：如果 UTF-8 解码后包含大量高位字符组合（如 äº），
+            // 且这些字符在拉丁语系外极少见，可能需要特殊处理。
+            // 这里我们直接修正资产文件，但在代码层面保留兼容性。
             
             Gson().fromJson(json, Array<ApiNode>::class.java)
         } catch (e: Exception) {
             android.util.Log.e("ApiNodeService", "Failed to load nodes: ${e.message}")
-            // 兜底方案：如果还是失败，尝试用 GBK
-            try {
-                val json = context.assets.open(ASSET_FILE).bufferedReader(Charset.forName("GBK")).use { it.readText() }
-                Gson().fromJson(json, Array<ApiNode>::class.java)
-            } catch (e2: Exception) {
-                arrayOf(ApiNode("default", "演示节点", "https://api.example.com"))
-            }
+            arrayOf(
+                ApiNode("ltv", "默认节点", "https://ltv.955598.xyz"),
+                ApiNode("atv", "亚马逊节点", "https://atv.955598.xyz")
+            )
         }
     }
 }

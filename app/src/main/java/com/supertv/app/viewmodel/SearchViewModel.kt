@@ -155,6 +155,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     fun search(query: String) {
         if (query.isBlank()) return
         _query.value = query
+        _searchQuery.value = query // 同步更新分页查询
         _isSearching.value = true
         _error.value = null
 
@@ -269,22 +270,27 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _allSourcesLoading.value = true
             try {
                 val results = repository.search(title)
+                // 排除元数据源，仅保留真正的播放源 (如 ffzy, lzi, okzy 等)
+                val playbackSources = results.filter { it.source != "douban" && it.source != "bangumi" }
+                
                 // 排除当前已有的源（如果 ID 和 Source 都一样）
-                val filtered = results.filter { it.id != currentId || it.source != currentSource }
+                val filtered = playbackSources.filter { it.id != currentId || it.source != currentSource }
                 _allSources.value = filtered
                 
-                // 如果当前详情为空，或者当前详情没有剧集（数据源），且找到了其他有效的源，尝试从第一个源补充剧集
+                // 如果当前详情是元数据源（无剧集），且找到了有效的播放源，自动同步第一个源的剧集
                 val currentDetail = _detail.value
-                if ((currentDetail == null || currentDetail.episodes.isEmpty()) && results.isNotEmpty()) {
-                    val first = results.first()
-                    val detail = repository.getDetail(first.id, first.source)
+                if ((currentDetail == null || currentDetail.episodes.isEmpty()) && playbackSources.isNotEmpty()) {
+                    // 优先选择集数最多的源
+                    val bestSource = playbackSources.maxByOrNull { it.episodes.size } ?: playbackSources.first()
+                    val detail = repository.getDetail(bestSource.id, bestSource.source)
                     if (detail != null) {
                         if (currentDetail != null) {
-                            // 保持主数据源的元数据，只从视频源同步剧集
+                            // 保持元数据，合并剧集
                             _detail.value = currentDetail.copy(
                                 episodes = detail.episodes,
                                 source = detail.source,
-                                sourceName = detail.sourceName
+                                sourceName = detail.sourceName,
+                                totalEpisodes = detail.episodes.size
                             )
                         } else {
                             _detail.value = detail

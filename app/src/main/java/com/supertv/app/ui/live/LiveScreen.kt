@@ -42,14 +42,18 @@ fun LiveScreen() {
         LiveChannel("10", "广东卫视", "卫视频道")
     )
 
+    // 使用主题色
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val textColor = MaterialTheme.colorScheme.onBackground
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(backgroundColor)
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.background,
+            color = backgroundColor,
             tonalElevation = 4.dp
         ) {
             Row(
@@ -62,7 +66,7 @@ fun LiveScreen() {
                     "电视直播",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = textColor
                 )
             }
         }

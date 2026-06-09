@@ -84,11 +84,12 @@ fun VideoCard(
     val context = LocalContext.current
 
     // 处理图片 URL
-    val processedUrl = remember(result.cover, result.source) {
-        ImageUrlHelper.processImageUrl(result.cover, result.source)
+    val imageUrl = result.cover.ifBlank { result.poster }
+    val processedUrl = remember(imageUrl, result.source) {
+        ImageUrlHelper.processImageUrl(imageUrl, result.source)
     }
-    val imageHeaders = remember(result.cover, result.source) {
-        ImageUrlHelper.getImageHeaders(result.cover, result.source)
+    val imageHeaders = remember(imageUrl, result.source) {
+        ImageUrlHelper.getImageHeaders(imageUrl, result.source)
     }
 
     Column(

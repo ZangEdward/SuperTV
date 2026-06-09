@@ -21,10 +21,10 @@
         <action
             android:id="@+id/action_nav_transform_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
         <action
             android:id="@+id/action_nav_transform_to_slideshow"
             app:destination="@id/nav_slideshow"
@@ -42,10 +42,10 @@
         <action
             android:id="@+id/action_nav_movie_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -56,10 +56,10 @@
         <action
             android:id="@+id/action_nav_tv_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -70,10 +70,10 @@
         <action
             android:id="@+id/action_nav_anime_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -84,10 +84,10 @@
         <action
             android:id="@+id/action_nav_show_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -98,10 +98,10 @@
         <action
             android:id="@+id/action_nav_short_drama_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -119,10 +119,10 @@
         <action
             android:id="@+id/action_nav_live_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment
@@ -139,10 +139,10 @@
         <action
             android:id="@+id/action_nav_search_to_detail"
             app:destination="@id/nav_detail"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_up"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_down" />
     </fragment>
 
     <fragment

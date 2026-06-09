@@ -31,8 +31,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import com.supertv.app.model.NetDiskItem
 import com.supertv.app.model.SearchResult
@@ -48,167 +46,180 @@ fun SearchScreen(
     onResultClick: (SearchResult) -> Unit,
     onBack: () -> Unit
 ) {
-    SuperTVTheme {
-        val query by viewModel.query.collectAsState()
-        val results by viewModel.results.collectAsState()
-        val netDiskResults by viewModel.netDiskResults.collectAsState()
-        val searchMode by viewModel.searchMode.collectAsState()
-        val searchHistory by viewModel.searchHistory.collectAsState()
-        val isSearching by viewModel.isSearching.collectAsState()
+    val query by viewModel.query.collectAsState()
+    val results by viewModel.results.collectAsState()
+    val netDiskResults by viewModel.netDiskResults.collectAsState()
+    val searchMode by viewModel.searchMode.collectAsState()
+    val searchHistory by viewModel.searchHistory.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
 
-        var showClearDialog by remember { mutableStateOf(false) }
-        var selectedNetDiskType by remember { mutableStateOf("") }
-        
-        // 当网盘结果更新时，默认选择第一个 Tab
-        LaunchedEffect(netDiskResults) {
-            if (netDiskResults.isNotEmpty() && (selectedNetDiskType.isBlank() || !netDiskResults.containsKey(selectedNetDiskType))) {
-                selectedNetDiskType = netDiskResults.keys.first()
+    var showClearDialog by remember { mutableStateOf(false) }
+    var selectedNetDiskType by remember { mutableStateOf("") }
+    
+    // 使用主题色
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+
+    // 当网盘结果更新时，默认选择第一个 Tab
+    LaunchedEffect(netDiskResults) {
+        if (netDiskResults.isNotEmpty() && (selectedNetDiskType.isBlank() || !netDiskResults.containsKey(selectedNetDiskType))) {
+            selectedNetDiskType = netDiskResults.keys.first()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor)
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        // Search Header
+        Surface(modifier = Modifier.fillMaxWidth(), color = backgroundColor, tonalElevation = 2.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = textColor)
+                }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { viewModel.updateQuery(it) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp, top = 4.dp),
+                    placeholder = { Text("搜索影视、网盘资源...", fontSize = 14.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "搜索", modifier = Modifier.size(20.dp))
+                    },
+                    trailingIcon = {
+                        if (query.isNotBlank()) {
+                            IconButton(onClick = { viewModel.updateQuery("") }) {
+                                Icon(Icons.Default.Clear, contentDescription = "清除", modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
+                    singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryGreen,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        cursorColor = PrimaryGreen,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    )
+                )
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.statusBars)
+        // Search Tabs
+        TabRow(
+            selectedTabIndex = searchMode,
+            containerColor = backgroundColor,
+            contentColor = PrimaryGreen,
+            divider = { HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant) },
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[searchMode]),
+                    color = PrimaryGreen,
+                    height = 3.dp
+                )
+            }
         ) {
-            // Search Header
-            Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background, tonalElevation = 2.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
+            Tab(
+                selected = searchMode == 0,
+                onClick = { viewModel.setSearchMode(0) },
+                text = { Text("全网聚合", fontSize = 15.sp, fontWeight = if (searchMode == 0) FontWeight.Bold else FontWeight.Normal) }
+            )
+            Tab(
+                selected = searchMode == 1,
+                onClick = { viewModel.setSearchMode(1) },
+                text = { Text("网盘资源", fontSize = 15.sp, fontWeight = if (searchMode == 1) FontWeight.Bold else FontWeight.Normal) }
+            )
+        }
+
+        when {
+            isSearching -> {
+                Box(modifier = Modifier.fillMaxSize()) { 
+                    if (searchMode == 0) {
+                        ShimmerGrid(columns = 2) 
+                    } else {
+                        CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.align(Alignment.Center))
                     }
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { viewModel.updateQuery(it) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 16.dp, top = 4.dp),
-                        placeholder = { Text("搜索影视、网盘资源...", fontSize = 14.sp) },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "搜索", modifier = Modifier.size(20.dp))
-                        },
-                        trailingIcon = {
-                            if (query.isNotBlank()) {
-                                IconButton(onClick = { viewModel.updateQuery("") }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "清除", modifier = Modifier.size(20.dp))
-                                }
-                            }
-                        },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { viewModel.search(query) }),
-                        singleLine = true,
-                        shape = RoundedCornerShape(28.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryGreen,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                            cursorColor = PrimaryGreen,
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        )
-                    )
                 }
             }
 
-            // Search Tabs
-            TabRow(
-                selectedTabIndex = searchMode,
-                containerColor = MaterialTheme.colorScheme.background,
-                contentColor = PrimaryGreen,
-                divider = { HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant) },
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[searchMode]),
-                        color = PrimaryGreen,
-                        height = 3.dp
-                    )
-                }
-            ) {
-                Tab(
-                    selected = searchMode == 0,
-                    onClick = { viewModel.setSearchMode(0) },
-                    text = { Text("全网聚合", fontSize = 15.sp, fontWeight = if (searchMode == 0) FontWeight.Bold else FontWeight.Normal) }
-                )
-                Tab(
-                    selected = searchMode == 1,
-                    onClick = { viewModel.setSearchMode(1) },
-                    text = { Text("网盘资源", fontSize = 15.sp, fontWeight = if (searchMode == 1) FontWeight.Bold else FontWeight.Normal) }
-                )
-            }
-
-            when {
-                isSearching -> {
-                    Box(modifier = Modifier.fillMaxSize()) { 
-                        if (searchMode == 0) {
-                            ShimmerGrid(columns = 2) 
-                        } else {
-                            CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.align(Alignment.Center))
-                        }
+            searchMode == 0 && results.isNotEmpty() -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(results, key = { "${it.id}${it.source}" }) { item ->
+                        VideoCard(result = item, onClick = { onResultClick(item) })
                     }
                 }
-
-                searchMode == 0 && results.isNotEmpty() -> {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxSize()
+            }
+            
+            searchMode == 0 && results.isEmpty() && query.isNotBlank() && !isSearching -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.SearchOff, null, tint = secondaryTextColor, modifier = Modifier.size(64.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text("未找到相关影视资源", color = secondaryTextColor)
+                    }
+                }
+            }
+            
+            searchMode == 1 && netDiskResults.isNotEmpty() -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // 网盘分类 Tabs
+                    ScrollableTabRow(
+                        selectedTabIndex = netDiskResults.keys.toList().indexOf(selectedNetDiskType).coerceAtLeast(0),
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                        edgePadding = 16.dp,
+                        divider = {},
+                        indicator = {}
                     ) {
-                        items(results, key = { "${it.id}${it.source}" }) { item ->
-                            VideoCard(result = item, onClick = { onResultClick(item) })
-                        }
-                    }
-                }
-                
-                searchMode == 1 && netDiskResults.isNotEmpty() -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 网盘分类 Tabs
-                        ScrollableTabRow(
-                            selectedTabIndex = netDiskResults.keys.toList().indexOf(selectedNetDiskType).coerceAtLeast(0),
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                            edgePadding = 16.dp,
-                            divider = {},
-                            indicator = {}
-                        ) {
-                            netDiskResults.forEach { (type, items) ->
-                                val isSelected = selectedNetDiskType == type
-                                Tab(
-                                    selected = isSelected,
-                                    onClick = { selectedNetDiskType = type },
-                                    text = { 
-                                        Surface(
-                                            color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.surfaceVariant,
-                                            shape = RoundedCornerShape(16.dp)
-                                        ) {
-                                            Text(
-                                                text = "${getNetDiskName(type)} (${items.size})",
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                fontSize = 12.sp,
-                                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                        netDiskResults.forEach { (type, items) ->
+                            val isSelected = selectedNetDiskType == type
+                            Tab(
+                                selected = isSelected,
+                                onClick = { selectedNetDiskType = type },
+                                text = { 
+                                    Surface(
+                                        color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Text(
+                                            text = "${getNetDiskName(type)} (${items.size})",
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                            fontSize = 12.sp,
+                                            color = if (isSelected) Color.White else secondaryTextColor
+                                        )
                                     }
-                                )
-                            }
+                                }
+                            )
                         }
+                    }
 
-                        val currentData = netDiskResults[selectedNetDiskType] ?: emptyList()
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(currentData) { item ->
-                                NetDiskResultItem(item)
-                            }
+                    val currentData = netDiskResults[selectedNetDiskType] ?: emptyList()
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(currentData) { item ->
+                            NetDiskResultItem(item)
                         }
                     }
                 }
+            }
 
-                else -> {
-                    SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
-                }
+            else -> {
+                SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
             }
         }
 
@@ -245,7 +256,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = BackgroundCard),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -263,7 +274,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
                 )
                 Text(
                     text = item.datetime.take(10), // 只显示日期
-                    color = TextTertiary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontSize = 11.sp
                 )
             }
@@ -272,7 +283,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
             
             Text(
                 text = item.title,
-                color = TextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
@@ -284,7 +295,7 @@ fun NetDiskResultItem(item: NetDiskItem) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = item.note,
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -342,8 +353,8 @@ fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch:
     ) {
         if (history.isNotEmpty()) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("搜索历史", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                TextButton(onClick = onClearClick) { Text("清空", color = TextSecondary) }
+                Text("搜索历史", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                TextButton(onClick = onClearClick) { Text("清空", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 history.forEach { term ->
@@ -353,7 +364,7 @@ fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch:
                         shape = RoundedCornerShape(16.dp),
                         colors = SuggestionChipDefaults.suggestionChipColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            labelColor = TextSecondary
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         border = null
                     )
@@ -363,7 +374,7 @@ fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch:
             Box(modifier = Modifier.fillMaxWidth().padding(top = 100.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.size(64.dp))
-                    Text("暂无搜索历史", color = TextTertiary, modifier = Modifier.padding(top = 16.dp))
+                    Text("暂无搜索历史", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.padding(top = 16.dp))
                 }
             }
         }
@@ -374,14 +385,14 @@ fun SearchPlaceholder(history: List<String>, onClearClick: () -> Unit, onSearch:
 fun ClearHistoryDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = BackgroundCard,
+        containerColor = MaterialTheme.colorScheme.surface,
         title = { Text("清空历史") },
         text = { Text("确定要删除所有搜索记录吗？") },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text("确认", color = ErrorRed) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = TextSecondary) }
+            TextButton(onClick = onDismiss) { Text("取消", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     )
 }

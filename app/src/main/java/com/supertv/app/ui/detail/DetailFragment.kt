@@ -58,6 +58,8 @@ class DetailFragment : Fragment() {
                         currentSource = detail?.source ?: source,
                         latencies = latencies,
                         isAllSourcesLoading = isAllSourcesLoading,
+                        isDarkTheme = isDarkTheme,
+                        onThemeToggle = { mainViewModel.toggleTheme() },
                         onEpisodeClick = { episode ->
                             val currentDetail = detail
                             val intent = PlayerActivity.createIntent(

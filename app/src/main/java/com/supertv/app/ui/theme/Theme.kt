@@ -16,11 +16,6 @@ val BackgroundCard = Color(0xFF121212)
 val BackgroundSurface = Color(0xFF1E1E1E)
 val BackgroundNav = Color(0xFF121212)
 
-// 文字色
-val TextPrimary = Color(0xFFFFFFFF)
-val TextSecondary = Color(0xFFAAAAAA)
-val TextTertiary = Color(0xFF666666)
-
 // 功能色
 val AccentGreen = Color(0xFF00BB5E)
 val ErrorRed = Color(0xFFF44336)
@@ -36,11 +31,11 @@ private val DarkColorScheme = darkColorScheme(
     secondary = PrimaryGreenLight,
     onSecondary = Color.Black,
     background = BackgroundDark,
-    onBackground = TextPrimary,
+    onBackground = Color.White,
     surface = BackgroundSurface,
-    onSurface = TextPrimary,
+    onSurface = Color.White,
     surfaceVariant = BackgroundCard,
-    onSurfaceVariant = TextSecondary,
+    onSurfaceVariant = Color(0xFFAAAAAA),
     error = ErrorRed,
     onError = Color.White
 )

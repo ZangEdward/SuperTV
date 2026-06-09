@@ -92,7 +92,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
         launch {
             try {
-                val resp = apiService.getDoubanData("movie", "热门")
+                val tag = java.net.URLEncoder.encode("热门", "UTF-8")
+                val resp = apiService.getDoubanData("movie", tag)
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
@@ -115,7 +116,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
         launch {
             try {
-                val resp = apiService.getDoubanData("movie", "豆瓣高分")
+                val tag = java.net.URLEncoder.encode("豆瓣高分", "UTF-8")
+                val resp = apiService.getDoubanData("movie", tag)
                 if (resp.isSuccessful) {
                     val body = resp.body()
                     val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
@@ -221,7 +223,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         try {
-            val resp = apiService.getDoubanData(type, tag)
+            val encodedTag = java.net.URLEncoder.encode(tag, "UTF-8")
+            val resp = apiService.getDoubanData(type, encodedTag)
             if (resp.isSuccessful) {
                 val body = resp.body()
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()

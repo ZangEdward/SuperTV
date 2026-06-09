@@ -26,7 +26,11 @@ import androidx.fragment.app.Fragment
 import com.supertv.app.services.EpisodeCacheManager
 import com.supertv.app.ui.theme.*
 
+import androidx.fragment.app.activityViewModels
+import com.supertv.app.viewmodel.MainViewModel
+
 class SlideshowFragment : Fragment() {
+    private val mainViewModel: MainViewModel by activityViewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -35,7 +39,8 @@ class SlideshowFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                SuperTVTheme {
+                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                SuperTVTheme(darkTheme = isDarkTheme) {
                     CacheManagementScreen()
                 }
             }
@@ -61,13 +66,16 @@ fun CacheManagementScreen() {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("缓存与离线", fontWeight = FontWeight.Bold, color = PrimaryGreen) },
+                title = { Text("缓存与离线", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { cacheManager.clearAllCache() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = PrimaryGreen)
+                        Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundDark)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.primary
+                )
             )
         }
     ) { padding ->
@@ -75,23 +83,23 @@ fun CacheManagementScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(BackgroundDark)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = BackgroundCard
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Download, contentDescription = null, tint = PrimaryGreen)
+                    Icon(Icons.Default.Download, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
-                    Text("当前占用空间: $cacheSize", fontSize = 16.sp, color = TextPrimary)
+                    Text("当前占用空间: $cacheSize", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
 
             if (downloadStates.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("暂无下载任务", color = TextTertiary)
+                    Text("暂无下载任务", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -110,22 +118,22 @@ fun CacheTaskItem(taskId: String, state: EpisodeCacheManager.DownloadState, prog
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = BackgroundCard)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(taskId, fontWeight = FontWeight.Medium, color = TextPrimary)
+            Text(taskId, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.weight(1f).height(4.dp),
-                    color = PrimaryGreen,
-                    trackColor = BackgroundSurface
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surface
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("${(progress * 100).toInt()}%", fontSize = 12.sp, color = PrimaryGreen)
+                Text("${(progress * 100).toInt()}%", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             }
-            Text(state.toString(), fontSize = 12.sp, color = TextTertiary)
+            Text(state.toString(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
         }
     }
 }

@@ -17,25 +17,25 @@ interface ApiService {
     @GET("api/douban")
     suspend fun getDoubanData(
         @Query("type") type: String,
-        @Query("tag") tag: String,
+        @Query("tag", encoded = true) tag: String,
         @Query("pageSize") pageSize: Int = 20,
         @Query("pageStart") pageStart: Int = 0
     ): Response<DoubanResponse>
 
     // 为了兼容旧代码，保留这些便捷方法，但内部调用 getDoubanData
-    @GET("api/douban?type=movie&tag=热门")
+    @GET("api/douban?type=movie&tag=%E7%83%AD%E9%97%A8") // 热门
     suspend fun getDoubanHot(): Response<DoubanResponse>
 
-    @GET("api/douban?type=movie&tag=豆瓣高分")
+    @GET("api/douban?type=movie&tag=%E8%B1%86%E7%93%A3%E9%AB%98%E5%88%86") // 豆瓣高分
     suspend fun getDoubanRecommend(): Response<DoubanResponse>
 
-    @GET("api/douban?type=movie&tag=最新")
+    @GET("api/douban?type=movie&tag=%E6%9C%80%E6%96%B0") // 最新
     suspend fun getDoubanNew(): Response<DoubanResponse>
 
     @GET("api/douban")
     suspend fun getDoubanCategory(
         @Query("type") type: String,
-        @Query("tag") tag: String,
+        @Query("tag", encoded = true) tag: String,
         @Query("pageSize") pageSize: Int = 20,
         @Query("pageStart") pageStart: Int = 0
     ): Response<DoubanResponse>
@@ -44,13 +44,13 @@ interface ApiService {
 
     @GET("api/search")
     suspend fun search(
-        @Query("q") query: String,
+        @Query("q", encoded = true) query: String,
         @Query("source") source: String = "all"
     ): Response<SearchResponse>
 
     @GET("api/search/suggestions")
     suspend fun getSuggestions(
-        @Query("q") query: String
+        @Query("q", encoded = true) query: String
     ): Response<List<String>>
 
     // ==================== 详情 ====================

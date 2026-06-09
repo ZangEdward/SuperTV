@@ -39,7 +39,9 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.supertv.app.model.SearchResult
-import com.supertv.app.ui.theme.PrimaryGreen
+import com.supertv.app.ui.theme.*
+import com.supertv.app.viewmodel.MainViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
@@ -88,7 +90,10 @@ class PlayerActivity : ComponentActivity() {
         val sourcesJson = intent?.getStringExtra(EXTRA_SOURCES_JSON) ?: "[]"
 
         setContent {
-            MaterialTheme {
+            val mainViewModel: MainViewModel = viewModel()
+            val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+
+            SuperTVTheme(darkTheme = isDarkTheme) {
                 val context = LocalContext.current
                 var currentUrl by remember { mutableStateOf(initialUrl) }
                 var isAutoSwitching by remember { mutableStateOf(false) }

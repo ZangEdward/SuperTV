@@ -35,8 +35,24 @@ data class SearchResult(
     val rate: String = "", // 兼容 supertvold
     val desc: String = "",
     val type: String = "",
-    val episodes: List<Episode> = emptyList()
-)
+    @SerializedName("episodes")
+    val episodeUrls: List<String> = emptyList(),
+    @SerializedName("episodes_titles")
+    val episodeTitles: List<String> = emptyList(),
+    @SerializedName("episodes_list") // 兼容带对象的格式
+    val episodesList: List<Episode>? = null
+) {
+    val episodes: List<Episode> get() {
+        if (!episodesList.isNullOrEmpty()) return episodesList
+        return episodeUrls.mapIndexed { index, url ->
+            Episode(
+                index = index,
+                title = episodeTitles.getOrNull(index) ?: (index + 1).toString(),
+                url = url
+            )
+        }
+    }
+}
 
 /**
  * 搜索响应包装 (supertvold 风格)

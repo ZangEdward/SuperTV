@@ -41,7 +41,9 @@ fun DetailScreen(
     allSources: List<SearchResult> = emptyList(),
     currentSource: String = "",
     latencies: Map<String, Long> = emptyMap(),
-    isAllSourcesLoading: Boolean = false, // 新增：正在搜索全网源
+    isAllSourcesLoading: Boolean = false,
+    isDarkTheme: Boolean = true, // 新增
+    onThemeToggle: () -> Unit = {}, // 新增
     onEpisodeClick: (Episode) -> Unit,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
@@ -53,22 +55,28 @@ fun DetailScreen(
     var showSourcesDialog by remember { mutableStateOf(false) }
     var showCacheDialog by remember { mutableStateOf(false) }
 
+    // 使用主题色替代硬编码色
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val cardColor = MaterialTheme.colorScheme.surfaceVariant
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     if (isLoading) {
-        Box(modifier = Modifier.fillMaxSize().background(BackgroundDark), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize().background(backgroundColor), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = PrimaryGreen)
         }
         return
     }
 
     if (detail == null) {
-        Box(modifier = Modifier.fillMaxSize().background(BackgroundDark), contentAlignment = Alignment.Center) {
-            Text("无法加载详情", color = TextTertiary, fontSize = 16.sp)
+        Box(modifier = Modifier.fillMaxSize().background(backgroundColor), contentAlignment = Alignment.Center) {
+            Text("无法加载详情", color = secondaryTextColor, fontSize = 16.sp)
         }
         return
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(BackgroundDark)
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(backgroundColor)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(280.dp)) {
             AsyncImage(
@@ -79,42 +87,66 @@ fun DetailScreen(
             )
             Box(
                 modifier = Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color.Transparent, BackgroundDark), startY = 200f)
+                    Brush.verticalGradient(listOf(Color.Transparent, backgroundColor), startY = 200f)
                 )
             )
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(Color(0x66000000), RoundedCornerShape(50))
+            
+            // 顶部按钮栏
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = TextPrimary)
-            }
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(Color(0x66000000), RoundedCornerShape(50))
-            ) {
-                Icon(
-                    if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    "收藏",
-                    tint = if (isFavorite) FavoriteRed else TextPrimary
-                )
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(50))
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White)
+                }
+                
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 主题切换按钮
+                    IconButton(
+                        onClick = onThemeToggle,
+                        modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(50))
+                    ) {
+                        Icon(
+                            if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            "切换主题",
+                            tint = if (isDarkTheme) Color(0xFFFFD700) else Color.White
+                        )
+                    }
+                    
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(50))
+                    ) {
+                        Icon(
+                            if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            "收藏",
+                            tint = if (isFavorite) FavoriteRed else Color.White
+                        )
+                    }
+                }
             }
         }
 
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = detail.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(text = detail.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = textColor)
 
             Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (detail.year.isNotBlank()) Text(detail.year, fontSize = 13.sp, color = TextTertiary)
-                if (detail.area.isNotBlank()) Text(detail.area, fontSize = 13.sp, color = TextTertiary)
-                Text("共 " + detail.totalEpisodes.toString() + " 集", fontSize = 13.sp, color = TextTertiary)
+                if (detail.year.isNotBlank()) Text(detail.year, fontSize = 13.sp, color = secondaryTextColor)
+                if (detail.area.isNotBlank()) Text(detail.area, fontSize = 13.sp, color = secondaryTextColor)
+                val epText = if (detail.totalEpisodes > 0) "共 ${detail.totalEpisodes} 集" else "全网检索中..."
+                Text(epText, fontSize = 13.sp, color = secondaryTextColor)
             }
 
             Spacer(Modifier.height(8.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable { showSourcesDialog = true },
                 shape = RoundedCornerShape(8.dp),
-                color = BackgroundCard
+                color = cardColor
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -123,35 +155,35 @@ fun DetailScreen(
                     Icon(Icons.Default.Source, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     val sourceText = if (currentSource.isBlank()) detail.sourceName else currentSource
-                    Text("播放源: " + sourceText, color = TextPrimary, fontSize = 14.sp)
+                    Text("当前源: " + sourceText, color = textColor, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
-                    Text(allSources.size.toString() + "个源 >", color = PrimaryGreen, fontSize = 13.sp)
+                    Text(allSources.size.toString() + "个备选源 >", color = PrimaryGreen, fontSize = 13.sp)
                 }
             }
 
             if (detail.desc.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                Text(detail.desc, fontSize = 14.sp, color = TextSecondary, maxLines = 5, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
+                Text(detail.desc, fontSize = 14.sp, color = textColor.copy(alpha = 0.8f), maxLines = 5, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
             }
 
-            if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = TextTertiary) }
-            if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = TextTertiary) }
+            if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = secondaryTextColor) }
+            if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = secondaryTextColor) }
 
             Spacer(Modifier.height(20.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("播放源", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("播放源列表", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                 if (isAllSourcesLoading) {
                     Spacer(Modifier.width(12.dp))
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = PrimaryGreen)
                     Spacer(Modifier.width(8.dp))
-                    Text("全网检索中...", fontSize = 12.sp, color = TextTertiary)
+                    Text("正在同步云端...", fontSize = 12.sp, color = secondaryTextColor)
                 }
             }
             Spacer(Modifier.height(8.dp))
             
             // 竖向排列的播放源
-            if (allSources.isEmpty() && detail.source.isNotBlank()) {
-                // 如果没有其他源，显示当前详情的源
+            if (allSources.isEmpty() && detail.source.isNotBlank() && detail.source != "douban" && detail.source != "bangumi") {
+                // 如果没有其他源，且当前源不是纯元数据源，显示当前详情的源
                 SourceItem(
                     context = context,
                     source = SearchResult(
@@ -190,37 +222,37 @@ fun DetailScreen(
                 ) {
                     Icon(Icons.Default.PlayArrow, "播放", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("播放全部")
+                    Text("开始播放")
                 }
                 OutlinedButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
                 ) {
                     Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    val favText = if (isFavorite) "取消收藏" else "收藏"
+                    val favText = if (isFavorite) "取消收藏" else "加入收藏"
                     Text(favText)
                 }
                 OutlinedButton(
                     onClick = { showCacheDialog = true },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
                 ) {
                     Icon(Icons.Default.CloudDownload, "缓存", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("缓存")
+                    Text("离线缓存")
                 }
             }
 
             Spacer(Modifier.height(20.dp))
-            Text("剧集列表", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("剧集选集", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
             Spacer(Modifier.height(8.dp))
 
             if (detail.episodes.isEmpty()) {
-                Text("暂无剧集信息", color = TextTertiary, fontSize = 14.sp)
+                Text("暂无剧集信息，请尝试切换播放源", color = secondaryTextColor, fontSize = 14.sp)
             } else {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     itemsIndexed(detail.episodes) { index, episode ->
@@ -270,8 +302,12 @@ private fun SourceItem(
     latency: Long? = null,
     onClick: () -> Unit
 ) {
+    val cardColor = MaterialTheme.colorScheme.surfaceVariant
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     Surface(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp), color = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else BackgroundCard) {
+        shape = RoundedCornerShape(12.dp), color = if (isSelected) PrimaryGreen.copy(alpha = 0.15f) else cardColor) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (source.cover.isNotBlank() || source.poster.isNotBlank()) {
                 AsyncImage(ImageRequest.Builder(context).data(source.cover.ifBlank { source.poster }).crossfade(true).build(),
@@ -281,10 +317,10 @@ private fun SourceItem(
             Column(Modifier.weight(1f)) {
                 Text(source.sourceName.ifBlank { source.source }, fontSize = 14.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSelected) PrimaryGreen else TextPrimary)
+                    color = if (isSelected) PrimaryGreen else textColor)
                 
                 val episodeInfo = (if (source.episodes.isNotEmpty()) "${source.episodes.size}集 · " else "") + (source.year.ifBlank { "未知" })
-                Text(episodeInfo, fontSize = 12.sp, color = TextTertiary)
+                Text(episodeInfo, fontSize = 12.sp, color = secondaryTextColor)
             }
             
             if (latency != null) {
@@ -304,16 +340,20 @@ private fun SourceItem(
 
 @Composable
 private fun EpisodeCard(episode: Episode, index: Int, isCached: Boolean, onClick: () -> Unit) {
+    val cardColor = MaterialTheme.colorScheme.surfaceVariant
+    val textColor = MaterialTheme.colorScheme.onBackground
+    val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+
     Card(
         modifier = Modifier.width(80.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isCached) CacheGreen else BackgroundCard)
+        colors = CardDefaults.cardColors(containerColor = if (isCached) CacheGreen else cardColor)
     ) {
         Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = (index + 1).toString(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isCached) Color.White else TextPrimary)
+                Text(text = (index + 1).toString(), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isCached) Color.White else textColor)
                 if (episode.title.isNotBlank()) {
-                    Text(text = episode.title, fontSize = 10.sp, color = if (isCached) Color.White.copy(alpha = 0.7f) else TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = episode.title, fontSize = 10.sp, color = if (isCached) Color.White.copy(alpha = 0.7f) else secondaryTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (isCached) {
                     Icon(Icons.Default.CheckCircle, "已缓存", tint = Color.White, modifier = Modifier.size(14.dp))

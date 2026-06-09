@@ -5,6 +5,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.nio.charset.Charset
 import java.util.concurrent.TimeUnit
 
 /**
@@ -49,7 +50,7 @@ object RetrofitClient {
             val requestBuilder = chain.request().newBuilder()
                 .addHeader("User-Agent", "SuperTV/1.0")
                 .addHeader("Accept", "application/json")
-                .addHeader("Accept-Charset", "utf-8")
+                // 移除冗余且可能引起误解的 Accept-Charset，依靠标准 Accept 处理
             
             // 添加 Token (Selene 风格)
             authToken?.let {
@@ -72,19 +73,27 @@ object RetrofitClient {
                 onUnauthorized?.invoke()
             }
             
-            // 强制处理乱码：如果响应是 JSON，强制使用 UTF-8 解码
+            // 优化乱码处理：检测 UTF-8 异常并尝试 GBK 补救
             val contentType = response.body?.contentType()
-            if (contentType != null && contentType.subtype == "json") {
-                // 检查是否已经是 UTF-8
-                if (contentType.charset() == null) {
-                    val bytes = response.body?.bytes() ?: return@addInterceptor response
-                    val bodyString = String(bytes, Charsets.UTF_8)
-                    @Suppress("DEPRECATION")
-                    val newBody = okhttp3.ResponseBody.create(contentType, bodyString)
-                    return@addInterceptor response.newBuilder()
-                        .body(newBody)
-                        .build()
+            if (contentType != null && contentType.subtype == "json" && contentType.charset() == null) {
+                val source = response.body?.source()
+                source?.request(Long.MAX_VALUE)
+                val buffer = source?.buffer
+                
+                // 尝试以 UTF-8 读取
+                var bodyString = buffer?.clone()?.readString(Charsets.UTF_8) ?: ""
+                
+                // 如果包含替换字符，说明可能是 GBK 编码
+                if (bodyString.contains("\ufffd")) {
+                    android.util.Log.w("RetrofitClient", "Detected probable GBK response, retrying decode...")
+                    bodyString = buffer?.clone()?.readString(Charset.forName("GBK")) ?: ""
                 }
+                
+                @Suppress("DEPRECATION")
+                val newBody = okhttp3.ResponseBody.create(contentType, bodyString)
+                return@addInterceptor response.newBuilder()
+                    .body(newBody)
+                    .build()
             }
             
             response

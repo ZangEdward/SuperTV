@@ -1,1 +1,6 @@
-[{"key": "ltv", "label": "Cloudflare", "url": "https://ltv.955598.xyz"},{"key": "atv", "label": "äºé©¬éèç¹", "url": "https://atv.955598.xyz"},{"key": "ctv", "label": "edge", "url": "https://ctv.955598.xyz"},{"key": "edu", "label": "æè²ç½å", "url": "https://ltv.lzsb.edu.eu.org"}]
+[
+  {"key": "ltv", "label": "Cloudflare节点", "url": "https://ltv.955598.xyz"},
+  {"key": "atv", "label": "亚马逊节点", "url": "https://atv.955598.xyz"},
+  {"key": "ctv", "label": "Edge加速节点", "url": "https://ctv.955598.xyz"},
+  {"key": "edu", "label": "教育网入口", "url": "https://ltv.lzsb.edu.eu.org"}
+]

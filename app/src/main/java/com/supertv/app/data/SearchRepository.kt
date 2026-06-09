@@ -22,25 +22,35 @@ class SearchRepository(private val apiService: ApiService) {
      * 执行搜索，并按标题合并去重
      */
     suspend fun search(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        android.util.Log.d("SearchRepository", "Searching for: $query in sources: $sources")
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
         val allResults = coroutineScope {
             val deferredList = sources.map { source ->
                 async(Dispatchers.IO) {
                     try {
                         withTimeout(SEARCH_TIMEOUT_MS) {
-                            val response = apiService.search(query, source)
+                            val response = apiService.search(encodedQuery, source)
                             if (response.isSuccessful) {
                                 val body = response.body()
-                                body?.results ?: body?.data ?: emptyList()
-                            } else emptyList()
+                                val results = body?.results ?: body?.data ?: emptyList()
+                                android.util.Log.d("SearchRepository", "Source $source returned ${results.size} items")
+                                results
+                            } else {
+                                android.util.Log.e("SearchRepository", "Source $source failed: ${response.code()}")
+                                emptyList()
+                            }
                         }
                     } catch (e: Exception) {
+                        android.util.Log.e("SearchRepository", "Source $source exception", e)
                         emptyList()
                     }
                 }
             }
             deferredList.flatMap { it.await() }
         }
-        return SearchUtils.mergeResults(allResults)
+        val merged = SearchUtils.mergeResults(allResults)
+        android.util.Log.d("SearchRepository", "Total merged results: ${merged.size}")
+        return merged
     }
 
     /**
@@ -50,12 +60,17 @@ class SearchRepository(private val apiService: ApiService) {
         // 1. 精准搜索
         var results = search(query, sources)
         
-        // 2. 如果无结果，尝试去尾搜索
+        // 2. 如果无结果，尝试变体搜索 (替换了旧的去尾逻辑)
         if (results.isEmpty()) {
-            val variants = SearchUtils.generateTailTrimTerms(query)
+            val variants = SearchUtils.generateSearchVariants(query)
+            android.util.Log.d("SearchRepository", "No results for exact match, trying variants: $variants")
             for (term in variants) {
+                if (term == query) continue
                 results = search(term, sources)
-                if (results.isNotEmpty()) break
+                if (results.isNotEmpty()) {
+                    android.util.Log.d("SearchRepository", "Found results with variant: $term")
+                    break
+                }
             }
         }
 
