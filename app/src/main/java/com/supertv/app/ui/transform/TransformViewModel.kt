@@ -27,6 +27,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _animeUpdates = MutableStateFlow<List<SearchResult>>(emptyList<SearchResult>())
     val animeUpdates: StateFlow<List<SearchResult>> = _animeUpdates.asStateFlow()
 
+    private val _animeCalendar = MutableStateFlow<Map<Int, List<SearchResult>>>(emptyMap())
+    val animeCalendar: StateFlow<Map<Int, List<SearchResult>>> = _animeCalendar.asStateFlow()
+
     private val _shortDramas = MutableStateFlow<List<SearchResult>>(emptyList<SearchResult>())
     val shortDramas: StateFlow<List<SearchResult>> = _shortDramas.asStateFlow()
 
@@ -38,6 +41,10 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         loadData()
+    }
+
+    fun selectWeekday(day: Int) {
+        _animeUpdates.value = _animeCalendar.value[day] ?: emptyList()
     }
 
     fun selectCategory(category: String) {
@@ -199,7 +206,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadCategoryData(category: String) {
-        if (category == "每日更新动漫") {
+        if (category == "动漫") {
             loadAnimeData()
             return
         }
@@ -265,13 +272,22 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             val resp = apiService.getBangumiData("calendar")
             if (resp.isSuccessful) {
                 val body = resp.body()
-                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                val bangumiIndex = if (today == 1) 6 else today - 2
+                val calendarMap = mutableMapOf<Int, List<SearchResult>>()
                 
-                val bangumiItems = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
-                val results = bangumiItems.map { it.toSearchResult() }
-                _animeUpdates.value = results
-                store.saveCategoryCache("每日更新动漫", results)
+                body?.forEach { item ->
+                    val weekday = item.weekday?.id ?: 0
+                    val results = item.items.map { it.toSearchResult() }
+                    calendarMap[weekday] = results
+                }
+                
+                _animeCalendar.value = calendarMap
+                
+                // 默认显示今天的
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+                val bangumiIndex = if (today == 1) 7 else today - 1 // Bangumi 1-7 (Mon-Sun)
+                _animeUpdates.value = calendarMap[bangumiIndex] ?: emptyList()
+                
+                store.saveCategoryCache("动漫", _animeUpdates.value)
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load anime data", e)

@@ -3,12 +3,16 @@ package com.supertv.app.ui.detail
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -212,93 +216,77 @@ fun DetailScreen(
 
             Spacer(Modifier.height(24.dp))
             
-            // 选项卡切换 (模仿 SuperTV_old)
-            var selectedTab by remember { mutableIntStateOf(0) }
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color.Transparent,
-                contentColor = PrimaryGreen,
-                divider = { HorizontalDivider(thickness = 0.5.dp, color = secondaryTextColor.copy(alpha = 0.2f)) }
+    // 选项卡切换 (模仿 SuperTV_old)
+    var selectedTab by remember { mutableIntStateOf(0) }
+    TabRow(
+        selectedTabIndex = selectedTab,
+        containerColor = Color.Transparent,
+        contentColor = PrimaryGreen,
+        divider = { HorizontalDivider(thickness = 0.5.dp, color = secondaryTextColor.copy(alpha = 0.1f)) },
+        indicator = { tabPositions ->
+            TabRowDefaults.SecondaryIndicator(
+                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                color = PrimaryGreen,
+                height = 3.dp
+            )
+        }
+    ) {
+        Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+            Box(Modifier.padding(vertical = 12.dp)) { Text("剧集选集", fontWeight = if(selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+        }
+        Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+            Box(Modifier.padding(vertical = 12.dp)) { 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("播放源", fontWeight = if(selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
+                    if (isAllSourcesLoading) {
+                        Spacer(Modifier.width(6.dp))
+                        CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
+                    }
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+
+    if (selectedTab == 0) {
+        // 剧集网格
+        if (detail.episodes.isEmpty()) {
+            Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                Text("暂无剧集信息", color = secondaryTextColor)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 1000.dp)
             ) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                    Box(Modifier.padding(vertical = 12.dp)) { Text("剧集选集", fontWeight = if(selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
-                }
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                    Box(Modifier.padding(vertical = 12.dp)) { 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("播放源", fontWeight = if(selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
-                            if (isAllSourcesLoading) {
-                                Spacer(Modifier.width(6.dp))
-                                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            if (selectedTab == 0) {
-                // 剧集网格展示
-                if (detail.episodes.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                        Text("暂无剧集信息，请尝试切换播放源", color = secondaryTextColor, fontSize = 14.sp)
-                    }
-                } else {
-                    // 使用垂直网格展示剧集 (FlowRow 效果)
-                    Column {
-                        val chunks = detail.episodes.chunked(4) // 每行 4 个
-                        chunks.forEach { rowEpisodes ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                rowEpisodes.forEach { episode ->
-                                    val index = detail.episodes.indexOf(episode)
-                                    Box(Modifier.weight(1f)) {
-                                        EpisodeCard(
-                                            episode = episode, index = index,
-                                            isCached = cachedEpisodes.contains(index),
-                                            onClick = { onEpisodeClick(episode) }
-                                        )
-                                    }
-                                }
-                                // 补齐空位
-                                if (rowEpisodes.size < 4) {
-                                    repeat(4 - rowEpisodes.size) { Box(Modifier.weight(1f)) }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // 播放源列表
-                if (allSources.isEmpty() && detail.source.isNotBlank() && detail.source != "douban" && detail.source != "bangumi") {
-                    SourceItem(
-                        context = context,
-                        source = SearchResult(
-                            id = detail.id,
-                            title = detail.title,
-                            cover = detail.cover,
-                            source = detail.source,
-                            sourceName = detail.sourceName,
-                            episodesList = detail.episodes
-                        ),
-                        isSelected = true,
-                        onClick = { /* 已经是当前源 */ }
+                itemsIndexed(detail.episodes) { index, episode ->
+                    EpisodeCard(
+                        episode = episode,
+                        index = index,
+                        isCached = cachedEpisodes.contains(index),
+                        onClick = { onEpisodeClick(episode) }
                     )
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        allSources.forEach { source ->
-                            val latency = latencies[source.id + source.source]
-                            SourceItem(
-                                context = context,
-                                source = source,
-                                isSelected = source.source == currentSource && source.id == detail.id,
-                                latency = latency,
-                                onClick = { onSourceSelect(source) }
-                            )
-                        }
-                    }
                 }
             }
+        }
+    } else {
+        // 播放源列表
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            allSources.forEach { source ->
+                val latency = latencies[source.id + source.source]
+                SourceItem(
+                    context = context,
+                    source = source,
+                    isSelected = source.source == currentSource && source.id == detail.id,
+                    latency = latency,
+                    onClick = { onSourceSelect(source) }
+                )
+            }
+        }
+    }
 
             Spacer(Modifier.height(24.dp))
         }
@@ -362,13 +350,21 @@ private fun SourceItem(
                 Text(episodeInfo, fontSize = 12.sp, color = secondaryTextColor)
             }
             
-            if (latency != null) {
+            if (latency != null && latency > 0) {
                 val color = when {
-                    latency < 100 -> PrimaryGreen
-                    latency < 300 -> Color(0xFFFFA000)
+                    latency < 200 -> PrimaryGreen
+                    latency < 500 -> Color(0xFFFFA000)
                     else -> ErrorRed
                 }
-                Text("${latency}ms", color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val label = when {
+                    latency < 200 -> "极速"
+                    latency < 500 -> "一般"
+                    else -> "较慢"
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("${latency}ms", color = color.copy(alpha = 0.7f), fontSize = 10.sp)
+                }
                 Spacer(Modifier.width(8.dp))
             }
 

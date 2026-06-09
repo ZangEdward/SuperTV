@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.concurrent.TimeUnit
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicInteger
 
 class EpisodeCacheManager(private val context: Context) {
@@ -92,36 +93,62 @@ class EpisodeCacheManager(private val context: Context) {
     }
 
     private suspend fun downloadFileWithRetry(url: String, targetFile: File, taskId: String) {
-        withContext(Dispatchers.IO) {
-            val request = Request.Builder().url(url)
-                .header("User-Agent", "Mozilla/5.0 (Android 14) SuperTV/1.0")
-                .build()
+        var retryCount = 0
+        val maxRetries = 3
+        var lastException: Exception? = null
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+        while (retryCount < maxRetries) {
+            try {
+                withContext(Dispatchers.IO) {
+                    val downloadedBytes = if (targetFile.exists()) targetFile.length() else 0L
+                    
+                    val requestBuilder = Request.Builder().url(url)
+                        .header("User-Agent", "Mozilla/5.0 (Android 14) SuperTV/1.0")
+                    
+                    if (downloadedBytes > 0) {
+                        requestBuilder.header("Range", "bytes=$downloadedBytes-")
+                    }
+                    
+                    val response = client.newCall(requestBuilder.build()).execute()
+                    
+                    if (response.code == 416) { // Range Not Satisfiable - potentially already finished
+                        return@withContext
+                    }
+                    
+                    if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
 
-            val body = response.body ?: throw Exception("空响应体")
-            val contentLength = body.contentLength()
-            val inputStream = body.byteStream()
-            val outputStream = targetFile.outputStream()
+                    val body = response.body ?: throw Exception("空响应体")
+                    val contentLength = body.contentLength() + downloadedBytes
+                    val inputStream = body.byteStream()
+                    val outputStream = if (downloadedBytes > 0) FileOutputStream(targetFile, true) else FileOutputStream(targetFile)
 
-            var bytesRead: Long = 0
-            val buffer = ByteArray(16384) // 增加缓冲区
-            var read: Int
+                    var bytesRead: Long = downloadedBytes
+                    val buffer = ByteArray(32768) // 进一步增加缓冲区
+                    var read: Int
 
-            inputStream.use { input ->
-                outputStream.use { output ->
-                    while (input.read(buffer).also { read = it } != -1) {
-                        ensureActive()
-                        output.write(buffer, 0, read)
-                        bytesRead += read
-                        if (contentLength > 0) {
-                            _downloadProgress.value = _downloadProgress.value + (taskId to (bytesRead.toFloat() / contentLength))
+                    inputStream.use { input ->
+                        outputStream.use { output ->
+                            while (input.read(buffer).also { read = it } != -1) {
+                                ensureActive()
+                                output.write(buffer, 0, read)
+                                bytesRead += read
+                                if (contentLength > 0) {
+                                    _downloadProgress.value = _downloadProgress.value + (taskId to (bytesRead.toFloat() / contentLength))
+                                }
+                            }
                         }
                     }
                 }
+                return // Success
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                lastException = e
+                retryCount++
+                delay(2000L * retryCount) // 指数退避
+                android.util.Log.w("CacheManager", "Download retry $retryCount for $taskId: ${e.message}")
             }
         }
+        throw lastException ?: Exception("未知下载错误")
     }
 
     fun cancelDownload(videoId: String, episodeIndex: Int) {

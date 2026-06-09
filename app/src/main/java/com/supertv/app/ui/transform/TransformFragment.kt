@@ -211,7 +211,7 @@ fun TVHomeScreen(
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
-    val categories = listOf("热门", "电影", "剧集", "每日更新动漫", "综艺", "短剧")
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
 
     Column(
         modifier = Modifier
@@ -324,7 +324,7 @@ fun HomeScreen(
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     
-    val categories = listOf("热门", "电影", "剧集", "每日更新动漫", "综艺", "短剧")
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
 
     Column(
         modifier = Modifier
@@ -385,8 +385,36 @@ fun HomeScreen(
                                 VideoCardRow(items = hotMovies, onClick = onItemClick, isGrid = true)
                             }
                         }
-                        "每日更新动漫" -> {
+                        "动漫" -> {
                             item {
+                                // 星期选择器 (Task 4)
+                                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                                var currentDay by remember { mutableIntStateOf(
+                                    java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK).let { 
+                                        if (it == 1) 7 else it - 1 
+                                    }
+                                )}
+
+                                ScrollableTabRow(
+                                    selectedTabIndex = currentDay - 1,
+                                    containerColor = Color.Transparent,
+                                    contentColor = PrimaryGreen,
+                                    edgePadding = 16.dp,
+                                    divider = {}
+                                ) {
+                                    weekdays.forEachIndexed { index, name ->
+                                        Tab(
+                                            selected = currentDay == index + 1,
+                                            onClick = { 
+                                                currentDay = index + 1
+                                                viewModel.selectWeekday(currentDay)
+                                            },
+                                            text = { Text(name, fontSize = 14.sp) }
+                                        )
+                                    }
+                                }
+                                
+                                Spacer(Modifier.height(16.dp))
                                 SectionHeader("每日更新动漫")
                                 VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
                             }

@@ -65,22 +65,33 @@ class DlnaService(private val context: Context) {
                 }
 
                 val socket = DatagramSocket()
-                socket.soTimeout = SEARCH_TIMEOUT.toInt()
+                socket.soTimeout = 2000
                 socket.broadcast = true
 
                 val sendData = SSDP_SEARCH_REQUEST.toByteArray(Charsets.UTF_8)
-                val sendPacket = DatagramPacket(
-                    sendData, sendData.size,
-                    InetAddress.getByName(M_SEARCH_ADDR), M_SEARCH_PORT
+                
+                // 同时向组播和广播地址发送，提高发现率
+                val addresses = listOf(
+                    InetAddress.getByName(M_SEARCH_ADDR),
+                    InetAddress.getByName("255.255.255.255")
                 )
-                socket.send(sendPacket)
+
+                // 连续发送多次脉冲
+                repeat(3) {
+                    addresses.forEach { addr ->
+                        val sendPacket = DatagramPacket(sendData, sendData.size, addr, M_SEARCH_PORT)
+                        socket.send(sendPacket)
+                    }
+                    delay(200)
+                }
 
                 val foundDevices = mutableListOf<DLNADevice>()
                 val startTime = System.currentTimeMillis()
+                val totalWaitTime = 5000L // 增加等待时间
 
-                while (System.currentTimeMillis() - startTime < SEARCH_TIMEOUT) {
+                while (System.currentTimeMillis() - startTime < totalWaitTime) {
                     try {
-                        val receiveData = ByteArray(1024)
+                        val receiveData = ByteArray(2048) // 增大缓冲区
                         val receivePacket = DatagramPacket(receiveData, receiveData.size)
                         socket.receive(receivePacket)
 
@@ -88,13 +99,14 @@ class DlnaService(private val context: Context) {
                         val device = parseDevice(response)
                         if (device != null && foundDevices.none { it.id == device.id }) {
                             foundDevices.add(device)
+                            _devices.value = foundDevices.toList() // 实时更新列表
                         }
                     } catch (e: Exception) {
-                        break
+                        // Timeout or other socket error
+                        if (System.currentTimeMillis() - startTime >= totalWaitTime) break
                     }
                 }
                 socket.close()
-                _devices.value = foundDevices
             } catch (e: Exception) {
                 Log.e(TAG, "Device discovery failed", e)
             } finally {

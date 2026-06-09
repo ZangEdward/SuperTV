@@ -25,6 +25,9 @@ object RetrofitClient {
     private var authToken: String? = null
     private var authCookies: String? = null
     private var onUnauthorized: (() -> Unit)? = null
+    private var lastUnauthorizedTime: Long = 0
+    private const val UNAUTHORIZED_COOLDOWN = 5000L // 5秒冷却时间
+
     private var store: Store? = null
 
     /**
@@ -88,7 +91,11 @@ object RetrofitClient {
             
             // 如果返回 401，通知 UI 弹出登录框
             if (response.code == 401) {
-                onUnauthorized?.invoke()
+                val now = System.currentTimeMillis()
+                if (now - lastUnauthorizedTime > UNAUTHORIZED_COOLDOWN) {
+                    lastUnauthorizedTime = now
+                    onUnauthorized?.invoke()
+                }
             }
             
             // 优化乱码处理：检测 UTF-8 异常并尝试 GBK 补救

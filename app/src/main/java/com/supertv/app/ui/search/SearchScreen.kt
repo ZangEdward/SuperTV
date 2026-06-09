@@ -47,6 +47,7 @@ import com.supertv.app.viewmodel.SearchViewModel
 fun SearchScreen(
     viewModel: SearchViewModel,
     onResultClick: (SearchResult) -> Unit,
+    onNavigateToDetail: (SearchResult) -> Unit,
     onBack: () -> Unit
 ) {
     val query by viewModel.query.collectAsState()
@@ -58,6 +59,9 @@ fun SearchScreen(
 
     var showClearDialog by remember { mutableStateOf(false) }
     var selectedNetDiskType by remember { mutableStateOf("") }
+    
+    // 快速换源相关
+    var selectedResultForSources by remember { mutableStateOf<SearchResult?>(null) }
     
     // 使用主题色
     val backgroundColor = MaterialTheme.colorScheme.background
@@ -154,14 +158,22 @@ fun SearchScreen(
 
             searchMode == 0 && results.isNotEmpty() -> {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
+                    columns = GridCells.Fixed(3), // 改为 3 列，对齐 Selene 手机端
                     contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(results, key = { "${it.id}${it.source}" }) { item ->
-                        VideoCard(result = item, onClick = { onResultClick(item) })
+                    // 聚合逻辑：按标题+年份+集数去重展示
+                    val aggregated = results.distinctBy { 
+                        it.title.trim() + it.year + (it.episodes.size > 1) 
+                    }
+                    
+                    items(aggregated, key = { "${it.id}${it.source}" }) { item ->
+                        VideoCard(result = item, onClick = { 
+                            selectedResultForSources = item 
+                            viewModel.loadDetail(item.id, item.source, item.title) // 提前加载备选源
+                        })
                     }
                 }
             }
@@ -234,6 +246,63 @@ fun SearchScreen(
                     showClearDialog = false
                 }
             )
+        }
+
+        // 快速换源 BottomSheet
+        selectedResultForSources?.let { result ->
+            val allSources by viewModel.allSources.collectAsState()
+            
+            ModalBottomSheet(
+                onDismissRequest = { selectedResultForSources = null },
+                containerColor = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            ) {
+                Column(Modifier.padding(bottom = 32.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = result.cover,
+                            contentDescription = null,
+                            modifier = Modifier.size(60.dp, 80.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(result.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${result.sourceName} · ${result.year}", color = secondaryTextColor, fontSize = 14.sp)
+                        }
+                        Button(
+                            onClick = { 
+                                onNavigateToDetail(result)
+                                selectedResultForSources = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen)
+                        ) {
+                            Text("完整详情")
+                        }
+                    }
+                    
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    
+                    Text("选择播放源", modifier = Modifier.padding(16.dp), fontWeight = FontWeight.Bold, color = PrimaryGreen)
+
+                    LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                        val currentSources = if (allSources.any { it.title == result.title }) allSources else listOf(result)
+                        items(currentSources) { source ->
+                            SearchSourceItem(
+                                context = LocalContext.current,
+                                source = source,
+                                onClick = {
+                                    onResultClick(source)
+                                    selectedResultForSources = null
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -440,6 +509,23 @@ private fun TagItem(text: String, color: Color) {
             fontWeight = FontWeight.Medium
         )
     }
+}
+
+@Composable
+fun SearchSourceItem(
+    context: android.content.Context,
+    source: SearchResult,
+    onClick: () -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(source.sourceName, fontWeight = FontWeight.Medium) },
+        supportingContent = { Text("${source.episodes.size}集 · ${source.year}") },
+        leadingContent = {
+            Icon(Icons.Default.PlayCircle, null, tint = PrimaryGreen)
+        },
+        modifier = Modifier.clickable { onClick() },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -1,5 +1,3 @@
-package com.supertv.app.ui.player
-
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -44,6 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -94,6 +95,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         
         val initialUrl = intent?.getStringExtra(EXTRA_URL) ?: ""
@@ -193,12 +195,12 @@ class PlayerActivity : ComponentActivity() {
     }
 
     fun setFullscreen(fullscreen: Boolean) {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (fullscreen) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            window.clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 }
@@ -282,6 +284,12 @@ fun MobilePortraitPlayerScreen(
     val activity = LocalContext.current as? PlayerActivity
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCastSheet by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+
+    // 监听播放速度变化
+    LaunchedEffect(playbackSpeed) {
+        player.setPlaybackSpeed(playbackSpeed)
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Player Section (Fixed aspect ratio 16:9)
@@ -290,7 +298,7 @@ fun MobilePortraitPlayerScreen(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         this.player = player
-                        useController = true
+                        useController = true // 竖屏使用原生控制器或自定义
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -305,9 +313,55 @@ fun MobilePortraitPlayerScreen(
             }
         }
 
+        // 进度调节 (竖屏专用)
+        var position by remember { mutableLongStateOf(player.currentPosition) }
+        var duration by remember { mutableLongStateOf(player.duration) }
+        var isSeeking by remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                if (!isSeeking) {
+                    position = player.currentPosition
+                    duration = player.duration
+                }
+                delay(500L)
+            }
+        }
+
+        Slider(
+            value = if (duration > 0) position.toFloat() / duration else 0f,
+            onValueChange = { 
+                isSeeking = true
+                position = (it * duration).toLong()
+            },
+            onValueChangeFinished = {
+                player.seekTo(position)
+                isSeeking = false
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            colors = SliderDefaults.colors(thumbColor = PrimaryGreen, activeTrackColor = PrimaryGreen)
+        )
+
         // Info & Tabs Section
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+                // 倍速选择
+                AssistChip(
+                    onClick = { 
+                        playbackSpeed = when (playbackSpeed) {
+                            1.0f -> 1.25f
+                            1.25f -> 1.5f
+                            1.5f -> 2.0f
+                            2.0f -> 0.5f
+                            else -> 1.0f
+                        }
+                    },
+                    label = { Text("${playbackSpeed}x") },
+                    colors = AssistChipDefaults.assistChipColors(labelColor = PrimaryGreen)
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
             
             TabRow(
@@ -404,6 +458,12 @@ fun MobilePlayerScreen(
     var showSourceSheet by remember { mutableStateOf(false) }
     var showCastSheet by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
+    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+
+    // 监听播放速度变化
+    LaunchedEffect(playbackSpeed) {
+        player.setPlaybackSpeed(playbackSpeed)
+    }
 
     // 控制器自动隐藏
     LaunchedEffect(showControls) {
@@ -426,59 +486,70 @@ fun MobilePlayerScreen(
                     useController = false // 使用自定义 Compose 控制器
                 }
             },
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            val x = change.position.x
-                            val width = size.width
-                            
-                            if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                                val seekDelta = (dragAmount.x * 100).toLong()
-                                player.seekTo(player.currentPosition + seekDelta)
-                                gestureText = "进度: ${formatTime(player.currentPosition)}"
-                            } else {
-                                if (x < width / 2) {
-                                    activity?.let {
-                                        val currentBrightness = it.window.attributes.screenBrightness
-                                        val newBrightness = (if (currentBrightness < 0) 0.5f else currentBrightness) - (dragAmount.y / 1000f)
-                                        it.setBrightness(newBrightness)
-                                        gestureText = "亮度: ${(newBrightness * 100).toInt()}%"
-                                    }
-                                } else {
-                                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                                    val delta = if (dragAmount.y > 0) -1 else 1
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (currentVolume + delta).coerceIn(0, maxVolume), 0)
-                                    val volPct = ((currentVolume + delta).toFloat() / maxVolume * 100).toInt()
-                                    gestureText = "音量: ${volPct}%"
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 手势层 (独立于 UI，防止 UI 点击被拦截)
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        val x = change.position.x
+                        val width = size.width
+                        
+                        if (abs(dragAmount.x) > abs(dragAmount.y)) {
+                            // 进度调节灵敏度：每像素移动对应 200ms
+                            val seekDelta = (dragAmount.x * 200).toLong()
+                            player.seekTo((player.currentPosition + seekDelta).coerceIn(0, player.duration))
+                            gestureText = "进度: ${formatTime(player.currentPosition)}"
+                        } else {
+                            if (x < width / 2) {
+                                activity?.let {
+                                    val currentBrightness = it.window.attributes.screenBrightness
+                                    val delta = -dragAmount.y / size.height
+                                    val newBrightness = (if (currentBrightness < 0) 0.5f else currentBrightness) + delta
+                                    it.setBrightness(newBrightness)
+                                    gestureText = "亮度: ${(newBrightness * 100).toInt()}%"
                                 }
+                            } else {
+                                val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+                                val delta = -dragAmount.y / size.height * maxVolume * 2f
+                                val newVolume = (currentVolume + delta).coerceIn(0f, maxVolume.toFloat())
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume.toInt(), 0)
+                                val volPct = (newVolume / maxVolume * 100).toInt()
+                                gestureText = "音量: ${volPct}%"
                             }
-                        },
-                        onDragEnd = { gestureText = null }
-                    )
-                }
+                        }
+                    },
+                    onDragEnd = { gestureText = null }
+                )
+            }
         )
 
         // Overlay UI
-        AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn() + slideInVertically { -it },
-            exit = fadeOut() + slideOutVertically { -it },
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Bar
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Top Bar
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+                modifier = Modifier.align(Alignment.TopCenter)
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(8.dp).background(Color.Black.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { activity?.finish() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
-                    Text(title, color = Color.White, modifier = Modifier.weight(1f))
+                    Text(title, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     
                     IconButton(onClick = { showCastSheet = true }) {
                         Icon(Icons.Default.Cast, "Cast", tint = Color.White)
@@ -487,45 +558,93 @@ fun MobilePlayerScreen(
                         Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Episodes", tint = Color.White)
                     }
                 }
-                
-                Spacer(modifier = Modifier.weight(1f))
+            }
 
-                // Bottom Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).background(Color.Black.copy(alpha = 0.3f)),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // Bottom Bar
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn() + slideInVertically { it },
+                exit = fadeOut() + slideOutVertically { it },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        var isPlaying by remember { mutableStateOf(player.isPlaying) }
-                        DisposableEffect(player) {
-                            val listener = object : Player.Listener {
-                                override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
-                            }
-                            player.addListener(listener)
-                            onDispose { player.removeListener(listener) }
-                        }
-                        IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
-                            Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.White)
-                        }
-                        
-                        // 进度条 (简化)
-                        var position by remember { mutableStateOf(player.currentPosition) }
-                        var duration by remember { mutableStateOf(player.duration) }
-                        LaunchedEffect(showControls) {
-                            while (showControls) {
+                    // 进度条
+                    var position by remember { mutableLongStateOf(player.currentPosition) }
+                    var duration by remember { mutableLongStateOf(player.duration) }
+                    var isSeeking by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(showControls) {
+                        while (showControls) {
+                            if (!isSeeking) {
                                 position = player.currentPosition
                                 duration = player.duration
-                                delay(1000)
                             }
+                            delay(500L)
                         }
-                        Text("${formatTime(position)} / ${formatTime(duration)}", color = Color.White, fontSize = 12.sp)
                     }
 
-                    Button(onClick = { showSourceSheet = true }, colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("换源")
+                    Slider(
+                        value = if (duration > 0) position.toFloat() / duration else 0f,
+                        onValueChange = { 
+                            isSeeking = true
+                            position = (it * duration).toLong()
+                        },
+                        onValueChangeFinished = {
+                            player.seekTo(position)
+                            isSeeking = false
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        colors = SliderDefaults.colors(thumbColor = PrimaryGreen, activeTrackColor = PrimaryGreen)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            var isPlaying by remember { mutableStateOf(player.isPlaying) }
+                            DisposableEffect(player) {
+                                val listener = object : Player.Listener {
+                                    override fun onIsPlayingChanged(playing: Boolean) { isPlaying = playing }
+                                }
+                                player.addListener(listener)
+                                onDispose { player.removeListener(listener) }
+                            }
+                            IconButton(onClick = { if (player.isPlaying) player.pause() else player.play() }) {
+                                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, null, tint = Color.White)
+                            }
+                            
+                            Text("${formatTime(position)} / ${formatTime(duration)}", color = Color.White, fontSize = 12.sp)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // 倍速按钮
+                            TextButton(onClick = { 
+                                playbackSpeed = when (playbackSpeed) {
+                                    1.0f -> 1.25f
+                                    1.25f -> 1.5f
+                                    1.5f -> 2.0f
+                                    2.0f -> 0.5f
+                                    0.5f -> 0.75f
+                                    else -> 1.0f
+                                }
+                            }) {
+                                Text("${playbackSpeed}x", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(onClick = { showSourceSheet = true }, colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen.copy(alpha = 0.8f))) {
+                                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("换源", fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }

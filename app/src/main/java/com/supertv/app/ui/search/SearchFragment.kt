@@ -90,6 +90,24 @@ class SearchFragment : Fragment() {
                         SearchScreen(
                             viewModel = viewModel,
                             onResultClick = { result ->
+                                val sourcesJson = com.google.gson.Gson().toJson(listOf(result)) // 简单包装
+                                val intent = com.supertv.app.ui.player.PlayerActivity.createIntent(
+                                    context = requireContext(),
+                                    url = result.episodes.firstOrNull()?.url ?: "",
+                                    title = result.title,
+                                    episodeIndex = 0,
+                                    totalEpisodes = result.episodes.size,
+                                    sourcesJson = sourcesJson,
+                                    source = result.source,
+                                    id = result.id
+                                )
+                                if (result.episodes.isNotEmpty()) {
+                                    startActivity(intent)
+                                } else {
+                                    android.widget.Toast.makeText(context, "正在检索播放源...", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onNavigateToDetail = { result ->
                                 val bundle = Bundle().apply {
                                     putString("id", result.id)
                                     putString("source", result.source)
@@ -98,10 +116,10 @@ class SearchFragment : Fragment() {
                                 }
                                 val navOptions = androidx.navigation.navOptions {
                                     anim {
-                                        enter = com.supertv.app.R.anim.slide_in_right
+                                        enter = com.supertv.app.R.anim.slide_up
                                         exit = com.supertv.app.R.anim.slide_out_left
                                         popEnter = com.supertv.app.R.anim.slide_in_left
-                                        popExit = com.supertv.app.R.anim.slide_out_right
+                                        popExit = com.supertv.app.R.anim.slide_down
                                     }
                                 }
                                 findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle, navOptions)

@@ -65,8 +65,8 @@
     <fragment
         android:id="@+id/nav_anime"
         android:name="com.supertv.app.ui.transform.TransformFragment"
-        android:label="每日更新动漫" >
-        <argument android:name="category" android:defaultValue="每日更新动漫" />
+        android:label="动漫" >
+        <argument android:name="category" android:defaultValue="动漫" />
         <action
             android:id="@+id/action_nav_anime_to_detail"
             app:destination="@id/nav_detail"
