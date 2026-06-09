@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 class TransformViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = Store.getInstance(application)
-    private val apiService = RetrofitClient.getApiService()
+    private val apiService get() = RetrofitClient.getApiService()
 
     private val _playRecords = MutableStateFlow<List<PlayRecord>>(emptyList<PlayRecord>())
     val playRecords: StateFlow<List<PlayRecord>> = _playRecords.asStateFlow()

@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
 
     private const val DEFAULT_TIMEOUT = 30L
-    private const val DEFAULT_BASE_URL = "https://api.example.com/"
+    private const val DEFAULT_BASE_URL = "https://ltv.955598.xyz/" // 使用默认有效节点替代 example.com
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BASIC
@@ -25,6 +25,24 @@ object RetrofitClient {
     private var authToken: String? = null
     private var authCookies: String? = null
     private var onUnauthorized: (() -> Unit)? = null
+
+    /**
+     * 预初始化，从存储中恢复节点
+     */
+    fun init(context: android.content.Context) {
+        val store = Store.getInstance(context)
+        val savedUrl = store.getApiBaseUrl()
+        if (!savedUrl.isNullOrBlank()) {
+            switchBaseUrl(savedUrl)
+        } else {
+            val nodes = ApiNodeService.getNodes(context)
+            if (nodes.isNotEmpty()) {
+                val firstUrl = nodes.first().url
+                store.saveApiBaseUrl(firstUrl)
+                switchBaseUrl(firstUrl)
+            }
+        }
+    }
 
     /**
      * 设置认证信息

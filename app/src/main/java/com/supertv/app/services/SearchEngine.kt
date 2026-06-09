@@ -1,6 +1,7 @@
 package com.supertv.app.services
 
 import com.supertv.app.api.ApiService
+import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.SearchRepository
 import com.supertv.app.model.SearchResult
 import kotlinx.coroutines.*
@@ -13,9 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 支持多源并发搜索、渐进式加载、拼音匹配、去尾搜索
  */
-class SearchEngine(private val apiService: ApiService) {
+class SearchEngine(private val initialApiService: ApiService) {
 
-    private val repository = SearchRepository(apiService)
+    private val apiService get() = RetrofitClient.getApiService()
+    private val repository get() = SearchRepository(apiService)
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 

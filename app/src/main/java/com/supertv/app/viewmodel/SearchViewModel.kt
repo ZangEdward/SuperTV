@@ -24,8 +24,8 @@ import kotlinx.coroutines.launch
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = Store.getInstance(application)
-    private val apiService = RetrofitClient.getApiService()
-    private val repository = SearchRepository(apiService)
+    private val apiService get() = RetrofitClient.getApiService()
+    private val repository get() = SearchRepository(apiService)
     private val searchEngine = SearchEngine(apiService)
     private val speedTestService = SpeedTestService()
 

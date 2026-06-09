@@ -44,6 +44,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.supertv.app.ui.components.GlobalHeader
 import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.components.LoginDialog
+import com.supertv.app.data.ApiNodeService
+import com.supertv.app.data.Store
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.SyncService
@@ -63,6 +65,9 @@ class MainActivity : AppCompatActivity() {
         enableEdgeToEdge()
 
         try {
+            // 初始化全局 API 节点 (从 Store 读取并应用到 RetrofitClient)
+            RetrofitClient.init(this)
+
             // 设置主题
             setTheme(R.style.Theme_App_NoActionBar)
             
