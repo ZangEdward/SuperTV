@@ -19,12 +19,11 @@ class SearchRepository(private val apiService: ApiService) {
     }
 
     /**
-     * 执行搜索，并按标题合并去重
+     * 执行原始搜索（不进行标题合并）
      */
-    suspend fun search(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
-        android.util.Log.d("SearchRepository", "Searching for: $query in sources: $sources")
+    suspend fun searchRaw(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
         val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-        val allResults = coroutineScope {
+        return coroutineScope {
             val deferredList = sources.map { source ->
                 async(Dispatchers.IO) {
                     try {
@@ -32,22 +31,21 @@ class SearchRepository(private val apiService: ApiService) {
                             val response = apiService.search(encodedQuery, source)
                             if (response.isSuccessful) {
                                 val body = response.body()
-                                val results = body?.results ?: body?.data ?: emptyList()
-                                android.util.Log.d("SearchRepository", "Source $source returned ${results.size} items")
-                                results
-                            } else {
-                                android.util.Log.e("SearchRepository", "Source $source failed: ${response.code()}")
-                                emptyList()
-                            }
+                                body?.results ?: body?.data ?: emptyList()
+                            } else emptyList()
                         }
-                    } catch (e: Exception) {
-                        android.util.Log.e("SearchRepository", "Source $source exception", e)
-                        emptyList()
-                    }
+                    } catch (e: Exception) { emptyList() }
                 }
             }
             deferredList.flatMap { it.await() }
         }
+    }
+
+    /**
+     * 执行搜索，并按标题合并去重
+     */
+    suspend fun search(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
+        val allResults = searchRaw(query, sources)
         val merged = SearchUtils.mergeResults(allResults)
         android.util.Log.d("SearchRepository", "Total merged results: ${merged.size}")
         return merged
@@ -153,7 +151,7 @@ class SearchRepository(private val apiService: ApiService) {
                                 val epResponse = apiService.getEpisodes(id, source)
                                 if (epResponse.isSuccessful) {
                                     val episodes = epResponse.body() ?: emptyList()
-                                    return detail.copy(episodes = episodes)
+                                    return detail.copy(episodesList = episodes)
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("SearchRepository", "Failed to load episodes separately", e)

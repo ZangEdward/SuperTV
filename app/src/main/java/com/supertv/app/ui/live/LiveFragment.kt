@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.ComposeView
@@ -37,37 +38,7 @@ class LiveFragment : Fragment() {
                 var showLoginDialog by remember { mutableStateOf(false) }
 
                 SuperTVTheme(darkTheme = isDarkTheme) {
-                    Column {
-                        GlobalHeader(
-                            onUserClick = { 
-                                if (isLoggedIn) showUserMenu = true else showLoginDialog = true 
-                            },
-                            onSearchClick = { 
-                                val navOptions = androidx.navigation.navOptions {
-                                    anim {
-                                        enter = com.supertv.app.R.anim.slide_in_right
-                                        exit = com.supertv.app.R.anim.slide_out_left
-                                        popEnter = com.supertv.app.R.anim.slide_in_left
-                                        popExit = com.supertv.app.R.anim.slide_out_right
-                                    }
-                                }
-                                findNavController().navigate(R.id.action_nav_live_to_search, null, navOptions) 
-                            },
-                            onDownloadClick = { 
-                                val navOptions = androidx.navigation.navOptions {
-                                    anim {
-                                        enter = com.supertv.app.R.anim.slide_in_right
-                                        exit = com.supertv.app.R.anim.slide_out_left
-                                        popEnter = com.supertv.app.R.anim.slide_in_left
-                                        popExit = com.supertv.app.R.anim.slide_out_right
-                                    }
-                                }
-                                findNavController().navigate(R.id.nav_slideshow, null, navOptions) 
-                            },
-                            onThemeToggle = { mainViewModel.toggleTheme() },
-                            isDarkTheme = isDarkTheme
-                        )
-                        
+                    Box {
                         LiveScreen()
                         
                         if (showUserMenu) {

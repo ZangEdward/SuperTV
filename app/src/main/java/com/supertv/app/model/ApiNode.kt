@@ -1,5 +1,6 @@
 package com.supertv.app.model
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 
 /**
@@ -36,7 +37,7 @@ data class SearchResult(
     val desc: String = "",
     val type: String = "",
     @SerializedName("episodes")
-    val episodeUrls: List<String> = emptyList(),
+    val episodesRaw: JsonElement? = null,
     @SerializedName("episodes_titles")
     val episodeTitles: List<String> = emptyList(),
     @SerializedName("episodes_list") // 兼容带对象的格式
@@ -44,13 +45,27 @@ data class SearchResult(
 ) {
     val episodes: List<Episode> get() {
         if (!episodesList.isNullOrEmpty()) return episodesList
-        return episodeUrls.mapIndexed { index, url ->
-            Episode(
-                index = index,
-                title = episodeTitles.getOrNull(index) ?: (index + 1).toString(),
-                url = url
-            )
+        
+        val raw = episodesRaw ?: return emptyList()
+        if (raw.isJsonArray) {
+            val arr = raw.asJsonArray
+            if (arr.size() == 0) return emptyList()
+            
+            val first = arr[0]
+            return if (first.isJsonPrimitive && first.asJsonPrimitive.isString) {
+                arr.mapIndexed { index, el ->
+                    Episode.parse(el.asString, index, episodeTitles.getOrNull(index))
+                }
+            } else if (first.isJsonObject) {
+                val gson = com.google.gson.Gson()
+                arr.mapIndexed { index, el ->
+                    gson.fromJson(el, Episode::class.java).copy(index = index)
+                }
+            } else {
+                emptyList()
+            }
         }
+        return emptyList()
     }
 }
 
@@ -70,7 +85,36 @@ data class Episode(
     val title: String = "",
     val url: String = "",
     val isCache: Boolean = false
-)
+) {
+    companion object {
+        /**
+         * 解析剧集字符串，提取标题和URL (模仿 supertvold parseEpisode 逻辑)
+         * 常见格式: "标题$URL" 或 "URL"
+         */
+        fun parse(raw: String, index: Int, providedTitle: String? = null): Episode {
+            val defaultTitle = providedTitle ?: "第 ${index + 1} 集"
+            if (raw.isBlank()) return Episode(index, defaultTitle, "")
+
+            // 处理 "标题$URL" 格式
+            if (raw.contains("$")) {
+                val parts = raw.split("$")
+                val title = parts[0].trim()
+                val url = parts.drop(1).joinToString("$").trim()
+                return Episode(index, title.ifBlank { defaultTitle }, url)
+            }
+
+            // 处理 "标题#URL" 格式 (某些源使用 # 分割)
+            if (raw.contains("#") && !raw.startsWith("http") && !raw.startsWith("rtmp") && !raw.startsWith("file")) {
+                val parts = raw.split("#")
+                val title = parts[0].trim()
+                val url = parts.drop(1).joinToString("#").trim()
+                return Episode(index, title.ifBlank { defaultTitle }, url)
+            }
+
+            return Episode(index, defaultTitle, raw)
+        }
+    }
+}
 
 /**
  * 视频详情
@@ -89,12 +133,40 @@ data class VideoDetail(
     val source: String = "",
     @SerializedName("source_name")
     val sourceName: String = "",
-    val episodes: List<Episode> = emptyList(),
+    @SerializedName("episodes_list")
+    val episodesList: List<Episode>? = null,
+    @SerializedName("episodes")
+    val episodesRaw: JsonElement? = null,
     @SerializedName("episodes_titles")
     val episodesTitles: List<String> = emptyList(),
     @SerializedName("total_episodes")
     val totalEpisodes: Int = 0
-)
+) {
+    val episodes: List<Episode> get() {
+        if (!episodesList.isNullOrEmpty()) return episodesList
+        
+        val raw = episodesRaw ?: return emptyList()
+        if (raw.isJsonArray) {
+            val arr = raw.asJsonArray
+            if (arr.size() == 0) return emptyList()
+            
+            val first = arr[0]
+            return if (first.isJsonPrimitive && first.asJsonPrimitive.isString) {
+                arr.mapIndexed { index, el ->
+                    Episode.parse(el.asString, index, episodesTitles.getOrNull(index))
+                }
+            } else if (first.isJsonObject) {
+                val gson = com.google.gson.Gson()
+                arr.mapIndexed { index, el ->
+                    gson.fromJson(el, Episode::class.java).copy(index = index)
+                }
+            } else {
+                emptyList()
+            }
+        }
+        return emptyList()
+    }
+}
 
 /**
  * 豆瓣条目

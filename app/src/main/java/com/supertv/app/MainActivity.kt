@@ -116,10 +116,25 @@ class MainActivity : AppCompatActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentDestination = navBackStackEntry?.destination
                     
-                    // 仅在首页展示固定顶栏
-                    val showHeader = currentDestination?.id == R.id.nav_transform
+                    // 在这些主页面展示固定顶栏
+                    val mainDestinations = setOf(
+                        R.id.nav_transform,
+                        R.id.nav_movie,
+                        R.id.nav_tv,
+                        R.id.nav_anime,
+                        R.id.nav_show,
+                        R.id.nav_short_drama,
+                        R.id.nav_live
+                    )
+                    val showHeader = currentDestination?.id in mainDestinations
 
                     SuperTVTheme(darkTheme = isDarkTheme) {
+                        // 设置根布局背景色，解决动画切换时的黑色闪烁
+                        SideEffect {
+                            val layout = binding.appBarMain.contentMain.root
+                            layout.setBackgroundColor(if (isDarkTheme) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
+                        }
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.background

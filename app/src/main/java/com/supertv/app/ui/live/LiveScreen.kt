@@ -51,24 +51,19 @@ fun LiveScreen() {
             .fillMaxSize()
             .background(backgroundColor)
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = backgroundColor,
-            tonalElevation = 4.dp
+        // 这里的顶栏改为普通标题，不再作为 Surface 独立
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.LiveTv, contentDescription = null, tint = PrimaryGreen)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "电视直播",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-            }
+            Icon(Icons.Default.LiveTv, contentDescription = null, tint = PrimaryGreen)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "电视直播",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = textColor
+            )
         }
 
         LazyColumn(

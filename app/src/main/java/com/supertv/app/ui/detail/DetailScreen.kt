@@ -61,9 +61,30 @@ fun DetailScreen(
     val textColor = MaterialTheme.colorScheme.onBackground
     val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    if (isLoading) {
+    // 激进搜索加载状态 (模仿 SuperTV_old)
+    val isAggressiveLoading = (detail?.source == "douban" || detail?.source == "bangumi") 
+        && (detail?.episodes?.isEmpty() == true) && isAllSourcesLoading
+
+    if (isLoading || isAggressiveLoading) {
         Box(modifier = Modifier.fillMaxSize().background(backgroundColor), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = PrimaryGreen)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = PrimaryGreen)
+                if (isAggressiveLoading) {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "全网激进检索中...",
+                        color = secondaryTextColor,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "正在匹配最佳播放源",
+                        color = secondaryTextColor.copy(alpha = 0.7f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
         return
     }
@@ -169,60 +190,107 @@ fun DetailScreen(
             if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = secondaryTextColor) }
             if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = secondaryTextColor) }
 
-            Spacer(Modifier.height(20.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("播放源列表", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-                if (isAllSourcesLoading) {
-                    Spacer(Modifier.width(12.dp))
-                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = PrimaryGreen)
-                    Spacer(Modifier.width(8.dp))
-                    Text("正在同步云端...", fontSize = 12.sp, color = secondaryTextColor)
-                }
-            }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(24.dp))
             
-            // 竖向排列的播放源
-            if (allSources.isEmpty() && detail.source.isNotBlank() && detail.source != "douban" && detail.source != "bangumi") {
-                // 如果没有其他源，且当前源不是纯元数据源，显示当前详情的源
-                SourceItem(
-                    context = context,
-                    source = SearchResult(
-                        id = detail.id,
-                        title = detail.title,
-                        cover = detail.cover,
-                        source = detail.source,
-                        sourceName = detail.sourceName,
-                        episodesList = detail.episodes
-                    ),
-                    isSelected = true,
-                    onClick = { /* 已经是当前源 */ }
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    allSources.forEach { source ->
-                        val latency = latencies[source.id + source.source]
-                        SourceItem(
-                            context = context,
-                            source = source,
-                            isSelected = source.source == currentSource && source.id == detail.id,
-                            latency = latency,
-                            onClick = { onSourceSelect(source) }
-                        )
+            // 选项卡切换 (模仿 SuperTV_old)
+            var selectedTab by remember { mutableIntStateOf(0) }
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+                contentColor = PrimaryGreen,
+                divider = { HorizontalDivider(thickness = 0.5.dp, color = secondaryTextColor.copy(alpha = 0.2f)) }
+            ) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                    Box(Modifier.padding(vertical = 12.dp)) { Text("剧集选集", fontWeight = if(selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                }
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+                    Box(Modifier.padding(vertical = 12.dp)) { 
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("播放源", fontWeight = if(selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
+                            if (isAllSourcesLoading) {
+                                Spacer(Modifier.width(6.dp))
+                                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp, color = PrimaryGreen)
+                            }
+                        }
                     }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
+
+            if (selectedTab == 0) {
+                // 剧集网格展示
+                if (detail.episodes.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        Text("暂无剧集信息，请尝试切换播放源", color = secondaryTextColor, fontSize = 14.sp)
+                    }
+                } else {
+                    // 使用垂直网格展示剧集 (FlowRow 效果)
+                    Column {
+                        val chunks = detail.episodes.chunked(4) // 每行 4 个
+                        chunks.forEach { rowEpisodes ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rowEpisodes.forEach { episode ->
+                                    val index = detail.episodes.indexOf(episode)
+                                    Box(Modifier.weight(1f)) {
+                                        EpisodeCard(
+                                            episode = episode, index = index,
+                                            isCached = cachedEpisodes.contains(index),
+                                            onClick = { onEpisodeClick(episode) }
+                                        )
+                                    }
+                                }
+                                // 补齐空位
+                                if (rowEpisodes.size < 4) {
+                                    repeat(4 - rowEpisodes.size) { Box(Modifier.weight(1f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // 播放源列表
+                if (allSources.isEmpty() && detail.source.isNotBlank() && detail.source != "douban" && detail.source != "bangumi") {
+                    SourceItem(
+                        context = context,
+                        source = SearchResult(
+                            id = detail.id,
+                            title = detail.title,
+                            cover = detail.cover,
+                            source = detail.source,
+                            sourceName = detail.sourceName,
+                            episodesList = detail.episodes
+                        ),
+                        isSelected = true,
+                        onClick = { /* 已经是当前源 */ }
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        allSources.forEach { source ->
+                            val latency = latencies[source.id + source.source]
+                            SourceItem(
+                                context = context,
+                                source = source,
+                                isSelected = source.source == currentSource && source.id == detail.id,
+                                latency = latency,
+                                onClick = { onSourceSelect(source) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     onClick = onPlayAll,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1.1f),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.PlayArrow, "播放", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("开始播放")
+                    Text("开始播放", maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = onToggleFavorite,
@@ -232,8 +300,7 @@ fun DetailScreen(
                 ) {
                     Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    val favText = if (isFavorite) "取消收藏" else "加入收藏"
-                    Text(favText)
+                    Text(if (isFavorite) "取消" else "收藏", maxLines = 1)
                 }
                 OutlinedButton(
                     onClick = { showCacheDialog = true },
@@ -243,29 +310,13 @@ fun DetailScreen(
                 ) {
                     Icon(Icons.Default.CloudDownload, "缓存", modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("离线缓存")
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Text("剧集选集", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-            Spacer(Modifier.height(8.dp))
-
-            if (detail.episodes.isEmpty()) {
-                Text("暂无剧集信息，请尝试切换播放源", color = secondaryTextColor, fontSize = 14.sp)
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itemsIndexed(detail.episodes) { index, episode ->
-                        EpisodeCard(
-                            episode = episode, index = index,
-                            isCached = cachedEpisodes.contains(index),
-                            onClick = { onEpisodeClick(episode) }
-                        )
-                    }
+                    Text("缓存", maxLines = 1)
                 }
             }
         }
+        Spacer(Modifier.height(40.dp))
     }
+
 
     if (showSourcesDialog && allSources.isNotEmpty()) {
         SourceSelectionSheet(

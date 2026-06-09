@@ -15,6 +15,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.supertv.app.data.SearchPagingSource
+import com.supertv.app.utils.SearchUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -101,6 +102,29 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     // 测速状态
     val isTestingLatency: StateFlow<Boolean> = speedTestService.isTesting
     val latencies: StateFlow<Map<String, Long>> = speedTestService.latencies
+
+    /**
+     * 计算源评分 (模仿 supertvold calculateSourceScore)
+     */
+    private fun calculateSourceScore(result: SearchResult): Double {
+        var score = 0.0
+        val latency = latencies.value[result.id + result.source] ?: 1000L
+        
+        // 1. 延迟权重 (40%) - 100ms 以下优秀
+        val latencyScore = (1.0 - (latency.toDouble() / 1500.0).coerceIn(0.0, 1.0)) * 40.0
+        score += latencyScore
+        
+        // 2. 剧集完整度 (40%) - 越多越好
+        val epScore = (result.episodes.size.toDouble() / 50.0).coerceIn(0.0, 1.0) * 40.0
+        score += epScore
+        
+        // 3. 来源稳定性 (20%) - 这里的 sourceName 简单判断
+        if (result.sourceName.contains("官方") || result.sourceName.contains("极速")) {
+            score += 20.0
+        }
+        
+        return score
+    }
 
     init {
         loadSearchHistory()
@@ -269,25 +293,33 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _allSourcesLoading.value = true
             try {
-                val results = repository.search(title)
-                // 排除元数据源，仅保留真正的播放源 (如 ffzy, lzi, okzy 等)
-                val playbackSources = results.filter { it.source != "douban" && it.source != "bangumi" }
+                // 1. 发起原始全网搜索 (模仿 supertvold api.searchVideos)
+                val rawResults = repository.searchRaw(title)
                 
-                // 排除当前已有的源（如果 ID 和 Source 都一样）
+                // 2. 按来源匹配与合并 (模仿 supertvold matchedResults & 源去重)
+                val matchedSources = SearchUtils.mergeResultsBySource(rawResults, title)
+                val playbackSources = matchedSources.filter { it.source != "douban" && it.source != "bangumi" }
+                
+                // 3. 排除当前已有的源
                 val filtered = playbackSources.filter { it.id != currentId || it.source != currentSource }
-                _allSources.value = filtered
                 
-                // 如果当前详情是元数据源（无剧集），且找到了有效的播放源，自动同步第一个源的剧集
+                // 4. 按评分排序 (模仿 SuperTV_old)
+                _allSources.value = filtered.sortedByDescending { calculateSourceScore(it) }
+                
+                // 5. 自动合并最佳源 (如果当前是元数据源)
                 val currentDetail = _detail.value
                 if ((currentDetail == null || currentDetail.episodes.isEmpty()) && playbackSources.isNotEmpty()) {
-                    // 优先选择集数最多的源
-                    val bestSource = playbackSources.maxByOrNull { it.episodes.size } ?: playbackSources.first()
+                    // 使用评分逻辑选择最佳源
+                    val bestSource = playbackSources.maxByOrNull { calculateSourceScore(it) } ?: playbackSources.first()
+                    
+                    android.util.Log.d("SearchViewModel", "Auto-merging best source: ${bestSource.sourceName} for ${currentDetail?.title}")
+                    
                     val detail = repository.getDetail(bestSource.id, bestSource.source)
                     if (detail != null) {
                         if (currentDetail != null) {
-                            // 保持元数据，合并剧集
+                            // 保持元数据，合并播放源和剧集
                             _detail.value = currentDetail.copy(
-                                episodes = detail.episodes,
+                                episodesList = detail.episodes,
                                 source = detail.source,
                                 sourceName = detail.sourceName,
                                 totalEpisodes = detail.episodes.size
@@ -298,15 +330,17 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
 
-                // 自动对所有来源进行测速（取第一个剧集的 URL 测速）
+                // 自动测速 (取第一个剧集 URL)
                 val testUrls = mutableMapOf<String, String>()
-                results.forEach { res ->
+                playbackSources.forEach { res ->
                     if (res.episodes.isNotEmpty()) {
                         testUrls[res.id + res.source] = res.episodes.first().url
                     }
                 }
                 if (testUrls.isNotEmpty()) {
                     speedTestService.testAll(testUrls)
+                    // 测速后重新排序
+                    _allSources.value = _allSources.value.sortedByDescending { calculateSourceScore(it) }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("SearchViewModel", "Search all sources failed", e)
@@ -332,7 +366,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                             id = detail.id,
                             source = detail.source,
                             sourceName = detail.sourceName,
-                            episodes = detail.episodes
+                            episodesList = detail.episodes
                         )
                     } else {
                         _detail.value = detail
