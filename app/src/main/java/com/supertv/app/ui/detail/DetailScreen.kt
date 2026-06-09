@@ -192,7 +192,7 @@ fun DetailScreen(
                         cover = detail.cover,
                         source = detail.source,
                         sourceName = detail.sourceName,
-                        episodes = detail.episodes
+                        episodesList = detail.episodes
                     ),
                     isSelected = true,
                     onClick = { /* 已经是当前源 */ }

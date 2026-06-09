@@ -23,6 +23,11 @@ val FavoriteRed = Color(0xFFE53935)
 val CacheGreen = Color(0xFF1B5E20)
 val StarYellow = Color(0xFFFFC107)
 
+// 文本颜色
+val TextPrimary = Color(0xFFEEEEEE)
+val TextSecondary = Color(0xFFAAAAAA)
+val TextTertiary = Color(0xFF707070)
+
 private val DarkColorScheme = darkColorScheme(
     primary = PrimaryGreen,
     onPrimary = Color.Black,
