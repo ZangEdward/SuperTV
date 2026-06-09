@@ -484,6 +484,7 @@ fun SettingsMenu(onBack: () -> Unit) {
 
 @Composable
 fun AboutMenu(onBack: () -> Unit) {
+    val context = LocalContext.current
     Column(modifier = Modifier.padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
@@ -504,7 +505,9 @@ fun AboutMenu(onBack: () -> Unit) {
         
         Spacer(Modifier.height(16.dp))
         Text("SuperTV 原生版", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-        Text("Version 1.2.0 (LunaTV Core)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val versionName = packageInfo.versionName
+        Text("Version $versionName", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         
         Spacer(Modifier.height(24.dp))
         Text(

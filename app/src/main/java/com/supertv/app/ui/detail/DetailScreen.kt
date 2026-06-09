@@ -137,6 +137,14 @@ fun DetailScreen(
                             tint = if (isDarkTheme) Color(0xFFFFD700) else Color.White
                         )
                     }
+
+                    // 缓存按钮
+                    IconButton(
+                        onClick = { showCacheDialog = true },
+                        modifier = Modifier.background(Color(0x66000000), RoundedCornerShape(50))
+                    ) {
+                        Icon(Icons.Default.CloudDownload, "缓存", tint = Color.White)
+                    }
                     
                     IconButton(
                         onClick = onToggleFavorite,
@@ -189,6 +197,18 @@ fun DetailScreen(
 
             if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = secondaryTextColor) }
             if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = secondaryTextColor) }
+
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onPlayAll,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, "播放", modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("开始播放", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
 
             Spacer(Modifier.height(24.dp))
             
@@ -281,38 +301,6 @@ fun DetailScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = onPlayAll,
-                    modifier = Modifier.weight(1.1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGreen),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, "播放", modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("开始播放", maxLines = 1)
-                }
-                OutlinedButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
-                ) {
-                    Icon(if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "收藏", modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(if (isFavorite) "取消" else "收藏", maxLines = 1)
-                }
-                OutlinedButton(
-                    onClick = { showCacheDialog = true },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = textColor)
-                ) {
-                    Icon(Icons.Default.CloudDownload, "缓存", modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("缓存", maxLines = 1)
-                }
-            }
         }
         Spacer(Modifier.height(40.dp))
     }

@@ -14,10 +14,10 @@
         <action
             android:id="@+id/action_nav_transform_to_search"
             app:destination="@id/nav_search"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_in_top"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_out_top" />
         <action
             android:id="@+id/action_nav_transform_to_detail"
             app:destination="@id/nav_detail"
@@ -28,10 +28,10 @@
         <action
             android:id="@+id/action_nav_transform_to_slideshow"
             app:destination="@id/nav_slideshow"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_in_top"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_out_top" />
     </fragment>
 
     <fragment
@@ -65,8 +65,8 @@
     <fragment
         android:id="@+id/nav_anime"
         android:name="com.supertv.app.ui.transform.TransformFragment"
-        android:label="动漫" >
-        <argument android:name="category" android:defaultValue="动漫" />
+        android:label="每日更新动漫" >
+        <argument android:name="category" android:defaultValue="每日更新动漫" />
         <action
             android:id="@+id/action_nav_anime_to_detail"
             app:destination="@id/nav_detail"
@@ -112,10 +112,10 @@
         <action
             android:id="@+id/action_nav_live_to_search"
             app:destination="@id/nav_search"
-            app:enterAnim="@anim/slide_in_right"
+            app:enterAnim="@anim/slide_in_top"
             app:exitAnim="@anim/slide_out_left"
             app:popEnterAnim="@anim/slide_in_left"
-            app:popExitAnim="@anim/slide_out_right" />
+            app:popExitAnim="@anim/slide_out_top" />
         <action
             android:id="@+id/action_nav_live_to_detail"
             app:destination="@id/nav_detail"

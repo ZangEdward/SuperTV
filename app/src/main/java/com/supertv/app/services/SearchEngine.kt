@@ -14,10 +14,10 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 支持多源并发搜索、渐进式加载、拼音匹配、去尾搜索
  */
-class SearchEngine(private val initialApiService: ApiService) {
+class SearchEngine {
 
     private val apiService get() = RetrofitClient.getApiService()
-    private val repository get() = SearchRepository(apiService)
+    private val repository = SearchRepository()
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 

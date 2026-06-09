@@ -12,7 +12,9 @@ import kotlinx.coroutines.withTimeout
 /**
  * 搜索仓库 - 对应原项目的 services/api.ts 搜索相关逻辑
  */
-class SearchRepository(private val apiService: ApiService) {
+class SearchRepository {
+
+    private fun apiService() = RetrofitClient.getApiService()
 
     companion object {
         private const val SEARCH_TIMEOUT_MS = 15_000L
@@ -28,7 +30,7 @@ class SearchRepository(private val apiService: ApiService) {
                 async(Dispatchers.IO) {
                     try {
                         withTimeout(SEARCH_TIMEOUT_MS) {
-                            val response = apiService.search(encodedQuery, source)
+                            val response = apiService().search(encodedQuery, source)
                             if (response.isSuccessful) {
                                 val body = response.body()
                                 body?.results ?: body?.data ?: emptyList()
@@ -109,7 +111,7 @@ class SearchRepository(private val apiService: ApiService) {
      */
     suspend fun getSuggestions(query: String): List<String> {
         return try {
-            val response = apiService.getSuggestions(query)
+            val response = apiService().getSuggestions(query)
             if (response.isSuccessful) {
                 response.body()?.take(9) ?: emptyList()
             } else emptyList()
@@ -125,7 +127,7 @@ class SearchRepository(private val apiService: ApiService) {
         return try {
             when (source) {
                 "douban" -> {
-                    val response = apiService.getDoubanDetail(id)
+                    val response = apiService().getDoubanDetail(id)
                     if (response.isSuccessful) {
                         val data = response.body()?.data
                         data?.let {
@@ -146,7 +148,7 @@ class SearchRepository(private val apiService: ApiService) {
                     } else null
                 }
                 "bangumi" -> {
-                    val response = apiService.getBangumiDetail("v0/subjects/$id")
+                    val response = apiService().getBangumiDetail("v0/subjects/$id")
                     if (response.isSuccessful) {
                         val item = response.body()
                         item?.let {
@@ -164,13 +166,13 @@ class SearchRepository(private val apiService: ApiService) {
                     } else null
                 }
                 else -> {
-                    val response = apiService.getDetail(id, source)
+                    val response = apiService().getDetail(id, source)
                     if (response.isSuccessful) {
                         val detail = response.body()
                         // 如果详情中没有剧集，尝试单独获取剧集列表
                         if (detail != null && detail.episodes.isEmpty()) {
                             try {
-                                val epResponse = apiService.getEpisodes(id, source)
+                                val epResponse = apiService().getEpisodes(id, source)
                                 if (epResponse.isSuccessful) {
                                     val episodes = epResponse.body() ?: emptyList()
                                     return detail.copy(episodesList = episodes)
@@ -194,7 +196,7 @@ class SearchRepository(private val apiService: ApiService) {
      */
     suspend fun getPlayUrl(id: String, source: String, episode: Int): String? {
         return try {
-            val response = apiService.getPlayUrl(id, source, episode)
+            val response = apiService().getPlayUrl(id, source, episode)
             if (response.isSuccessful) {
                 response.body()?.url
             } else null

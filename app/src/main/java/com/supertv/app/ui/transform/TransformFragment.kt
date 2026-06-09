@@ -211,7 +211,7 @@ fun TVHomeScreen(
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
-    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+    val categories = listOf("热门", "电影", "剧集", "每日更新动漫", "综艺", "短剧")
 
     Column(
         modifier = Modifier
@@ -324,7 +324,7 @@ fun HomeScreen(
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     
-    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+    val categories = listOf("热门", "电影", "剧集", "每日更新动漫", "综艺", "短剧")
 
     Column(
         modifier = Modifier
@@ -385,9 +385,9 @@ fun HomeScreen(
                                 VideoCardRow(items = hotMovies, onClick = onItemClick, isGrid = true)
                             }
                         }
-                        "动漫" -> {
+                        "每日更新动漫" -> {
                             item {
-                                SectionHeader("热门动漫")
+                                SectionHeader("每日更新动漫")
                                 VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
                             }
                         }

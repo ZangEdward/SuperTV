@@ -25,8 +25,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     private val store = Store.getInstance(application)
     private val apiService get() = RetrofitClient.getApiService()
-    private val repository get() = SearchRepository(apiService)
-    private val searchEngine = SearchEngine(apiService)
+    private val repository = SearchRepository()
+    private val searchEngine = SearchEngine()
     private val speedTestService = SpeedTestService()
 
     // 搜索查询
@@ -351,12 +351,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 // 3. 排除当前已有的源
                 val filtered = playbackSources.filter { it.id != currentId || it.source != currentSource }
                 
-                // 4. 按评分排序 (模仿 SuperTV_old)
-                _allSources.value = filtered.sortedByDescending { calculateSourceScore(it) }
+                // 4. 按评分排序 (由于此时还没测速，先按集数粗排)
+                val initialSorted = filtered.sortedByDescending { it.episodes.size }
+                _allSources.value = initialSorted
                 
-                // 5. 自动合并最佳源 (如果当前是元数据源)
+                // 5. 自动合并最佳源 (如果当前是元数据源，或者集数为空)
                 val currentDetail = _detail.value
-                if ((currentDetail == null || currentDetail.episodes.isEmpty()) && playbackSources.isNotEmpty()) {
+                val isMetadataOnly = currentDetail?.source == "douban" || currentDetail?.source == "bangumi"
+                if ((currentDetail == null || currentDetail.episodes.isEmpty() || isMetadataOnly) && playbackSources.isNotEmpty()) {
                     // 使用评分逻辑选择最佳源
                     val bestSource = playbackSources.maxByOrNull { calculateSourceScore(it) } ?: playbackSources.first()
                     
@@ -388,8 +390,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 if (testUrls.isNotEmpty()) {
                     speedTestService.testAll(testUrls)
-                    // 测速后重新排序
-                    _allSources.value = _allSources.value.sortedByDescending { calculateSourceScore(it) }
+                    // 测速后重新排序并过滤极慢源 (>10s)
+                    _allSources.value = _allSources.value
+                        .filter { 
+                            val lat = speedTestService.latencies.value[it.id + it.source] ?: 0L
+                            lat < 10000L || lat <= 0L // 0L 表示还没测完或刚开始, -1表示不可达
+                        }
+                        .sortedByDescending { calculateSourceScore(it) }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("SearchViewModel", "Search all sources failed", e)
@@ -407,6 +414,39 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _isLoadingDetail.value = true
             try {
                 val currentDetail = _detail.value
+                
+                // 优化：如果 SearchResult 中已经包含了剧集信息，直接应用，不再请求详情接口 (提升速度)
+                if (result.episodes.isNotEmpty()) {
+                    if (currentDetail != null && (currentDetail.source == "douban" || currentDetail.source == "bangumi")) {
+                         _detail.value = currentDetail.copy(
+                            id = result.id,
+                            source = result.source,
+                            sourceName = result.sourceName,
+                            episodesList = result.episodes,
+                            totalEpisodes = result.episodes.size
+                        )
+                    } else {
+                        // 将 SearchResult 转换为 VideoDetail
+                        _detail.value = VideoDetail(
+                            id = result.id,
+                            title = result.title,
+                            cover = result.cover,
+                            poster = result.poster,
+                            source = result.source,
+                            sourceName = result.sourceName,
+                            episodesList = result.episodes,
+                            totalEpisodes = result.episodes.size,
+                            year = result.year,
+                            rating = result.rating,
+                            desc = result.desc
+                        )
+                    }
+                    _isLoadingDetail.value = false
+                    android.util.Log.d("SearchViewModel", "Switched source (fast path): ${result.sourceName}")
+                    return@launch
+                }
+
+                // 如果没有剧集信息，再请求详情
                 val detail = repository.getDetail(result.id, result.source)
                 if (detail != null) {
                     if (currentDetail != null && (currentDetail.source == "douban" || currentDetail.source == "bangumi")) {

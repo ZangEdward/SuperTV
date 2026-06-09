@@ -88,7 +88,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadHomeData() = coroutineScope {
-        val repository = com.supertv.app.data.SearchRepository(apiService)
+        val repository = com.supertv.app.data.SearchRepository()
 
         launch {
             try {
@@ -199,7 +199,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadCategoryData(category: String) {
-        if (category == "动漫") {
+        if (category == "每日更新动漫") {
             loadAnimeData()
             return
         }
@@ -238,7 +238,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
                 // 后台匹配播放源 (对齐 supertvold 逻辑)
                 viewModelScope.launch {
-                    val repository = com.supertv.app.data.SearchRepository(apiService)
+                    val repository = com.supertv.app.data.SearchRepository()
                     val matchedResults = results.map { item ->
                         // 激进搜索匹配后台
                         val playable = repository.aggressiveSearch(item.title)
@@ -265,10 +265,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             val resp = apiService.getBangumiData("calendar")
             if (resp.isSuccessful) {
                 val body = resp.body()
-                val allBangumiItems = body?.flatMap { it.items } ?: emptyList()
-                val results = allBangumiItems.map { it.toSearchResult() }.distinctBy { it.id }
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
+                val bangumiIndex = if (today == 1) 6 else today - 2
+                
+                val bangumiItems = body?.getOrNull(bangumiIndex)?.items ?: emptyList()
+                val results = bangumiItems.map { it.toSearchResult() }
                 _animeUpdates.value = results
-                store.saveCategoryCache("动漫", results)
+                store.saveCategoryCache("每日更新动漫", results)
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load anime data", e)

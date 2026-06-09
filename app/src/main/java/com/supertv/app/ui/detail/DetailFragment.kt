@@ -62,10 +62,14 @@ class DetailFragment : Fragment() {
                         onThemeToggle = { mainViewModel.toggleTheme() },
                         onEpisodeClick = { episode ->
                             val currentDetail = detail
+                            val sourcesJson = com.google.gson.Gson().toJson(allSources)
                             val intent = PlayerActivity.createIntent(
                                 context = requireContext(),
                                 url = episode.url,
                                 title = currentDetail?.title ?: title,
+                                episodeIndex = currentDetail?.episodes?.indexOf(episode) ?: 0,
+                                totalEpisodes = currentDetail?.episodes?.size ?: 0,
+                                sourcesJson = sourcesJson,
                                 source = currentDetail?.source ?: source,
                                 id = currentDetail?.id ?: id
                             )
@@ -79,11 +83,15 @@ class DetailFragment : Fragment() {
                         onBack = { findNavController().navigateUp() },
                         onPlayAll = {
                             val currentDetail = detail
+                            val sourcesJson = com.google.gson.Gson().toJson(allSources)
                             currentDetail?.episodes?.firstOrNull()?.let { episode ->
                                 val intent = PlayerActivity.createIntent(
                                     context = requireContext(),
                                     url = episode.url,
                                     title = currentDetail.title,
+                                    episodeIndex = 0,
+                                    totalEpisodes = currentDetail.episodes.size,
+                                    sourcesJson = sourcesJson,
                                     source = currentDetail.source,
                                     id = currentDetail.id
                                 )
