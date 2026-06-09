@@ -67,6 +67,7 @@ data class VideoDetail(
     val desc: String = "",
     val year: String = "",
     val area: String = "",
+    val rating: String = "", // 新增
     val director: String = "",
     val actor: String = "",
     val source: String = "",
@@ -103,6 +104,46 @@ data class DoubanResponse(
     val message: String = "",
     val list: List<DoubanItem> = emptyList(),
     val items: List<DoubanItem> = emptyList() // 兼容性保留
+)
+
+/**
+ * 豆瓣详情响应
+ */
+data class DoubanDetailResponse(
+    val code: Int = 0,
+    val message: String = "",
+    val data: DoubanDetail? = null
+)
+
+/**
+ * 豆瓣详细数据
+ */
+data class DoubanDetail(
+    val id: String = "",
+    val title: String = "",
+    val poster: String = "",
+    val rate: String = "",
+    val year: String = "",
+    val directors: List<String> = emptyList(),
+    val cast: List<String> = emptyList(),
+    val genres: List<String> = emptyList(),
+    @SerializedName("plot_summary")
+    val plotSummary: String = "",
+    val episodes: Int? = null,
+    val backdrop: String? = null,
+    @SerializedName("trailerUrl")
+    val trailerUrl: String? = null,
+    val actors: List<DoubanActor> = emptyList()
+)
+
+/**
+ * 豆瓣演员
+ */
+data class DoubanActor(
+    val id: String = "",
+    val name: String = "",
+    val avatar: String = "",
+    val role: String = ""
 )
 
 /**

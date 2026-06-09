@@ -61,6 +61,16 @@ interface ApiService {
         @Query("source") source: String
     ): Response<VideoDetail>
 
+    @GET("api/douban/details")
+    suspend fun getDoubanDetail(
+        @Query("id") id: String
+    ): Response<DoubanDetailResponse>
+
+    @GET("api/proxy/bangumi")
+    suspend fun getBangumiDetail(
+        @Query("path") path: String
+    ): Response<BangumiItem>
+
     // ==================== 剧集列表 ====================
 
     @GET("api/episodes")

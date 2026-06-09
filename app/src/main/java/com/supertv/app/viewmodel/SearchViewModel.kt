@@ -273,11 +273,23 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 val filtered = results.filter { it.id != currentId || it.source != currentSource }
                 _allSources.value = filtered
                 
-                // 如果当前详情为空，且找到了其他有效的源，尝试加载第一个
-                if (_detail.value == null && results.isNotEmpty()) {
+                // 如果当前详情为空，或者当前详情没有剧集（数据源），且找到了其他有效的源，尝试从第一个源补充剧集
+                val currentDetail = _detail.value
+                if ((currentDetail == null || currentDetail.episodes.isEmpty()) && results.isNotEmpty()) {
                     val first = results.first()
                     val detail = repository.getDetail(first.id, first.source)
-                    _detail.value = detail
+                    if (detail != null) {
+                        if (currentDetail != null) {
+                            // 保持主数据源的元数据，只从视频源同步剧集
+                            _detail.value = currentDetail.copy(
+                                episodes = detail.episodes,
+                                source = detail.source,
+                                sourceName = detail.sourceName
+                            )
+                        } else {
+                            _detail.value = detail
+                        }
+                    }
                 }
 
                 // 自动对所有来源进行测速（取第一个剧集的 URL 测速）
@@ -305,9 +317,20 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             _isLoadingDetail.value = true
             try {
+                val currentDetail = _detail.value
                 val detail = repository.getDetail(result.id, result.source)
                 if (detail != null) {
-                    _detail.value = detail
+                    if (currentDetail != null && (currentDetail.source == "douban" || currentDetail.source == "bangumi")) {
+                        // 保持元数据，仅更新播放源和剧集
+                        _detail.value = currentDetail.copy(
+                            id = detail.id,
+                            source = detail.source,
+                            sourceName = detail.sourceName,
+                            episodes = detail.episodes
+                        )
+                    } else {
+                        _detail.value = detail
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = "切换源失败"
