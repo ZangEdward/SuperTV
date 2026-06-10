@@ -486,19 +486,30 @@ fun HomeScreen(
                             }
                         }
                         "电影" -> {
-                            item {
-                                SectionHeader(if (selectedSubCategory == "全部") "精品电影" else "$selectedSubCategory 电影")
-                                VideoCardRow(items = recommended, onClick = onItemClick, isGrid = true)
+                            item { SectionHeader(if (selectedSubCategory == "全部") "精品电影" else "$selectedSubCategory 电影") }
+                            items(recommended.chunked(3)) { rowItems ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    rowItems.forEach { item ->
+                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
+                                    }
+                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
+                                }
                             }
                         }
                         "剧集" -> {
-                            item {
-                                SectionHeader(if (selectedSubCategory == "全部") "最新剧集" else "$selectedSubCategory 剧集")
-                                VideoCardRow(items = hotMovies, onClick = onItemClick, isGrid = true)
+                            item { SectionHeader(if (selectedSubCategory == "全部") "最新剧集" else "$selectedSubCategory 剧集") }
+                            items(hotMovies.chunked(3)) { rowItems ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    rowItems.forEach { item ->
+                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
+                                    }
+                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
+                                }
                             }
                         }
                         "动漫" -> {
                             if (selectedSubCategory == "全部") {
+                                // 动漫主页展示：每日更新
                                 item {
                                     ScrollableTabRow(
                                         selectedTabIndex = currentDay - 1,
@@ -520,29 +531,56 @@ fun HomeScreen(
                                     }
                                 }
                                 
-                                item {
-                                    Spacer(Modifier.height(16.dp))
-                                    SectionHeader("每日更新动漫")
-                                    VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                                items(animeUpdates.chunked(3)) { rowItems ->
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                        rowItems.forEach { item ->
+                                            Box(Modifier.weight(1f)) {
+                                                PosterCard(result = item, onClick = { onItemClick(item) })
+                                            }
+                                        }
+                                        if (rowItems.size < 3) {
+                                            repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                                        }
+                                    }
                                 }
                             } else {
-                                item {
-                                    SectionHeader("$selectedSubCategory 动漫")
-                                    VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                                // 子分类网格模式 (对齐 Selene: 扁平化列表排布，提高切换速度)
+                                item { SectionHeader("$selectedSubCategory 动漫") }
+                                items(animeUpdates.chunked(3)) { rowItems ->
+                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                        rowItems.forEach { item ->
+                                            Box(Modifier.weight(1f)) {
+                                                PosterCard(result = item, onClick = { onItemClick(item) })
+                                            }
+                                        }
+                                        if (rowItems.size < 3) {
+                                            repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                                        }
+                                    }
                                 }
                             }
                         }
                         // ...
                         "综艺" -> {
-                            item {
-                                SectionHeader(if (selectedSubCategory == "全部") "热门综艺" else "$selectedSubCategory 综艺")
-                                VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                            item { SectionHeader(if (selectedSubCategory == "全部") "热门综艺" else "$selectedSubCategory 综艺") }
+                            items(animeUpdates.chunked(3)) { rowItems ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    rowItems.forEach { item ->
+                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
+                                    }
+                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
+                                }
                             }
                         }
                         "短剧" -> {
-                            item {
-                                SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧")
-                                VideoCardRow(items = shortDramas, onClick = onItemClick, isGrid = true)
+                            item { SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧") }
+                            items(shortDramas.chunked(3)) { rowItems ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    rowItems.forEach { item ->
+                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
+                                    }
+                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
+                                }
                             }
                         }
                         else -> {

@@ -63,17 +63,20 @@ object RetrofitClient {
     }
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS) // 缩短连接超时，更快切换坏节点
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true) // 启用自动重试 (对齐 supertvold)
+        .connectTimeout(8, TimeUnit.SECONDS) // 进一步缩短超时
+        .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)) // 优化连接池 (对齐 supertvold)
         .addInterceptor(loggingInterceptor)
         .addInterceptor { chain ->
             val request = chain.request()
             val requestBuilder = request.newBuilder()
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36") // 伪装成浏览器，避免被反爬 (对齐 Selene)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
                 .addHeader("Accept", "application/json, text/plain, */*")
-                .addHeader("Referer", "https://movie.douban.com/") // 必须带 Referer (对齐 Selene)
+                .addHeader("Referer", "https://movie.douban.com/")
+                .addHeader("Connection", "keep-alive") // 保持长连接
+                .addHeader("Accept-Encoding", "gzip, deflate, br") // 启用压缩
             
             // 添加 Token (Selene 风格)
             authToken?.let {

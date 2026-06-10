@@ -105,29 +105,23 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadHomeData() = coroutineScope {
-        // 1. 并发抓取各板块 Metadata (快)
-        // 对齐 Selene: 列表只加载元数据，不做全网匹配，详情页再匹配
-        val jobs = listOf(
-            launch { fetchHotMovies() },
-            launch { fetchRecommended() },
-            launch { fetchAnimeUpdates() },
-            launch { fetchShortDramas() }
-        )
-        
-        // 等待 Metadata 抓取完成即可
-        jobs.forEach { it.join() }
+        // 并发执行，但不阻塞整个 loadHomeData 的返回 (对齐 Selene 异步加载引擎)
+        launch { fetchHotMovies() }
+        launch { fetchRecommended() }
+        launch { fetchAnimeUpdates() }
+        launch { fetchShortDramas() }
     }
 
     private suspend fun fetchHotMovies() {
         try {
+            // 所有分类统一走豆瓣后端源 (对齐用户要求：豆瓣源快很多)
             val tag = java.net.URLEncoder.encode("热门", "UTF-8")
             val resp = apiService.getDoubanData("movie", tag)
             if (resp.isSuccessful) {
-                val body = resp.body()
-                val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                val results = items.map { it.toSearchResult() }
+                val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _hotMovies.value = results
                 store.saveCategoryCache("热门", results)
+                memoryCache["热门"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchHotMovies failed", e)
@@ -139,11 +133,10 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             val tag = java.net.URLEncoder.encode("豆瓣高分", "UTF-8")
             val resp = apiService.getDoubanData("movie", tag)
             if (resp.isSuccessful) {
-                val body = resp.body()
-                val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                val results = items.map { it.toSearchResult() }
+                val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _recommended.value = results
-                store.saveCategoryCache("电影_热门", results) // 对应电影频道的全部
+                memoryCache["电影"] = results
+                memoryCache["电影_全部"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchRecommended failed", e)
@@ -152,22 +145,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private suspend fun fetchAnimeUpdates() {
         try {
-            val resp = apiService.getBangumiData("calendar")
+            // 列表页统一使用豆瓣源替代 Bangumi (对齐用户要求：豆瓣源获取快)
+            val tag = java.net.URLEncoder.encode("动漫", "UTF-8")
+            val resp = apiService.getDoubanData("tv", tag)
             if (resp.isSuccessful) {
-                val body = resp.body()
-                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                val bangumiIndex = if (today == 1) 6 else today - 2
-                val results = (body?.getOrNull(bangumiIndex)?.items ?: emptyList()).map { it.toSearchResult() }
+                val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _animeUpdates.value = results
-                store.saveCategoryCache("动漫", results)
-            } else {
-                // Fallback to Douban
-                val doubanResp = apiService.getDoubanData("tv", java.net.URLEncoder.encode("动漫", "UTF-8"))
-                if (doubanResp.isSuccessful) {
-                    val body = doubanResp.body()
-                    val results = (body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()).map { it.toSearchResult() }
-                    _animeUpdates.value = results
-                }
+                memoryCache["动漫"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchAnimeUpdates failed", e)
@@ -178,10 +162,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         try {
             val resp = apiService.getShortDramaHot(1)
             if (resp.isSuccessful) {
-                val body = resp.body()
-                val results = (body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()).map { it.toSearchResult() }
+                val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _shortDramas.value = results
-                store.saveCategoryCache("短剧_热门", results)
+                memoryCache["短剧_热门"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchShortDramas failed", e)
@@ -264,17 +247,16 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             memoryCache[cacheKey] = results
         }
 
+        // 全局通知 UI 更新数据流
         when (category) {
-            "热门" -> {
-                // 热门通常由 loadHomeData 处理，但如果子分类选择了具体 tag
-                _hotMovies.value = results
-            }
             "电影" -> _recommended.value = results
             "剧集" -> _hotMovies.value = results
             "动漫" -> _animeUpdates.value = results
             "综艺" -> _animeUpdates.value = results
             "短剧" -> _shortDramas.value = results
-            else -> _recommended.value = results
+            "热门" -> {
+                // 热门频道特殊逻辑由 loadHomeData 分支处理
+            }
         }
     }
 
