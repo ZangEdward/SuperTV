@@ -8,7 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.supertv.app.model.SearchResult
-import com.supertv.app.ui.transform.PosterCard
 import com.supertv.app.ui.transform.SectionHeader
 import com.supertv.app.ui.transform.TransformViewModel
 import com.supertv.app.ui.transform.VideoCardRow
@@ -29,7 +28,7 @@ fun HomeTab(
             item {
                 SectionHeader("最近播放")
                 VideoCardRow(
-                    items = playRecords.map { record ->
+                    itemsList = playRecords.map { record ->
                         SearchResult(
                             title = record.title,
                             cover = record.cover,
@@ -45,19 +44,19 @@ fun HomeTab(
         }
         item {
             SectionHeader("豆瓣热播")
-            VideoCardRow(items = hotMovies, onClick = onItemClick)
+            VideoCardRow(itemsList = hotMovies, onClick = onItemClick)
         }
         item {
             SectionHeader("精品推荐")
-            VideoCardRow(items = recommended, onClick = onItemClick)
+            VideoCardRow(itemsList = recommended, onClick = onItemClick)
         }
         item {
             SectionHeader("动漫更新")
-            VideoCardRow(items = animeUpdates, onClick = onItemClick)
+            VideoCardRow(itemsList = animeUpdates, onClick = onItemClick)
         }
         item {
             SectionHeader("热门短剧")
-            VideoCardRow(items = shortDramas, onClick = onItemClick)
+            VideoCardRow(itemsList = shortDramas, onClick = onItemClick)
         }
         item { Spacer(modifier = Modifier.height(80.dp)) }
     }
