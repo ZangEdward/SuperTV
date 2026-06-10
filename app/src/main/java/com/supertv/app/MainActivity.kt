@@ -103,7 +103,18 @@ class MainActivity : AppCompatActivity() {
                 // 绑定 全局 Header
                 binding.appBarMain.contentMain?.globalHeaderCompose?.setContent {
                     val viewModel: MainViewModel = viewModel()
-                    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+                    val actualIsDark by viewModel.isDarkTheme.collectAsState()
+                    
+                    // 维持一个用于 UI 渲染的主题状态，在蒙版覆盖后再更新
+                    var uiIsDark by remember { mutableStateOf(actualIsDark) }
+                    
+                    LaunchedEffect(actualIsDark) {
+                        if (uiIsDark != actualIsDark) {
+                            kotlinx.coroutines.delay(450) // 等待蒙版覆盖到一半以上时切换
+                            uiIsDark = actualIsDark
+                        }
+                    }
+
                     val authRepo = remember { AuthRepository.getInstance(this@MainActivity) }
                     var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                     var showUserMenu by remember { mutableStateOf(false) }
@@ -133,13 +144,7 @@ class MainActivity : AppCompatActivity() {
                     )
                     val showHeader = currentDestination?.id in mainDestinations
 
-                    SuperTVTheme(darkTheme = isDarkTheme) {
-                        // 设置根布局背景色，解决动画切换时的黑色闪烁
-                        SideEffect {
-                            val layout = binding.appBarMain.contentMain.root
-                            layout.setBackgroundColor(if (isDarkTheme) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
-                        }
-
+                    SuperTVTheme(darkTheme = uiIsDark) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.background
@@ -172,11 +177,12 @@ class MainActivity : AppCompatActivity() {
                                         navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
                                     },
                                     onThemeToggle = { viewModel.toggleTheme() },
-                                    isDarkTheme = isDarkTheme
+                                    isDarkTheme = uiIsDark
                                 )
                             }
                         }
-
+                        
+                        // ... 后续 UserMenu/LoginDialog 也会自动使用 uiIsDark
                         if (showUserMenu) {
                             UserMenu(
                                 onClose = { showUserMenu = false },
@@ -233,7 +239,16 @@ class MainActivity : AppCompatActivity() {
                 // 绑定 Compose 导航栏 (自适应手机/平板)
                 binding.appBarMain.contentMain?.bottomNavCompose?.setContent {
                     val viewModel: MainViewModel = viewModel()
-                    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+                    val actualIsDark by viewModel.isDarkTheme.collectAsState()
+                    var uiIsDark by remember { mutableStateOf(actualIsDark) }
+                    
+                    LaunchedEffect(actualIsDark) {
+                        if (uiIsDark != actualIsDark) {
+                            kotlinx.coroutines.delay(450) // 等待蒙版覆盖
+                            uiIsDark = actualIsDark
+                        }
+                    }
+
                     val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
                     val useSidebar = windowSizeClass.widthSizeClass != WindowWidthSizeClass.Compact
                     
@@ -280,7 +295,7 @@ class MainActivity : AppCompatActivity() {
                         constraintSet.applyTo(layout)
                     }
 
-                    SuperTVTheme(darkTheme = isDarkTheme) {
+                    SuperTVTheme(darkTheme = uiIsDark) {
                         Surface(color = MaterialTheme.colorScheme.surface) {
                             if (useSidebar) {
                                 ComposeSideNavBar(navController)
@@ -303,46 +318,38 @@ class MainActivity : AppCompatActivity() {
                     val viewModel: MainViewModel = viewModel()
                     val isDarkTheme by viewModel.isDarkTheme.collectAsState()
                     
-                    // 记录上一次的状态
-                    var lastState by remember { mutableStateOf(isDarkTheme) }
-                    var triggerAnim by remember { mutableStateOf(false) }
+                    var lastThemeState by remember { mutableStateOf(isDarkTheme) }
+                    var showOverlay by remember { mutableStateOf(false) }
+                    var directionFromTop by remember { mutableStateOf(true) }
+                    var overlayColor by remember { mutableStateOf(Color.Black) }
 
                     LaunchedEffect(isDarkTheme) {
-                        if (lastState != isDarkTheme) {
-                            triggerAnim = true
-                            kotlinx.coroutines.delay(800) // 动画时长
-                            triggerAnim = false
-                            lastState = isDarkTheme
+                        if (lastThemeState != isDarkTheme) {
+                            // 捕捉切换方向和颜色
+                            directionFromTop = isDarkTheme // 深色从上往下，浅色从下往上
+                            overlayColor = if (isDarkTheme) Color.Black else Color.White
+                            
+                            showOverlay = true
+                            kotlinx.coroutines.delay(700) // 等待滑入覆盖
+                            lastThemeState = isDarkTheme
+                            showOverlay = false
                         }
                     }
 
-                    if (triggerAnim) {
-                        val isEnteringDark = isDarkTheme
-                        
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = triggerAnim,
-                                enter = if (isEnteringDark) {
-                                    // 黑色从上往下覆盖
-                                    androidx.compose.animation.slideInVertically(
-                                        initialOffsetY = { -it },
-                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
-                                    )
-                                } else {
-                                    // 白色从下往上覆盖
-                                    androidx.compose.animation.slideInVertically(
-                                        initialOffsetY = { it },
-                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
-                                    )
-                                },
-                                exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(200))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(if (isEnteringDark) Color.Black else Color.White)
-                                )
-                            }
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showOverlay,
+                            enter = androidx.compose.animation.slideInVertically(
+                                initialOffsetY = { if (directionFromTop) -it else it },
+                                animationSpec = androidx.compose.animation.core.tween(500, easing = androidx.compose.animation.core.LinearEasing)
+                            ),
+                            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(300))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(overlayColor)
+                            )
                         }
                     }
                 }

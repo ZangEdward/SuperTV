@@ -142,16 +142,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     .filter { it.source != "douban" && it.source != "bangumi" }
                 
                 if (exactResults.isNotEmpty()) {
-                    // 立即展示精准匹配的结果
+                    // 发现精准匹配结果，按要求：只显示精准匹配的结果，不要再去模糊匹配了
                     _results.value = SearchUtils.mergeResults(exactResults)
-                    // 后续继续加载模糊匹配结果来丰富列表
-                    launch {
-                        val allResults = repository.aggressiveSearch(query, onlyExact = false)
-                        val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
-                        _results.value = SearchUtils.mergeResults(filtered)
-                    }
                 } else {
-                    // 无精准匹配，直接进行激进搜索
+                    // 无精准匹配，才进行激进搜索（模糊匹配/变体搜索）
                     val allResults = repository.aggressiveSearch(query, onlyExact = false)
                     val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
                     _results.value = SearchUtils.mergeResults(filtered)
@@ -204,18 +198,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         .filter { it.source != "douban" && it.source != "bangumi" }
 
                     if (exactResults.isNotEmpty()) {
-                        // 发现精准匹配结果，立即展示，提升体感速度
+                        // 发现精准匹配结果，只展示精准匹配的结果
                         _results.value = SearchUtils.mergeResults(exactResults)
-                        
-                        // 后台继续加载模糊匹配结果
-                        launch {
-                            val allResults = repository.aggressiveSearch(query, onlyExact = false)
-                            val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
-                            _results.value = SearchUtils.mergeResults(filtered)
-                        }
                     } else {
-                        // 无精准结果，直接进行全网模糊/变体搜索
-                        val results = repository.aggressiveSearch(query)
+                        // 无精准结果，才启动模糊/变体搜索
+                        val results = repository.aggressiveSearch(query, onlyExact = false)
                         val filtered = results.filter { it.source != "douban" && it.source != "bangumi" }
                         _results.value = SearchUtils.mergeResults(filtered)
                     }

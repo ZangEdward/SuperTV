@@ -68,13 +68,22 @@ class TransformFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                val actualIsDark by mainViewModel.isDarkTheme.collectAsState()
+                var uiIsDark by remember { mutableStateOf(actualIsDark) }
+                
+                LaunchedEffect(actualIsDark) {
+                    if (uiIsDark != actualIsDark) {
+                        kotlinx.coroutines.delay(450)
+                        uiIsDark = actualIsDark
+                    }
+                }
+
                 val authRepo = remember { AuthRepository.getInstance(context) }
                 var showUserMenu by remember { mutableStateOf(false) }
                 var isLoggedIn by remember { mutableStateOf(authRepo.isLoggedIn()) }
                 var showLoginDialog by remember { mutableStateOf(!isLoggedIn) }
 
-                SuperTVTheme(darkTheme = isDarkTheme) {
+                SuperTVTheme(darkTheme = uiIsDark) {
                     Surface(color = MaterialTheme.colorScheme.background) {
                         val configuration = LocalConfiguration.current
                         val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION

@@ -33,7 +33,15 @@ class SearchFragment : Fragment() {
     ): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
+                val actualIsDark by mainViewModel.isDarkTheme.collectAsState()
+                var uiIsDark by remember { mutableStateOf(actualIsDark) }
+                
+                LaunchedEffect(actualIsDark) {
+                    if (uiIsDark != actualIsDark) {
+                        kotlinx.coroutines.delay(450)
+                        uiIsDark = actualIsDark
+                    }
+                }
                 
                 // 监听自动跳转详情页事件
                 LaunchedEffect(Unit) {
@@ -56,7 +64,7 @@ class SearchFragment : Fragment() {
                     }
                 }
 
-                SuperTVTheme(darkTheme = isDarkTheme) {
+                SuperTVTheme(darkTheme = uiIsDark) {
                     val context = LocalContext.current
                     val isTv = remember {
                         val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager

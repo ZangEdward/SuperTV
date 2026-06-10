@@ -41,8 +41,17 @@ class DetailFragment : Fragment() {
 
         return ComposeView(requireContext()).apply {
             setContent {
-                val isDarkTheme by mainViewModel.isDarkTheme.collectAsState()
-                SuperTVTheme(darkTheme = isDarkTheme) {
+                val actualIsDark by mainViewModel.isDarkTheme.collectAsState()
+                var uiIsDark by remember { mutableStateOf(actualIsDark) }
+                
+                LaunchedEffect(actualIsDark) {
+                    if (uiIsDark != actualIsDark) {
+                        kotlinx.coroutines.delay(450)
+                        uiIsDark = actualIsDark
+                    }
+                }
+
+                SuperTVTheme(darkTheme = uiIsDark) {
                     val detail by viewModel.detail.collectAsState()
                     val isLoading by viewModel.isLoadingDetail.collectAsState()
                     val allSources by viewModel.allSources.collectAsState()
@@ -59,7 +68,7 @@ class DetailFragment : Fragment() {
                         fallbackCover = cover, // 传递 fallbackCover
                         latencies = latencies,
                         isAllSourcesLoading = isAllSourcesLoading,
-                        isDarkTheme = isDarkTheme,
+                        isDarkTheme = uiIsDark,
                         onThemeToggle = { mainViewModel.toggleTheme() },
                         onEpisodeClick = { episode ->
                             val currentDetail = detail

@@ -60,38 +60,42 @@ class SearchRepository {
     suspend fun aggressiveSearch(query: String, sources: List<String> = listOf("all"), onlyExact: Boolean = false): List<SearchResult> {
         val cleanedQuery = SearchUtils.cleanTitle(query)
         
-        // 1. 精准搜索：尝试匹配标题 (清洗逻辑：先去空格，再去符号)
+        // 1. 第一阶段：尝试精准搜索 (精准匹配 = 去空格去符号后完全一致)
         val rawResults = search(query, sources)
         var results = rawResults.filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
         
-        // 如果原始查询没搜到精准匹配，尝试用清洗后的词去搜（增加精准命中率）
+        // 如果原始查询没搜到精准匹配，尝试用清洗后的纯净词再试一次精准碰撞
         if (results.isEmpty()) {
-            val variants = listOf(query.replace("\\s+".toRegex(), ""), cleanedQuery).distinct()
-            for (v in variants) {
-                if (v == query) continue
-                val vResults = search(v, sources).filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
-                if (vResults.isNotEmpty()) {
-                    results = vResults
-                    break
-                }
+            val pureTerm = query.replace("\\s+".toRegex(), "")
+            if (pureTerm != query) {
+                val vResults = search(pureTerm, sources).filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
+                if (vResults.isNotEmpty()) results = vResults
             }
         }
 
-        if (onlyExact) return results
+        // 如果找到了精准匹配的结果，按要求：只显示精准匹配的结果，不再进行模糊搜索
+        if (results.isNotEmpty()) {
+            return results
+        }
 
-        // 2. 如果无精准结果且不限制精准匹配，返回原始搜索结果并尝试变体搜索
+        // 如果要求“仅精准”，或者已经找到了结果（上面已 return），则不再往下走
+        if (onlyExact) return emptyList()
+
+        // 2. 第二阶段：精准匹配失败，才启动模糊匹配与去尾变体搜索
+        android.util.Log.d("SearchRepository", "Precise match failed for: $query, starting fuzzy/variant search")
+        
+        // 首先看原始搜索结果中是否有包含查询词的结果（作为一种较近的模糊匹配）
+        results = rawResults.filter { it.title.contains(query) || query.contains(it.title) }
+        
         if (results.isEmpty()) {
-            results = rawResults
-            if (results.isEmpty()) {
-                val variants = SearchUtils.generateSearchVariants(query)
-                android.util.Log.d("SearchRepository", "No results for exact match, trying variants: $variants")
-                for (term in variants) {
-                    if (term == query) continue
-                    results = search(term, sources)
-                    if (results.isNotEmpty()) {
-                        android.util.Log.d("SearchRepository", "Found results with variant: $term")
-                        break
-                    }
+            // 最后尝试激进的去尾变体搜索
+            val variants = SearchUtils.generateSearchVariants(query)
+            for (term in variants) {
+                if (term == query) continue
+                val variantResults = search(term, sources)
+                if (variantResults.isNotEmpty()) {
+                    results = variantResults
+                    break
                 }
             }
         }
