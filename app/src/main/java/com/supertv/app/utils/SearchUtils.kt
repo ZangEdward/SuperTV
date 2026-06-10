@@ -15,8 +15,24 @@ object SearchUtils {
     }
 
     /**
-     * 合并搜索结果：按清理后的标题去重，并保留集数最多的项
-     * 常用于搜索结果列表
+     * 计算搜索相关度得分 (用于排序)
+     * 分数越小越相关
+     */
+    fun calculateRelevance(searchTitle: String, targetTitle: String): Int {
+        val s = cleanTitle(searchTitle)
+        val t = cleanTitle(targetTitle)
+        
+        return when {
+            s == t -> 0 // 1. 完全一致
+            t.startsWith(s) -> 10 + (t.length - s.length) // 2. 以其开头 (长度越接近越靠前)
+            t.contains(s) -> 20 + (t.length - s.length) // 3. 包含关系
+            s.contains(t) -> 30 + (s.length - t.length) // 4. 被包含关系
+            else -> 100 // 5. 其它匹配方式
+        }
+    }
+
+    /**
+     * 合并搜索结果：按清理后的标题去重，并将不同源的剧集合并在一起
      */
     fun mergeResults(results: List<SearchResult>): List<SearchResult> {
         val map = mutableMapOf<String, SearchResult>()
@@ -25,11 +41,20 @@ object SearchUtils {
             if (key.isBlank()) return@forEach
             
             val existing = map[key]
-            if (existing == null || item.episodes.size > existing.episodes.size) {
+            if (existing == null) {
                 map[key] = item
+            } else {
+                // 如果已存在，合并剧集列表（跨源合并）
+                val mergedEpisodes = mergeEpisodes(existing.episodes, item.episodes)
+                // 更新元数据
+                map[key] = existing.copy(
+                    episodesList = mergedEpisodes,
+                    year = if (item.year > existing.year) item.year else existing.year,
+                    rating = if (item.rating > existing.rating) item.rating else existing.rating
+                )
             }
         }
-        return map.values.toList().sortedByDescending { it.year }
+        return map.values.toList()
     }
 
     /**

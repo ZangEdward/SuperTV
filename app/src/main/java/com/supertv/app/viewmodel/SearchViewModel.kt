@@ -212,7 +212,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 if (_searchMode.value == 0) {
                     val rawTerm = query.trim()
-                    // 1. 生成搜索项列表 (精准词 + 模糊变体)
+                    // 1. 生成搜索项列表 (手动输入不需要去尾，因为用户不会多打字)
                     val preciseTerm = SearchUtils.cleanTitle(rawTerm)
                     val fuzzyVariants = SearchUtils.generateFuzzyTerms(rawTerm)
                     val searchTerms = mutableListOf<String>()
@@ -230,50 +230,32 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     executeSearchPhase(preciseTerm, sites, allMatchedResults, isPrecise = true)
                     
                     if (allMatchedResults.isNotEmpty()) {
-                        _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
+                        val merged = SearchUtils.mergeResults(allMatchedResults.toList())
+                        _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
                     }
 
-                    // --- Phase 2: 模糊搜索 (对齐 supertvold: 剧名可能包含搜索词，始终执行) ---
+                    // --- Phase 2: 包含/模糊搜索 (始终执行以找全相关资源) ---
                     for ((idx, fuzzyTerm) in searchTerms.drop(1).withIndex()) {
-                        if (allMatchedResults.size >= 40) break
+                        if (allMatchedResults.size >= 60) break
                         
                         _currentSearchTerm.value = fuzzyTerm
-                        _searchProgress.value = 0.2f + (idx.toFloat() / totalPhases) * 0.5f
+                        _searchProgress.value = 0.2f + (idx.toFloat() / totalPhases) * 0.7f
                         
-                        // 阶段间间隔，给 UI 刷新时间
-                        delay(500)
+                        delay(400)
                         executeSearchPhase(fuzzyTerm, sites, allMatchedResults, isPrecise = false)
                         withContext(Dispatchers.Main) {
-                            _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
-                        }
-                    }
-
-                    // --- Phase 3: 多策略搜索变体 (如果还是没结果) ---
-                    if (allMatchedResults.isEmpty()) {
-                        val variants = SearchUtils.generateSearchVariants(rawTerm)
-                        for (variant in variants.drop(1)) {
-                            if (allMatchedResults.isNotEmpty()) break
-                            _currentSearchTerm.value = "变体: $variant"
-                            delay(300)
-                            executeSearchPhase(variant, sites, allMatchedResults, isPrecise = false)
-                            withContext(Dispatchers.Main) {
-                                _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
-                            }
+                            val merged = SearchUtils.mergeResults(allMatchedResults.toList())
+                            _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
                         }
                     }
 
                     _searchProgress.value = 1.0f
                     if (allMatchedResults.isEmpty()) {
-                        _error.value = "未找到 \"$query\" 相关内容，建议简化关键词"
+                        _error.value = "未找到 \"$query\" 相关内容"
                     } else {
-                        // [渐进排序] 按匹配深度排序
-                        val sorted = allMatchedResults.toList().sortedWith(compareBy { item ->
-                            val itemTitle = SearchUtils.cleanTitle(item.title)
-                            if (itemTitle == preciseTerm) 0
-                            else if (itemTitle.contains(preciseTerm)) 1
-                            else 2
-                        })
-                        _results.value = SearchUtils.mergeResults(sorted)
+                        // 最终排序：按相关度得分排序 (分数越小越相关)
+                        val merged = SearchUtils.mergeResults(allMatchedResults.toList())
+                        _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
                     }
                 } else {
                     performNetDiskSearch(query)
@@ -395,73 +377,80 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 获取视频详情 - 对齐 supertvold 加载顺序
+     * 获取视频详情 - 深度优化：双轨并行加载，解决进入慢的问题
      */
-    fun loadDetail(id: String, source: String, title: String? = null) {
+    fun loadDetail(id: String, source: String, title: String? = null, cover: String? = null) {
         viewModelScope.launch {
             _isLoadingDetail.value = true
             _error.value = null
             _allSources.value = emptyList()
             _searchProgress.value = 0f
             
-            // 1. [秒开优化]：优先从内存详情池或匹配池获取，解决“为何还要再匹配一次”的问题
             val searchTitle = title ?: ""
             var actualId = id
             var actualSource = source
 
+            // 1. [即时渲染]：如果是资料源，立即利用已有元数据展示页面，不等待后端
             if (source == "douban" || source == "bangumi") {
-                val matched = SearchRepository.getMatch(searchTitle)
-                if (matched != null) {
-                    actualId = matched.id
-                    actualSource = matched.source
-                    android.util.Log.d("SearchViewModel", "[MATCH POOL] Found playable source for $searchTitle -> $actualSource")
-                }
+                _detail.value = VideoDetail(
+                    id = id,
+                    title = searchTitle,
+                    cover = cover ?: "",
+                    poster = cover ?: "",
+                    source = source,
+                    sourceName = if (source == "douban") "豆瓣" else "Bangumi",
+                    desc = "正在加载详情...",
+                    episodesList = emptyList()
+                )
+                // 已经渲染了基础 UI，将 Loading 设为 false，让用户先看到东西
+                _isLoadingDetail.value = false
+            }
+
+            // 2. [匹配池检查]：秒开已匹配过的源
+            val matched = SearchRepository.getMatch(searchTitle)
+            if (matched != null) {
+                actualId = matched.id
+                actualSource = matched.source
             }
 
             val pooled = SearchRepository.getFromPool(actualId, actualSource)
             if (pooled != null) {
                 _detail.value = pooled
                 _isLoadingDetail.value = false
-                android.util.Log.d("SearchViewModel", "[POOL] Cache hit for $searchTitle")
-                
-                // 仍需异步刷新全网来源（不阻塞）
+                // 后台刷新播放源
                 loadAllSources(searchTitle.ifBlank { pooled.title }, actualId, actualSource)
                 return@launch
             }
 
-            try {
-                // [资料源识别]
-                val isMetadataSource = actualSource == "douban" || actualSource == "bangumi"
-                
-                if (!isMetadataSource && actualId.isNotBlank() && actualId != "0") {
-                    // [路径 A]：有确定的视频源，优先加载
-                    val result = repository.getDetail(actualId, actualSource)
+            // 3. [双轨并行]：简介加载 与 播放源检索 同时启动
+            val isMetadataSource = actualSource == "douban" || actualSource == "bangumi"
+            
+            // 轨道 A：加载完整简介/元数据
+            val metadataJob = launch {
+                try {
+                    val result = repository.getDetail(id, source)
                     if (result != null) {
-                        _detail.value = result
-                        SearchRepository.addToPool(result)
-                        _isLoadingDetail.value = false // 立即展示首选源
-                        
-                        // 后台异步加载其他换源（不阻塞当前展示）
-                        launch {
-                            loadAllSources(searchTitle.ifBlank { result.title }, actualId, actualSource)
+                        // 保留已搜到的剧集，仅更新简介等文字信息
+                        val current = _detail.value
+                        if (current != null && isMetadataSource && current.episodes.isNotEmpty()) {
+                            _detail.value = result.copy(
+                                episodesList = current.episodes,
+                                source = current.source,
+                                id = current.id
+                            )
+                        } else {
+                            _detail.value = result
                         }
-                    } else {
-                        // 首选源加载失败，走全网探测
-                        loadAllSources(searchTitle, null, actualSource)
                     }
-                } else {
-                    // [路径 B]：纯资料源，直接全网激进探测
-                    if (searchTitle.isNotBlank()) {
-                        loadAllSources(searchTitle, null, actualSource)
-                    } else {
-                        _error.value = "标题不能为空"
-                        _isLoadingDetail.value = false
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("SearchViewModel", "Load detail failed", e)
-                _error.value = "加载详情失败: ${e.message}"
-                _isLoadingDetail.value = false
+                } catch (_: Exception) {}
+            }
+
+            // 轨道 B：激进检索播放源 (核心：不受轨道 A 成功与否的影响)
+            if (searchTitle.isNotBlank()) {
+                loadAllSources(searchTitle, if (isMetadataSource) null else actualId, actualSource)
+            } else {
+                metadataJob.join() // 没标题时只能等轨道 A 拿标题
+                _detail.value?.title?.let { loadAllSources(it, null, actualSource) }
             }
         }
     }

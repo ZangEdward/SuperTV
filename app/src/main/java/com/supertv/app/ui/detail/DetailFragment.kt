@@ -34,9 +34,9 @@ class DetailFragment : Fragment() {
         val title = arguments?.getString("title") ?: ""
         val cover = arguments?.getString("cover") ?: ""
 
-        // 加载详情
+        // 加载详情 (传递 cover 以便即时渲染)
         if (id.isNotBlank() && source.isNotBlank()) {
-            viewModel.loadDetail(id, source, title)
+            viewModel.loadDetail(id, source, title, cover)
         }
 
         return ComposeView(requireContext()).apply {
