@@ -417,6 +417,17 @@ fun HomeScreen(
         label = "CategoryAnimation",
         modifier = Modifier.fillMaxSize()
     ) { targetCategory ->
+                // 在 LazyColumn 外部定义需要 Composable 上下文的状态
+                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                var currentDay by remember {
+                    mutableIntStateOf(
+                        java.util.Calendar.getInstance()
+                            .get(java.util.Calendar.DAY_OF_WEEK).let {
+                                if (it == 1) 7 else it - 1
+                            }
+                    )
+                }
+
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (targetCategory) {
                         "热门" -> {
@@ -450,16 +461,6 @@ fun HomeScreen(
                             }
                         }
                         "动漫" -> {
-                            val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-                            var currentDay by remember {
-                                mutableIntStateOf(
-                                    java.util.Calendar.getInstance()
-                                        .get(java.util.Calendar.DAY_OF_WEEK).let {
-                                            if (it == 1) 7 else it - 1
-                                        }
-                                )
-                            }
-                            
                             if (selectedSubCategory == "全部") {
                                 item {
                                     ScrollableTabRow(
@@ -494,6 +495,7 @@ fun HomeScreen(
                                 }
                             }
                         }
+                        // ...
                         "综艺" -> {
                             item {
                                 SectionHeader(if (selectedSubCategory == "全部") "热门综艺" else "$selectedSubCategory 综艺")
