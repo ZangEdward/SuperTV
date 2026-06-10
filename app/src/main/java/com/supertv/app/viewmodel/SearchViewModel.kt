@@ -137,23 +137,24 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         
         viewModelScope.launch {
             try {
-                // 1. 尝试精准匹配
-                val allRawResults = repository.aggressiveSearch(query, onlyExact = true)
-                // 彻底排除 douban/bangumi
-                val playbackResults = allRawResults.filter { it.source != "douban" && it.source != "bangumi" }
-
-                if (playbackResults.isNotEmpty()) {
-                    val bestMatch = playbackResults.maxByOrNull { it.episodes.size } ?: playbackResults.first()
-                    _results.value = SearchUtils.mergeResults(playbackResults)
-                    _navigateToDetail.emit(bestMatch)
-                    
+                // 1. 尝试精准匹配 (只包含播放源)
+                val exactResults = repository.aggressiveSearch(query, onlyExact = true)
+                    .filter { it.source != "douban" && it.source != "bangumi" }
+                
+                if (exactResults.isNotEmpty()) {
+                    // 立即展示精准匹配的结果
+                    _results.value = SearchUtils.mergeResults(exactResults)
+                    // 后续继续加载模糊匹配结果来丰富列表
                     launch {
-                        val fuzzyResults = repository.aggressiveSearch(query)
-                        _results.value = SearchUtils.mergeResults(fuzzyResults.filter { it.source != "douban" && it.source != "bangumi" })
+                        val allResults = repository.aggressiveSearch(query, onlyExact = false)
+                        val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
+                        _results.value = SearchUtils.mergeResults(filtered)
                     }
                 } else {
-                    val results = repository.aggressiveSearch(query)
-                    _results.value = SearchUtils.mergeResults(results.filter { it.source != "douban" && it.source != "bangumi" })
+                    // 无精准匹配，直接进行激进搜索
+                    val allResults = repository.aggressiveSearch(query, onlyExact = false)
+                    val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
+                    _results.value = SearchUtils.mergeResults(filtered)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SearchViewModel", "searchTV failed", e)
@@ -198,29 +199,25 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 if (_searchMode.value == 0) {
-                    // 1. 首先尝试精准匹配
-                    val allExactResults = repository.aggressiveSearch(query, onlyExact = true)
-                    
-                    // 排除 douban/bangumi
-                    val playbackExactResults = allExactResults.filter { 
-                        it.source != "douban" && it.source != "bangumi"
-                    }
+                    // 1. 尝试精准匹配 (只包含播放源)
+                    val exactResults = repository.aggressiveSearch(query, onlyExact = true)
+                        .filter { it.source != "douban" && it.source != "bangumi" }
 
-                    if (playbackExactResults.isNotEmpty()) {
-                        // 发现精准匹配的播放源，立即通知 UI 跳转
-                        val bestMatch = playbackExactResults.maxByOrNull { it.episodes.size } ?: playbackExactResults.first()
-                        _results.value = SearchUtils.mergeResults(playbackExactResults)
-                        _navigateToDetail.emit(bestMatch)
+                    if (exactResults.isNotEmpty()) {
+                        // 发现精准匹配结果，立即展示，提升体感速度
+                        _results.value = SearchUtils.mergeResults(exactResults)
                         
-                        // 后台继续加载完整结果（模糊匹配）
+                        // 后台继续加载模糊匹配结果
                         launch {
-                            val fuzzyResults = repository.aggressiveSearch(query, onlyExact = false)
-                            _results.value = SearchUtils.mergeResults(fuzzyResults.filter { it.source != "douban" && it.source != "bangumi" })
+                            val allResults = repository.aggressiveSearch(query, onlyExact = false)
+                            val filtered = allResults.filter { it.source != "douban" && it.source != "bangumi" }
+                            _results.value = SearchUtils.mergeResults(filtered)
                         }
                     } else {
-                        // 无精准播放源匹配，执行模糊匹配并过滤元数据源
+                        // 无精准结果，直接进行全网模糊/变体搜索
                         val results = repository.aggressiveSearch(query)
-                        _results.value = SearchUtils.mergeResults(results.filter { it.source != "douban" && it.source != "bangumi" })
+                        val filtered = results.filter { it.source != "douban" && it.source != "bangumi" }
+                        _results.value = SearchUtils.mergeResults(filtered)
                     }
                 } else {
                     performNetDiskSearch(query)
@@ -344,11 +341,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 // 5. 自动合并最佳源 (如果当前是元数据源，或者集数为空)
                 val currentDetail = _detail.value
                 val isMetadataOnly = currentDetail?.source == "douban" || currentDetail?.source == "bangumi"
+                
                 if ((currentDetail == null || currentDetail.episodes.isEmpty() || isMetadataOnly) && playbackSources.isNotEmpty()) {
-                    // 使用评分逻辑选择最佳源
+                    // 核心“合并逻辑”：将所有来源的剧集进行对齐合并 (模仿 supertvold)
+                    var mergedEpisodes = emptyList<com.supertv.app.model.Episode>()
+                    playbackSources.forEach { ps ->
+                        mergedEpisodes = SearchUtils.mergeEpisodes(mergedEpisodes, ps.episodes)
+                    }
+
+                    // 选择评分最高的源作为主 ID 和 Source
                     val bestSource = playbackSources.maxByOrNull { calculateSourceScore(it) } ?: playbackSources.first()
-                    
-                    android.util.Log.d("SearchViewModel", "Auto-merging best source: ${bestSource.sourceName} for ${currentDetail?.title}")
                     
                     val detail = repository.getDetail(bestSource.id, bestSource.source)
                     if (detail != null) {
@@ -356,13 +358,15 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                             // 保持元数据，合并播放源、ID和剧集
                             _detail.value = currentDetail.copy(
                                 id = detail.id,
-                                episodesList = detail.episodes,
+                                episodesList = if (mergedEpisodes.isNotEmpty()) mergedEpisodes else detail.episodes,
                                 source = detail.source,
                                 sourceName = detail.sourceName,
-                                totalEpisodes = detail.episodes.size
+                                totalEpisodes = if (mergedEpisodes.isNotEmpty()) mergedEpisodes.size else detail.episodes.size
                             )
                         } else {
-                            _detail.value = detail
+                            _detail.value = detail.copy(
+                                episodesList = if (mergedEpisodes.isNotEmpty()) mergedEpisodes else detail.episodes
+                            )
                         }
                     }
                 }

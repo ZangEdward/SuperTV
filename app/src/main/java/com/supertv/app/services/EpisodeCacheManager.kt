@@ -52,10 +52,13 @@ class EpisodeCacheManager(private val context: Context) {
             val maxRetries = 3
             var success = false
 
+            // 文件名规范化 (解决路径非法字符导致的失败)
+            val safeVideoId = videoId.replace("[\\\\/:*?\"<>|]".toRegex(), "_")
+            val targetFile = File(cacheDir, "${safeVideoId}_ep${episode.index}.mp4")
+
             while (retryCount < maxRetries && !success) {
                 _downloadStates.value = _downloadStates.value + (taskId to DownloadState.Downloading)
                 try {
-                    val targetFile = File(cacheDir, "${videoId}_ep${episode.index}.mp4")
                     if (targetFile.exists() && targetFile.length() > 0) {
                         _downloadStates.value = _downloadStates.value + (taskId to DownloadState.Completed)
                         _downloadProgress.value = _downloadProgress.value + (taskId to 1f)
@@ -67,7 +70,10 @@ class EpisodeCacheManager(private val context: Context) {
                     val url = episode.url
                     if (url.isBlank()) throw Exception("播放地址为空")
 
-                    downloadFileWithRetry(url, targetFile, taskId)
+                    // 增强：从 ImageUrlHelper 获取请求头 (许多视频源需要特定的 Referer/UA)
+                    val headers = ImageUrlHelper.getImageHeaders(url)
+
+                    downloadFileWithRetry(url, targetFile, taskId, headers)
 
                     if (targetFile.exists() && targetFile.length() > 0) {
                         _downloadStates.value = _downloadStates.value + (taskId to DownloadState.Completed)
@@ -92,7 +98,12 @@ class EpisodeCacheManager(private val context: Context) {
         activeTasks[taskId] = job
     }
 
-    private suspend fun downloadFileWithRetry(url: String, targetFile: File, taskId: String) {
+    private suspend fun downloadFileWithRetry(
+        url: String, 
+        targetFile: File, 
+        taskId: String, 
+        extraHeaders: Map<String, String> = emptyMap()
+    ) {
         var retryCount = 0
         val maxRetries = 3
         var lastException: Exception? = null
@@ -103,7 +114,16 @@ class EpisodeCacheManager(private val context: Context) {
                     val downloadedBytes = if (targetFile.exists()) targetFile.length() else 0L
                     
                     val requestBuilder = Request.Builder().url(url)
-                        .header("User-Agent", "Mozilla/5.0 (Android 14) SuperTV/1.0")
+                    
+                    // 应用所有请求头
+                    extraHeaders.forEach { (k, v) ->
+                        requestBuilder.header(k, v)
+                    }
+                    
+                    // 如果没有设置 UA，应用默认 UA
+                    if (!extraHeaders.containsKey("User-Agent")) {
+                        requestBuilder.header("User-Agent", "Mozilla/5.0 (Android 14) SuperTV/1.0")
+                    }
                     
                     if (downloadedBytes > 0) {
                         requestBuilder.header("Range", "bytes=$downloadedBytes-")

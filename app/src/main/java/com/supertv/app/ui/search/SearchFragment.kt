@@ -46,10 +46,10 @@ class SearchFragment : Fragment() {
                         }
                         val navOptions = androidx.navigation.navOptions {
                             anim {
-                                enter = com.supertv.app.R.anim.slide_in_right
-                                exit = com.supertv.app.R.anim.slide_out_left
-                                popEnter = com.supertv.app.R.anim.slide_in_left
-                                popExit = com.supertv.app.R.anim.slide_out_right
+                                enter = com.supertv.app.R.anim.slide_up
+                                exit = android.R.anim.fade_out
+                                popEnter = android.R.anim.fade_in
+                                popExit = com.supertv.app.R.anim.slide_down
                             }
                         }
                         findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle, navOptions)
@@ -75,10 +75,10 @@ class SearchFragment : Fragment() {
                                 }
                                 val navOptions = androidx.navigation.navOptions {
                                     anim {
-                                        enter = com.supertv.app.R.anim.slide_in_right
-                                        exit = com.supertv.app.R.anim.slide_out_left
-                                        popEnter = com.supertv.app.R.anim.slide_in_left
-                                        popExit = com.supertv.app.R.anim.slide_out_right
+                                        enter = com.supertv.app.R.anim.slide_up
+                                        exit = android.R.anim.fade_out
+                                        popEnter = android.R.anim.fade_in
+                                        popExit = com.supertv.app.R.anim.slide_down
                                     }
                                 }
                                 findNavController().navigate(com.supertv.app.R.id.action_nav_search_to_detail, bundle, navOptions)
@@ -116,8 +116,8 @@ class SearchFragment : Fragment() {
                                 val navOptions = androidx.navigation.navOptions {
                                     anim {
                                         enter = com.supertv.app.R.anim.slide_up
-                                        exit = com.supertv.app.R.anim.slide_out_left
-                                        popEnter = com.supertv.app.R.anim.slide_in_left
+                                        exit = android.R.anim.fade_out
+                                        popEnter = android.R.anim.fade_in
                                         popExit = com.supertv.app.R.anim.slide_down
                                     }
                                 }

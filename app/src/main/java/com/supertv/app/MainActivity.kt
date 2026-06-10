@@ -152,10 +152,10 @@ class MainActivity : AppCompatActivity() {
                                     onSearchClick = { 
                                         val searchNavOptions = navOptions {
                                             anim {
-                                                enter = R.anim.slide_in_right
-                                                exit = R.anim.slide_out_left
-                                                popEnter = R.anim.slide_in_left
-                                                popExit = R.anim.slide_out_right
+                                                enter = R.anim.slide_in_top
+                                                exit = android.R.anim.fade_out
+                                                popEnter = android.R.anim.fade_in
+                                                popExit = R.anim.slide_out_top
                                             }
                                         }
                                         navController.navigate(R.id.nav_search, null, searchNavOptions)
@@ -163,10 +163,10 @@ class MainActivity : AppCompatActivity() {
                                     onDownloadClick = { 
                                         val slideshowNavOptions = navOptions {
                                             anim {
-                                                enter = R.anim.slide_in_right
-                                                exit = R.anim.slide_out_left
-                                                popEnter = R.anim.slide_in_left
-                                                popExit = R.anim.slide_out_right
+                                                enter = R.anim.slide_in_top
+                                                exit = android.R.anim.fade_out
+                                                popEnter = android.R.anim.fade_in
+                                                popExit = R.anim.slide_out_top
                                             }
                                         }
                                         navController.navigate(R.id.nav_slideshow, null, slideshowNavOptions)
@@ -192,10 +192,10 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     val detailNavOptions = navOptions {
                                         anim {
-                                            enter = R.anim.slide_in_right
-                                            exit = R.anim.slide_out_left
-                                            popEnter = R.anim.slide_in_left
-                                            popExit = R.anim.slide_out_right
+                                            enter = R.anim.slide_up
+                                            exit = android.R.anim.fade_out
+                                            popEnter = android.R.anim.fade_in
+                                            popExit = R.anim.slide_down
                                         }
                                     }
                                     navController.navigate(R.id.nav_detail, bundle, detailNavOptions)
@@ -203,10 +203,10 @@ class MainActivity : AppCompatActivity() {
                                 onNavigateToDownloads = {
                                     val downloadsNavOptions = navOptions {
                                         anim {
-                                            enter = R.anim.slide_in_right
-                                            exit = R.anim.slide_out_left
-                                            popEnter = R.anim.slide_in_left
-                                            popExit = R.anim.slide_out_right
+                                            enter = R.anim.slide_in_top
+                                            exit = android.R.anim.fade_out
+                                            popEnter = android.R.anim.fade_in
+                                            popExit = R.anim.slide_out_top
                                         }
                                     }
                                     navController.navigate(R.id.nav_slideshow, null, downloadsNavOptions)
@@ -297,6 +297,55 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 binding.navView?.setupWithNavController(navController)
+
+                // 绑定明暗切换动画 (对齐 LunaTV-Enhanced 逻辑)
+                binding.appBarMain.contentMain?.themeTransitionCompose?.setContent {
+                    val viewModel: MainViewModel = viewModel()
+                    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+                    
+                    // 记录上一次的状态
+                    var lastState by remember { mutableStateOf(isDarkTheme) }
+                    var triggerAnim by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(isDarkTheme) {
+                        if (lastState != isDarkTheme) {
+                            triggerAnim = true
+                            kotlinx.coroutines.delay(800) // 动画时长
+                            triggerAnim = false
+                            lastState = isDarkTheme
+                        }
+                    }
+
+                    if (triggerAnim) {
+                        val isEnteringDark = isDarkTheme
+                        
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = triggerAnim,
+                                enter = if (isEnteringDark) {
+                                    // 黑色从上往下覆盖
+                                    androidx.compose.animation.slideInVertically(
+                                        initialOffsetY = { -it },
+                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
+                                    )
+                                } else {
+                                    // 白色从下往上覆盖
+                                    androidx.compose.animation.slideInVertically(
+                                        initialOffsetY = { it },
+                                        animationSpec = androidx.compose.animation.core.tween(600, easing = androidx.compose.animation.core.LinearOutSlowInEasing)
+                                    )
+                                },
+                                exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(200))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(if (isEnteringDark) Color.Black else Color.White)
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
         } catch (e: Exception) {

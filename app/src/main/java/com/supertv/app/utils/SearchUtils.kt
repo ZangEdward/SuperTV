@@ -126,4 +126,31 @@ object SearchUtils {
     fun generateTailTrimTerms(query: String): List<String> {
         return generateSearchVariants(query)
     }
+
+    /**
+     * 合并剧集列表 (模仿 supertvold mergeEpisodes)
+     * 将多个来源的剧集进行对齐合并
+     */
+    fun mergeEpisodes(baseEpisodes: List<com.supertv.app.model.Episode>, otherEpisodes: List<com.supertv.app.model.Episode>): List<com.supertv.app.model.Episode> {
+        if (baseEpisodes.isEmpty()) return otherEpisodes
+        if (otherEpisodes.isEmpty()) return baseEpisodes
+
+        val result = baseEpisodes.toMutableList()
+        val baseTitles = baseEpisodes.map { it.title.trim() }.toSet()
+
+        otherEpisodes.forEach { other ->
+            if (!baseTitles.contains(other.title.trim())) {
+                // 如果基础列表中没有这个标题，且 URL 不为空，则尝试添加
+                if (other.url.isNotBlank()) {
+                    result.add(other)
+                }
+            }
+        }
+        
+        // 简单排序：尝试按标题中的数字排序
+        return result.sortedBy { ep ->
+            val num = Regex("\\d+").find(ep.title)?.value?.toIntOrNull() ?: 999
+            num
+        }
+    }
 }
