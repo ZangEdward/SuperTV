@@ -10,15 +10,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Search
@@ -27,22 +25,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.supertv.app.R
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
@@ -50,13 +41,11 @@ import com.supertv.app.model.SearchResult
 import com.supertv.app.ui.components.LoginDialog
 import com.supertv.app.ui.components.UserMenu
 import com.supertv.app.ui.theme.*
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-import com.supertv.app.ui.components.GlobalHeader
 import com.supertv.app.viewmodel.MainViewModel
-
 import androidx.fragment.app.activityViewModels
+import com.supertv.app.ui.transform.tabs.*
 
 class TransformFragment : Fragment() {
     private val viewModel: TransformViewModel by viewModels()
@@ -89,7 +78,6 @@ class TransformFragment : Fragment() {
                         val configuration = LocalConfiguration.current
                         val isTv = (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
                         
-                        // 监听 401 错误，自动弹出登录框
                         LaunchedEffect(Unit) {
                             RetrofitClient.setUnauthorizedListener {
                                 authRepo.clearCredentials()
@@ -97,7 +85,6 @@ class TransformFragment : Fragment() {
                             }
                         }
 
-                        // Get category from arguments
                         val category = arguments?.getString("category") ?: "热门"
                         LaunchedEffect(category) {
                             viewModel.selectCategory(category)
@@ -108,16 +95,13 @@ class TransformFragment : Fragment() {
                                 onLoginSuccess = {
                                     isLoggedIn = true
                                     showLoginDialog = false
-                                    // 登录后同步数据
                                     val syncService = com.supertv.app.data.SyncService.getInstance(requireContext())
                                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                                         syncService.syncAll()
                                     }
                                     viewModel.refresh()
                                 },
-                                onDismiss = {
-                                    showLoginDialog = false
-                                }
+                                onDismiss = { showLoginDialog = false }
                             )
                         }
 
@@ -134,7 +118,6 @@ class TransformFragment : Fragment() {
                                         putString("source", source)
                                         putString("title", title)
                                     }
-                                    // 动态判断当前目的地，执行正确的 Action
                                     val currentDest = findNavController().currentDestination?.id
                                     val actionId = when (currentDest) {
                                         R.id.nav_movie -> R.id.action_nav_movie_to_detail
@@ -174,9 +157,7 @@ class TransformFragment : Fragment() {
                                     findNavController().navigate(actionId, bundle)
                                 },
                                 onSearchClick = { findNavController().navigate(R.id.action_nav_transform_to_search) },
-                                onUserClick = { 
-                                    if (isLoggedIn) showUserMenu = true else showLoginDialog = true
-                                }
+                                onUserClick = { if (isLoggedIn) showUserMenu = true else showLoginDialog = true }
                             )
                         } else {
                             HomeScreen(
@@ -209,184 +190,12 @@ class TransformFragment : Fragment() {
 }
 
 @Composable
-fun TVHomeScreen(
-    viewModel: TransformViewModel,
-    onItemClick: (SearchResult) -> Unit,
-    onSearchClick: () -> Unit,
-    onUserClick: () -> Unit
-) {
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
-    val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
-    val recommended by viewModel.recommended.collectAsState(initial = emptyList())
-    val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
-    val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
-    
-    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
-    val subCategories = remember(selectedCategory) {
-        when (selectedCategory) {
-            "热门" -> emptyList()
-            "电影" -> listOf("热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
-            "剧集" -> listOf("热门", "华语", "欧美", "韩剧", "日剧", "泰国")
-            "动漫" -> listOf("热门", "日本", "国产", "欧美")
-            "综艺" -> listOf("热门", "内地", "港台", "日韩", "欧美")
-            "短剧" -> listOf("热门", "最新")
-            else -> listOf("热门")
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // TV Header (SuperTV_old style)
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text(
-                    text = "视频",
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.clickable { }
-                )
-                Spacer(Modifier.width(20.dp))
-                Text(
-                    text = "直播",
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.clickable { /* 跳转直播 */ }
-                )
-            }
-            
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                IconButton(onClick = { /* 收藏 */ }) { Icon(Icons.Outlined.Favorite, null, tint = MaterialTheme.colorScheme.onBackground) }
-                IconButton(onClick = onSearchClick) { Icon(Icons.Outlined.Search, null, tint = MaterialTheme.colorScheme.onBackground) }
-                IconButton(onClick = { /* 设置 */ }) { Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.onBackground) }
-                IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.onBackground) }
-            }
-        }
-        LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(categories) { category ->
-                val isSelected = category == selectedCategory
-                Surface(
-                    onClick = { viewModel.selectCategory(category) },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                ) {
-                    Text(
-                        text = category,
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-        }
-
-        // TV SubCategory Bar
-        if (selectedCategory != "热门" && subCategories.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(subCategories) { subCategory ->
-                    val isSelected = subCategory == selectedSubCategory
-                    Surface(
-                        onClick = { viewModel.selectSubCategory(subCategory) },
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
-                        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-                    ) {
-                        Text(
-                            text = subCategory,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Content Grid
-        AnimatedContent(
-            targetState = selectedCategory,
-            transitionSpec = {
-                val oldIndex = categories.indexOf(initialState)
-                val newIndex = categories.indexOf(targetState)
-                if (newIndex > oldIndex) {
-                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
-                } else {
-                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
-                }.using(SizeTransform(clip = false))
-            },
-            label = "TVCategoryAnimation",
-            modifier = Modifier.fillMaxSize()
-        ) { targetCategory ->
-            val playRecords by viewModel.playRecords.collectAsState(initial = emptyList())
-            
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (targetCategory == "热门" && playRecords.isNotEmpty()) {
-                    // TV 端也展示最近播放
-                    items(playRecords.take(5)) { record ->
-                        PosterCard(
-                            result = SearchResult(
-                                title = record.title,
-                                cover = record.cover,
-                                sourceName = record.sourceName
-                            ),
-                            onClick = { /* ... */ }
-                        )
-                    }
-                }
-
-                val content = when (targetCategory) {
-                    "热门" -> hotMovies
-                    "电影" -> recommended
-                    "剧集" -> hotMovies
-                    "动漫" -> animeUpdates
-                    "综艺" -> animeUpdates
-                    "短剧" -> shortDramas
-                    else -> emptyList()
-                }
-                items(content) { item ->
-                    PosterCard(result = item, onClick = { onItemClick(item) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun HomeScreen(
     viewModel: TransformViewModel,
     onItemClick: (SearchResult) -> Unit
 ) {
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
-    val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
-    val recommended by viewModel.recommended.collectAsState(initial = emptyList())
-    val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
-    val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
-    val playRecords by viewModel.playRecords.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     
     val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
@@ -415,172 +224,166 @@ fun HomeScreen(
             )
         }
 
-        if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
-            val configuration = LocalConfiguration.current
-            val columns = if (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION) 5 else 3
-            com.supertv.app.ui.components.ShimmerGrid(columns = columns)
+        if (isLoading && selectedCategory != "动漫") { // 动漫由自己的 Tab 处理 Loading 或缓存
+             val configuration = LocalConfiguration.current
+             val columns = if (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION) 5 else 3
+             com.supertv.app.ui.components.ShimmerGrid(columns = columns)
         } else {
-    AnimatedContent(
-        targetState = selectedCategory,
-        transitionSpec = {
-            val oldIndex = categories.indexOf(initialState)
-            val newIndex = categories.indexOf(targetState)
-            if (newIndex > oldIndex) {
-                // 向左滑入 (Forward)
-                (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
-            } else {
-                // 向右滑入 (Backward)
-                (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
-            }.using(SizeTransform(clip = false))
-        },
-        label = "CategoryAnimation",
-        modifier = Modifier.fillMaxSize()
-    ) { targetCategory ->
-                // 重新定义动漫需要的状态
-                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-                var currentDay by remember {
-                    mutableIntStateOf(
-                        java.util.Calendar.getInstance()
-                            .get(java.util.Calendar.DAY_OF_WEEK).let {
-                                if (it == 1) 7 else it - 1
-                            }
+            AnimatedContent(
+                targetState = selectedCategory,
+                transitionSpec = {
+                    val oldIndex = categories.indexOf(initialState)
+                    val newIndex = categories.indexOf(targetState)
+                    if (newIndex > oldIndex) {
+                        (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                    } else {
+                        (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                    }.using(SizeTransform(clip = false))
+                },
+                label = "CategoryAnimation",
+                modifier = Modifier.fillMaxSize()
+            ) { targetCategory ->
+                when (targetCategory) {
+                    "热门" -> HomeTab(viewModel, onItemClick)
+                    "电影" -> MovieTab(viewModel, onItemClick)
+                    "剧集" -> TvTab(viewModel, onItemClick)
+                    "动漫" -> AnimeTab(viewModel, onItemClick)
+                    "综艺" -> VarietyTab(viewModel, onItemClick)
+                    "短剧" -> ShortDramaTab(viewModel, onItemClick)
+                    else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("暂无内容") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TVHomeScreen(
+    viewModel: TransformViewModel,
+    onItemClick: (SearchResult) -> Unit,
+    onSearchClick: () -> Unit,
+    onUserClick: () -> Unit
+) {
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
+    
+    val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+    val subCategories = remember(selectedCategory) {
+        when (selectedCategory) {
+            "热门" -> emptyList()
+            "电影" -> listOf("热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
+            "剧集" -> listOf("热门", "华语", "欧美", "韩剧", "日剧", "泰国")
+            "动漫" -> listOf("热门", "日本", "国产", "欧美")
+            "综艺" -> listOf("热门", "内地", "港台", "日韩", "欧美")
+            "短剧" -> listOf("热门", "最新")
+            else -> listOf("热门")
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "视频",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(Modifier.width(20.dp))
+                Text(
+                    text = "直播",
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.clickable { /* 跳转直播 */ }
+                )
+            }
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { /* 收藏 */ }) { Icon(Icons.Outlined.Favorite, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = onSearchClick) { Icon(Icons.Outlined.Search, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = { /* 设置 */ }) { Icon(Icons.Outlined.Settings, null, tint = MaterialTheme.colorScheme.onBackground) }
+                IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.onBackground) }
+            }
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(categories) { category: String ->
+                val isSelected = category == selectedCategory
+                Surface(
+                    onClick = { viewModel.selectCategory(category) },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = category,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
+            }
+        }
 
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    when (targetCategory) {
-                        "热门" -> {
-                            if (playRecords.isNotEmpty()) {
-                                item {
-                                    SectionHeader("最近播放")
-                                    VideoCardRow(
-                                        items = playRecords.map { record ->
-                                            SearchResult(
-                                                title = record.title,
-                                                cover = record.cover,
-                                                source = record.searchTitle, // 临时借用
-                                                sourceName = record.sourceName,
-                                                id = record.title, // 临时
-                                                year = record.year
-                                            )
-                                        }, 
-                                        onClick = { /* 这里需要处理 record 跳转，目前先保持展示 */ }
-                                    )
-                                }
-                            }
-                            item {
-                                SectionHeader("豆瓣热播")
-                                VideoCardRow(items = hotMovies, onClick = onItemClick)
-                            }
-                            item {
-                                SectionHeader("精品推荐")
-                                VideoCardRow(items = recommended, onClick = onItemClick)
-                            }
-                            item {
-                                SectionHeader("动漫更新")
-                                VideoCardRow(items = animeUpdates, onClick = onItemClick)
-                            }
-                            item {
-                                SectionHeader("热门短剧")
-                                VideoCardRow(items = shortDramas, onClick = onItemClick)
-                            }
-                        }
-                        "电影" -> {
-                            item { SectionHeader(if (selectedSubCategory == "热门") "精品电影" else "$selectedSubCategory 电影") }
-                            items(recommended.chunked(3)) { rowItems ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    rowItems.forEach { item ->
-                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                                    }
-                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-                                }
-                            }
-                        }
-                        "剧集" -> {
-                            item { SectionHeader(if (selectedSubCategory == "热门") "最新剧集" else "$selectedSubCategory 剧集") }
-                            items(hotMovies.chunked(3)) { rowItems ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    rowItems.forEach { item ->
-                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                                    }
-                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-                                }
-                            }
-                        }
-                        "动漫" -> {
-                            // 动漫模块：仅显示每日更新 (周一至周日)
-                            item {
-                                ScrollableTabRow(
-                                    selectedTabIndex = currentDay - 1,
-                                    containerColor = Color.Transparent,
-                                    contentColor = PrimaryGreen,
-                                    edgePadding = 16.dp,
-                                    divider = {}
-                                ) {
-                                    weekdays.forEachIndexed { index, name ->
-                                        Tab(
-                                            selected = currentDay == index + 1,
-                                            onClick = {
-                                                currentDay = index + 1
-                                                viewModel.selectWeekday(currentDay)
-                                            },
-                                            text = { Text(name, fontSize = 14.sp) }
-                                        )
-                                    }
-                                }
-                            }
-
-                            items(animeUpdates.chunked(3)) { rowItems ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    rowItems.forEach { item ->
-                                        Box(Modifier.weight(1f)) {
-                                            PosterCard(result = item, onClick = { onItemClick(item) })
-                                        }
-                                    }
-                                    if (rowItems.size < 3) {
-                                        repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                                    }
-                                }
-                            }
-                        }
-                        // ...
-                        "综艺" -> {
-                            item { SectionHeader(if (selectedSubCategory == "热门") "热门综艺" else "$selectedSubCategory 综艺") }
-                            items(animeUpdates.chunked(3)) { rowItems ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    rowItems.forEach { item ->
-                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                                    }
-                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-                                }
-                            }
-                        }
-                        "短剧" -> {
-                            item { SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧") }
-                            items(shortDramas.chunked(3)) { rowItems ->
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                    rowItems.forEach { item ->
-                                        Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                                    }
-                                    if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-                                }
-                            }
-                        }
-                        else -> {
-                            item {
-                                SectionHeader(targetCategory)
-                                if (isLoading && recommended.isEmpty()) {
-                                    Text("内容正在加载...", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                } else if (recommended.isEmpty()) {
-                                    Text("暂无内容", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                } else {
-                                    VideoCardRow(items = recommended, onClick = onItemClick, isGrid = true)
-                                }
-                            }
-                        }
+        if (selectedCategory != "热门" && subCategories.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(subCategories) { subCategory ->
+                    val isSelected = subCategory == selectedSubCategory
+                    Surface(
+                        onClick = { viewModel.selectSubCategory(subCategory) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
+                        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Text(
+                            text = subCategory,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
                     }
-                    item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
+            }
+        }
+
+        AnimatedContent(
+            targetState = selectedCategory,
+            transitionSpec = {
+                val oldIndex = categories.indexOf(initialState)
+                val newIndex = categories.indexOf(targetState)
+                if (newIndex > oldIndex) {
+                    (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                }.using(SizeTransform(clip = false))
+            },
+            label = "TVCategoryAnimation",
+            modifier = Modifier.fillMaxSize()
+        ) { targetCategory ->
+            when (targetCategory) {
+                "热门" -> HomeTab(viewModel, onItemClick) // 可以在这里传入 isTv 以适配大屏布局
+                "电影" -> MovieTab(viewModel, onItemClick)
+                "剧集" -> TvTab(viewModel, onItemClick)
+                "动漫" -> AnimeTab(viewModel, onItemClick)
+                "综艺" -> VarietyTab(viewModel, onItemClick)
+                "短剧" -> ShortDramaTab(viewModel, onItemClick)
+                else -> Box(Modifier.fillMaxSize())
             }
         }
     }
@@ -624,7 +427,7 @@ fun SubCategoryBar(
 fun SectionHeader(title: String) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
@@ -643,7 +446,7 @@ fun SectionHeader(title: String) {
 }
 
 @Composable
-fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
+fun VideoCardRow(itemsList: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
     val configuration = LocalConfiguration.current
     val isTv = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     
@@ -655,9 +458,9 @@ fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isG
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.heightIn(max = 10000.dp) // 增加高度限制确保能显示全
+            modifier = Modifier.heightIn(max = 10000.dp)
         ) {
-            items(items) { item ->
+            items(itemsList) { item ->
                 PosterCard(result = item, onClick = { onClick(item) })
             }
         }
@@ -666,7 +469,7 @@ fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isG
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items) { item ->
+            items(itemsList) { item ->
                 PosterCard(result = item, onClick = { onClick(item) })
             }
         }

@@ -447,38 +447,32 @@ class MainActivity : AppCompatActivity() {
                             .padding(vertical = 2.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
-                                if (currentDestination?.id == item.id) {
-                                    navController.popBackStack(item.id, false)
-                                    return@clickable
-                                }
-
-                                // 核心逻辑：从小号标签切换到大号为从右划入，从大号标签切换到小号，为从左划入
-                                val isForward = targetIndex > lastAbsoluteIndex
-
+                                // 核心逻辑：点击标签页，就回到标签页内，重置所有嵌套页面
+                                // 不论当前是否在目标标签，只要点击就尝试回到该标签的根路径
                                 val navOptions = navOptions {
                                     anim {
+                                        val isForward = targetIndex > lastAbsoluteIndex
                                         if (isForward) {
-                                            // 向右走：新页从右入(slide_in_right)，旧页从左出(slide_out_left)
                                             enter = R.anim.slide_in_right
                                             exit = R.anim.slide_out_left
                                             popEnter = R.anim.slide_in_left
                                             popExit = R.anim.slide_out_right
-                                        } else {
-                                            // 向左走：新页从左入(slide_in_left)，旧页从右出(slide_out_right)
+                                        } else if (targetIndex < lastAbsoluteIndex) {
                                             enter = R.anim.slide_in_left
                                             exit = R.anim.slide_out_right
                                             popEnter = R.anim.slide_in_right
                                             popExit = R.anim.slide_out_left
                                         }
                                     }
+                                    // 彻底重置：弹出到根目的地，且不恢复之前的嵌套状态
                                     popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                                        inclusive = false
+                                        saveState = false
                                     }
                                     launchSingleTop = true
-                                    restoreState = true
+                                    restoreState = false 
                                 }
                                 
-                                // 立即更新索引，锁定方向
                                 lastAbsoluteIndex = targetIndex
                                 navController.navigate(item.id, null, navOptions)
                             },
@@ -552,21 +546,15 @@ class MainActivity : AppCompatActivity() {
                     },
                     selected = isSelected,
                     onClick = {
-                        if (currentDestination?.id == item.id) {
-                            navController.popBackStack(item.id, false)
-                            return@NavigationRailItem
-                        }
-
-                        val isForward = targetIndex > lastAbsoluteIndex
-
                         val navOptions = navOptions {
                             anim {
+                                val isForward = targetIndex > lastAbsoluteIndex
                                 if (isForward) {
                                     enter = R.anim.slide_in_right
                                     exit = R.anim.slide_out_left
                                     popEnter = R.anim.slide_in_left
                                     popExit = R.anim.slide_out_right
-                                } else {
+                                } else if (targetIndex < lastAbsoluteIndex) {
                                     enter = R.anim.slide_in_left
                                     exit = R.anim.slide_out_right
                                     popEnter = R.anim.slide_in_right
@@ -574,10 +562,11 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                             popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                                inclusive = false
+                                saveState = false
                             }
                             launchSingleTop = true
-                            restoreState = true
+                            restoreState = false
                         }
                         
                         lastAbsoluteIndex = targetIndex

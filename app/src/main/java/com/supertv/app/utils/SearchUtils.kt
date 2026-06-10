@@ -33,11 +33,12 @@ object SearchUtils {
     }
 
     /**
-     * 合并搜索结果：按清理后的标题去重，并将不同源的剧集合并在一起
+     * 合并搜索结果：按清理后的标题去重，并将不同源的结果聚合在一起
      */
     fun mergeResults(results: List<SearchResult>): List<SearchResult> {
         val map = mutableMapOf<String, SearchResult>()
         results.forEach { item ->
+            // 对标题进行彻底清理：去空格、去符号、统一小写
             val key = cleanTitle(item.title)
             if (key.isBlank()) return@forEach
             
@@ -45,13 +46,22 @@ object SearchUtils {
             if (existing == null) {
                 map[key] = item
             } else {
-                // 如果已存在，合并剧集列表（跨源合并）
+                // 如果已存在，合并剧集列表
                 val mergedEpisodes = mergeEpisodes(existing.episodes, item.episodes)
-                // 更新元数据
+                // 聚合来源名称 (去重)
+                val newSources = (existing.sourceName.split(",") + item.sourceName)
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .joinToString(", ")
+
+                // 更新元数据，保留更丰富的一方
                 map[key] = existing.copy(
                     episodesList = mergedEpisodes,
-                    year = if (item.year > existing.year) item.year else existing.year,
-                    rating = if (item.rating > existing.rating) item.rating else existing.rating
+                    sourceName = newSources,
+                    year = if (item.year.isNotBlank() && (existing.year.isBlank() || item.year > existing.year)) item.year else existing.year,
+                    rating = if (item.rating.isNotBlank() && (existing.rating.isBlank() || item.rating > existing.rating)) item.rating else existing.rating,
+                    cover = if (existing.cover.isBlank()) item.cover else existing.cover
                 )
             }
         }

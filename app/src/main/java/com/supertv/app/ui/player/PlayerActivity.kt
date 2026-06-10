@@ -17,9 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -174,6 +175,7 @@ class PlayerActivity : ComponentActivity() {
                         episodeIndex = episodeIndex,
                         totalEpisodes = totalEpisodes,
                         sources = sources,
+                        episodes = sources.find { it.source == intent.getStringExtra(EXTRA_SOURCE) }?.episodes ?: emptyList(),
                         onUrlChange = { currentUrl = it }
                     )
                 } else {
@@ -183,6 +185,7 @@ class PlayerActivity : ComponentActivity() {
                         episodeIndex = episodeIndex,
                         totalEpisodes = totalEpisodes,
                         sources = sources,
+                        episodes = sources.find { it.source == intent.getStringExtra(EXTRA_SOURCE) }?.episodes ?: emptyList(),
                         onUrlChange = { currentUrl = it }
                     )
                 }
@@ -254,19 +257,19 @@ fun DlnaBottomSheet(onDismiss: () -> Unit, onCast: (String) -> Unit) {
                     Text("未发现设备，请确保手机与电视在同一WiFi", color = Color.Gray, textAlign = TextAlign.Center)
                 }
             } else {
-                LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                    items(devices) { device ->
-                        ListItem(
-                            headlineContent = { Text(device.name, color = Color.White) },
-                            supportingContent = { Text(device.host, color = Color.Gray) },
-                            modifier = Modifier.clickable {
-                                onCast(device.host)
-                                onDismiss()
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                        )
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        items(devices) { device ->
+                            ListItem(
+                                headlineContent = { Text(device.name, color = Color.White) },
+                                supportingContent = { Text(device.host, color = Color.Gray) },
+                                modifier = Modifier.clickable {
+                                    onCast(device.host)
+                                    onDismiss()
+                                },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                            )
+                        }
                     }
-                }
             }
             Spacer(Modifier.height(32.dp))
         }
@@ -281,9 +284,11 @@ fun MobilePortraitPlayerScreen(
     episodeIndex: Int,
     totalEpisodes: Int,
     sources: List<SearchResult>,
+    episodes: List<com.supertv.app.model.Episode> = emptyList(),
     onUrlChange: (String) -> Unit
 ) {
     val activity = LocalContext.current as? PlayerActivity
+    var currentEpisodeIdx by remember { mutableIntStateOf(episodeIndex) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCastSheet by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
@@ -300,7 +305,7 @@ fun MobilePortraitPlayerScreen(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         this.player = player
-                        useController = true // 竖屏使用原生控制器或自定义
+                        useController = true 
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -341,13 +346,19 @@ fun MobilePortraitPlayerScreen(
                 isSeeking = false
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = PrimaryGreen,
-                activeTrackColor = PrimaryGreen,
-                inactiveTrackColor = PrimaryGreen.copy(alpha = 0.24f),
-                activeTickColor = Color.Transparent,
-                inactiveTickColor = Color.Transparent
-            )
+            thumb = {
+                Box(Modifier.size(10.dp).background(PrimaryGreen, CircleShape))
+            },
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    sliderState = sliderState,
+                    modifier = Modifier.height(2.dp),
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = PrimaryGreen,
+                        inactiveTrackColor = PrimaryGreen.copy(alpha = 0.2f)
+                    )
+                )
+            }
         )
 
         // Info & Tabs Section
@@ -394,22 +405,31 @@ fun MobilePortraitPlayerScreen(
             when (selectedTab) {
                 0 -> {
                     // 选集网格
+                    val currentEpisodes = if (episodes.isNotEmpty()) episodes else List(totalEpisodes) { com.supertv.app.model.Episode(index = it, title = "第 ${it + 1} 集") }
+                    
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(4),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
                     ) {
-                        items(totalEpisodes) { index ->
+                        itemsIndexed(currentEpisodes) { index, ep ->
                             Button(
-                                onClick = { /* TODO: Switch episode */ },
+                                onClick = { 
+                                    if (ep.url.isNotBlank()) {
+                                        currentEpisodeIdx = index
+                                        onUrlChange(ep.url)
+                                    } else {
+                                        Toast.makeText(activity, "播放地址无效", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (index == episodeIndex) PrimaryGreen else MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = if (index == currentEpisodeIdx) PrimaryGreen else MaterialTheme.colorScheme.surfaceVariant
                                 ),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.height(40.dp)
                             ) {
-                                Text("${index + 1}", color = if (index == episodeIndex) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${index + 1}", color = if (index == currentEpisodeIdx) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -455,12 +475,14 @@ fun MobilePlayerScreen(
     episodeIndex: Int,
     totalEpisodes: Int,
     sources: List<SearchResult>,
+    episodes: List<com.supertv.app.model.Episode> = emptyList(),
     onUrlChange: (String) -> Unit
 ) {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val activity = context as? PlayerActivity
     
+    var currentEpisodeIdx by remember { mutableIntStateOf(episodeIndex) }
     var gestureText by remember { mutableStateOf<String?>(null) }
     var showEpisodeSheet by remember { mutableStateOf(false) }
     var showSourceSheet by remember { mutableStateOf(false) }
@@ -491,13 +513,13 @@ fun MobilePlayerScreen(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
-                    useController = false // 使用自定义 Compose 控制器
+                    useController = false 
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // 手势层 (独立于 UI，防止 UI 点击被拦截)
+        // 手势层
         Box(modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
@@ -508,7 +530,6 @@ fun MobilePlayerScreen(
                         val width = size.width
                         
                         if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                            // 进度调节灵敏度：每像素移动对应 200ms
                             val seekDelta = (dragAmount.x * 200).toLong()
                             player.seekTo((player.currentPosition + seekDelta).coerceIn(0, player.duration))
                             gestureText = "进度: ${formatTime(player.currentPosition)}"
@@ -608,13 +629,19 @@ fun MobilePlayerScreen(
                             isSeeking = false
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        colors = SliderDefaults.colors(
-                            thumbColor = PrimaryGreen,
-                            activeTrackColor = PrimaryGreen,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                            activeTickColor = Color.Transparent,
-                            inactiveTickColor = Color.Transparent
-                        )
+                        thumb = {
+                            Box(Modifier.size(10.dp).background(PrimaryGreen, CircleShape))
+                        },
+                        track = { sliderState ->
+                            SliderDefaults.Track(
+                                sliderState = sliderState,
+                                modifier = Modifier.height(2.dp),
+                                colors = SliderDefaults.colors(
+                                    activeTrackColor = PrimaryGreen,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
                     )
 
                     Row(
@@ -680,11 +707,21 @@ fun MobilePlayerScreen(
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text("选集", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(16.dp))
+                    val currentEpisodes = if (episodes.isNotEmpty()) episodes else List(totalEpisodes) { com.supertv.app.model.Episode(index = it, title = "第 ${it + 1} 集") }
+
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(totalEpisodes) { index ->
+                        itemsIndexed(currentEpisodes) { index, ep ->
                             Button(
-                                onClick = { /* TODO */ },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (index == episodeIndex) PrimaryGreen else Color.DarkGray),
+                                onClick = { 
+                                    if (ep.url.isNotBlank()) {
+                                        currentEpisodeIdx = index
+                                        onUrlChange(ep.url)
+                                        showEpisodeSheet = false
+                                    } else {
+                                        Toast.makeText(context, "播放地址无效", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (index == currentEpisodeIdx) PrimaryGreen else Color.DarkGray),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.size(60.dp, 40.dp)
                             ) { Text("${index + 1}", color = Color.White) }

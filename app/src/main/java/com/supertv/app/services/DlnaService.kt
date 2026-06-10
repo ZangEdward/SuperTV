@@ -96,10 +96,23 @@ class DlnaService(private val context: Context) {
                         socket.receive(receivePacket)
 
                         val response = String(receivePacket.data, 0, receivePacket.length, Charsets.UTF_8)
-                        val device = parseDevice(response)
-                        if (device != null && foundDevices.none { it.id == device.id }) {
-                            foundDevices.add(device)
-                            _devices.value = foundDevices.toList() // 实时更新列表
+                        val location = Regex("""LOCATION:\s*(http://[^\s]+)""", RegexOption.IGNORE_CASE).find(response)?.groupValues?.getOrNull(1)
+                        val usn = Regex("""USN:\s*([^\s]+)""", RegexOption.IGNORE_CASE).find(response)?.groupValues?.getOrNull(1)
+                        
+                        if (location != null && usn != null && foundDevices.none { it.id == usn }) {
+                            // 异步获取详细名称
+                            launch {
+                                val friendlyName = fetchDeviceFriendlyName(location)
+                                val device = parseDevice(response, friendlyName)
+                                if (device != null) {
+                                    synchronized(foundDevices) {
+                                        if (foundDevices.none { it.id == device.id }) {
+                                            foundDevices.add(device)
+                                            _devices.value = foundDevices.toList()
+                                        }
+                                    }
+                                }
+                            }
                         }
                     } catch (e: Exception) {
                         // Timeout or other socket error
@@ -186,7 +199,22 @@ class DlnaService(private val context: Context) {
         _connectedDevice.value = null
     }
 
-    private fun parseDevice(response: String): DLNADevice? {
+    private suspend fun fetchDeviceFriendlyName(location: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val url = java.net.URL(location)
+            val connection = url.openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 3000
+            connection.readTimeout = 3000
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val nameRegex = Regex("<friendlyName>(.*?)</friendlyName>", RegexOption.IGNORE_CASE)
+            nameRegex.find(response)?.groupValues?.getOrNull(1)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch friendly name from $location", e)
+            null
+        }
+    }
+
+    private fun parseDevice(response: String, providedFriendlyName: String? = null): DLNADevice? {
         val locationRegex = Regex("""LOCATION:\s*(http://[^\s]+)""", RegexOption.IGNORE_CASE)
         val usnRegex = Regex("""USN:\s*([^\s]+)""", RegexOption.IGNORE_CASE)
         val serverRegex = Regex("""SERVER:\s*([^\r\n]+)""", RegexOption.IGNORE_CASE)
@@ -195,21 +223,21 @@ class DlnaService(private val context: Context) {
         val location = locationRegex.find(response)?.groupValues?.getOrNull(1) ?: return null
         val usn = usnRegex.find(response)?.groupValues?.getOrNull(1) ?: return null
         val server = serverRegex.find(response)?.groupValues?.getOrNull(1) ?: "Unknown"
-        val friendlyName = friendlyNameRegex.find(response)?.groupValues?.getOrNull(1)
+        val friendlyNameFromSsdp = friendlyNameRegex.find(response)?.groupValues?.getOrNull(1)
 
         val host = try {
-            InetAddress.getByName(java.net.URL(location).host).hostAddress ?: ""
+            java.net.URL(location).host
         } catch (_: Exception) { "" }
 
         val port = try {
             java.net.URL(location).port
         } catch (_: Exception) { 0 }
 
-        // 规范化设备名称：优先使用 friendlyName，否则尝试从 Server 提取或使用 IP
+        // 规范化设备名称：优先使用提供的 (XML中的)，然后是 SSDP 中的，最后是 Server 描述
         val normalizedName = when {
-            !friendlyName.isNullOrBlank() -> friendlyName.trim()
+            !providedFriendlyName.isNullOrBlank() -> providedFriendlyName.trim()
+            !friendlyNameFromSsdp.isNullOrBlank() -> friendlyNameFromSsdp.trim()
             server.contains("UPnP/1.0") -> {
-                // 如果 Server 是标准 UPnP 格式，尝试取前半部分并过滤掉 Linux 等通用词
                 val raw = server.substringBefore(" ").trim()
                 if (raw.lowercase() in listOf("linux", "windows", "unix", "unknown")) "DLNA Device ($host)" else raw
             }

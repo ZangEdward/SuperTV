@@ -230,6 +230,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     
                     if (allMatchedResults.isNotEmpty()) {
                         val merged = SearchUtils.mergeResults(allMatchedResults.toList())
+                        // 暂存预加载数据
+                        merged.forEach { SearchRepository.setPreload(it) }
                         _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
                     }
 
@@ -245,6 +247,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         executeSearchPhase(fuzzyTerm, sites, allMatchedResults, isPrecise = false, progressOffset = offset, progressScale = scale)
                         withContext(Dispatchers.Main) {
                             val merged = SearchUtils.mergeResults(allMatchedResults.toList())
+                            merged.forEach { SearchRepository.setPreload(it) }
                             _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
                         }
                     }
@@ -399,65 +402,86 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
             // 1. [即时渲染]：如果是资料源，立即利用已有元数据展示页面，不等待后端
             if (source == "douban" || source == "bangumi") {
+                // 检查是否有预加载的播放源信息
+                val preloaded = SearchRepository.getPreload(searchTitle)
+                
                 _detail.value = VideoDetail(
-                    id = id,
-                    title = searchTitle,
-                    cover = cover ?: "",
-                    poster = cover ?: "",
-                    source = source,
-                    sourceName = if (source == "douban") "豆瓣" else "Bangumi",
+                    id = preloaded?.id ?: id,
+                    title = preloaded?.title ?: searchTitle,
+                    cover = preloaded?.cover ?: cover ?: "",
+                    poster = preloaded?.poster ?: cover ?: "",
+                    source = preloaded?.source ?: source,
+                    sourceName = preloaded?.sourceName ?: (if (source == "douban") "豆瓣" else "Bangumi"),
                     desc = "正在加载详情...",
-                    episodesList = emptyList()
+                    episodesList = preloaded?.episodes ?: emptyList()
                 )
-                // 已经渲染了基础 UI，将 Loading 设为 false，让用户先看到东西
+                // 已经有了播放源信息，将 Loading 设为 false
                 _isLoadingDetail.value = false
+                
+                if (preloaded != null) {
+                    _searchProgress.value = 1.0f
+                    android.util.Log.d("SearchViewModel", "[PRELOAD] Instant match found for $searchTitle with ${preloaded.episodes.size} episodes")
+                }
             }
 
-            // 2. [匹配池检查]：秒开已匹配过的源
-            val matched = SearchRepository.getMatch(searchTitle)
-            if (matched != null) {
-                actualId = matched.id
-                actualSource = matched.source
+            // 2. [匹配池检查]：秒开已匹配过的源 (针对非预加载情况)
+            if (_detail.value?.episodes?.isEmpty() == true) {
+                val matched = SearchRepository.getMatch(searchTitle)
+                if (matched != null) {
+                    actualId = matched.id
+                    actualSource = matched.source
+                }
+
+                val pooled = SearchRepository.getFromPool(actualId, actualSource)
+                if (pooled != null) {
+                    _detail.value = pooled
+                    _isLoadingDetail.value = false
+                    loadAllSources(searchTitle.ifBlank { pooled.title }, actualId, actualSource)
+                    return@launch
+                }
             }
 
-            val pooled = SearchRepository.getFromPool(actualId, actualSource)
-            if (pooled != null) {
-                _detail.value = pooled
-                _isLoadingDetail.value = false
-                // 后台刷新播放源
-                loadAllSources(searchTitle.ifBlank { pooled.title }, actualId, actualSource)
-                return@launch
-            }
-
-            // 3. [双轨并行]：简介加载 与 播放源检索 同时启动
+            // 3. [双轨并行]：简介加载 (豆瓣) 与 播放源检索 (如果需要) 同时启动
             val isMetadataSource = actualSource == "douban" || actualSource == "bangumi"
             
-            // 轨道 A：加载完整简介/元数据
+            // 轨道 A：从豆瓣加载完整简介、演员 (全网统一走豆瓣元数据)
             val metadataJob = launch {
                 try {
-                    val result = repository.getDetail(id, source)
-                    if (result != null) {
-                        // 保留已搜到的剧集，仅更新简介等文字信息
-                        val current = _detail.value
-                        if (current != null && isMetadataSource && current.episodes.isNotEmpty()) {
-                            _detail.value = result.copy(
-                                episodesList = current.episodes,
-                                source = current.source,
-                                id = current.id
-                            )
-                        } else {
-                            _detail.value = result
+                    val doubanId = if (actualSource == "douban") actualId else {
+                        // 如果不是豆瓣源，尝试搜一下豆瓣对应的 ID
+                        val searchResp = repository.searchVideo(searchTitle, "douban")
+                        searchResp.firstOrNull { SearchUtils.cleanTitle(it.title) == SearchUtils.cleanTitle(searchTitle) }?.id ?: ""
+                    }
+                    
+                    if (doubanId.isNotBlank()) {
+                        val result = repository.getDetail(doubanId, "douban")
+                        if (result != null) {
+                            val current = _detail.value
+                            _detail.value = if (current != null && current.episodes.isNotEmpty()) {
+                                current.copy(
+                                    title = result.title,
+                                    desc = result.desc,
+                                    director = result.director,
+                                    actor = result.actor,
+                                    year = result.year,
+                                    rating = result.rating
+                                )
+                            } else {
+                                result.copy(episodesList = current?.episodes ?: emptyList())
+                            }
                         }
                     }
                 } catch (_: Exception) {}
             }
 
-            // 轨道 B：激进检索播放源 (核心：不受轨道 A 成功与否的影响)
-            if (searchTitle.isNotBlank()) {
-                loadAllSources(searchTitle, if (isMetadataSource) null else actualId, actualSource)
-            } else {
-                metadataJob.join() // 没标题时只能等轨道 A 拿标题
-                _detail.value?.title?.let { loadAllSources(it, null, actualSource) }
+            // 轨道 B：激进检索播放源 (只有在没有预加载数据或数据为空时才启动)
+            if (_detail.value?.episodes?.isEmpty() == true) {
+                if (searchTitle.isNotBlank()) {
+                    loadAllSources(searchTitle, if (isMetadataSource) null else actualId, actualSource)
+                } else {
+                    metadataJob.join()
+                    _detail.value?.title?.let { loadAllSources(it, null, actualSource) }
+                }
             }
         }
     }

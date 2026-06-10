@@ -115,16 +115,18 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadHomeData() = coroutineScope {
-        // 并发执行，但不阻塞整个 loadHomeData 的返回 (对齐 Selene 异步加载引擎)
+        // 并发执行首页四个板块，对齐 Selene 异步渲染
         launch { fetchHotMovies() }
         launch { fetchRecommended() }
         launch { fetchAnimeUpdates() }
         launch { fetchShortDramas() }
+        
+        // [核心优化]：在后台静默预加载高频子分类
+        launch { preLoadHighFrequencyCategories() }
     }
 
     private suspend fun fetchHotMovies() {
         try {
-            // 所有分类统一走豆瓣后端源 (对齐用户要求：豆瓣源快很多)
             val tag = "热门"
             val resp = apiService.getDoubanData("movie", tag)
             if (resp.isSuccessful) {
@@ -153,16 +155,53 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private suspend fun preLoadHighFrequencyCategories() = coroutineScope {
+        val tasks = listOf(
+            Triple("综艺", "内地", "tv"),
+            Triple("综艺", "港台", "tv"),
+            Triple("剧集", "华语", "tv"),
+            Triple("剧集", "韩剧", "tv")
+        )
+        
+        tasks.forEach { (cat, sub, type) ->
+            val cacheKey = "${cat}_${sub}"
+            if (memoryCache[cacheKey].isNullOrEmpty()) {
+                launch(Dispatchers.IO) {
+                    try {
+                        val tag = when(sub) {
+                            "韩剧" -> "韩国"
+                            else -> sub
+                        }
+                        val resp = apiService.getDoubanData(type, java.net.URLEncoder.encode(tag, "UTF-8"))
+                        if (resp.isSuccessful) {
+                            val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
+                            memoryCache[cacheKey] = results
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     private suspend fun fetchAnimeUpdates() {
         try {
-            // 列表页统一使用豆瓣源替代 Bangumi (对齐用户要求：豆瓣源获取快)
-            val tag = "动漫"
-            val resp = apiService.getDoubanData("tv", tag)
+            // [对齐 Selene]：首页动漫部分改回使用 Bangumi 数据源，展示每日更新日历
+            val resp = apiService.getBangumiData("calendar")
             if (resp.isSuccessful) {
-                val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
-                _animeUpdates.value = results
-                memoryCache["动漫"] = results
-                memoryCache["动漫_热门"] = results
+                val body = resp.body()
+                val calendarMap = mutableMapOf<Int, List<SearchResult>>()
+                body?.forEach { item ->
+                    val weekday = item.weekday?.id ?: 0
+                    val results = item.items.map { it.toSearchResult() }
+                    calendarMap[weekday] = results
+                }
+                _animeCalendar.value = calendarMap
+                
+                // 默认首页展示今天的更新
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK).let {
+                    if (it == 1) 7 else it - 1
+                }
+                _animeUpdates.value = calendarMap[today] ?: emptyList()
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchAnimeUpdates failed", e)

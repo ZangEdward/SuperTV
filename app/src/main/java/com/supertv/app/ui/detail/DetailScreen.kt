@@ -207,19 +207,28 @@ fun DetailScreen(
                 Text(epText, fontSize = 13.sp, color = secondaryTextColor)
             }
 
-            if (detail.desc.isNotBlank()) {
+            if (detail.desc.isNotBlank() || detail.actor.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
                 var isExpanded by remember { mutableStateOf(false) }
+                val combinedInfo = buildString {
+                    if (detail.actor.isNotBlank()) {
+                        append("主演：${detail.actor}\n\n")
+                    }
+                    if (detail.desc.isNotBlank()) {
+                        append(detail.desc)
+                    }
+                }
+                
                 Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
                     Text(
-                        text = detail.desc,
+                        text = combinedInfo,
                         fontSize = 14.sp,
                         color = textColor.copy(alpha = 0.8f),
                         maxLines = if (isExpanded) Int.MAX_VALUE else 5,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 20.sp
                     )
-                    if (detail.desc.length > 100) { // 简单判断是否可能超过5行
+                    if (combinedInfo.length > 120) {
                         Text(
                             text = if (isExpanded) "收起" else "展开全部",
                             color = PrimaryGreen,
@@ -231,8 +240,8 @@ fun DetailScreen(
                 }
             }
 
-            if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = secondaryTextColor) }
-            if (detail.actor.isNotBlank()) { Spacer(Modifier.height(4.dp)); Text("主演: " + detail.actor, fontSize = 13.sp, color = secondaryTextColor) }
+            // 移除独立的导演和主演显示，因为已合并
+            // if (detail.director.isNotBlank()) { ... }
 
             Spacer(Modifier.height(24.dp))
             Button(
