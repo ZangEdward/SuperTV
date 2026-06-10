@@ -236,7 +236,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             else -> "movie"
         }
 
-        // 映射子分类到豆瓣 Tag
+        // 映射子分类到豆瓣 Tag (学习 Selene & LunaTV 的 API 映射)
         val tag = when {
             subCategory == "全部" -> when (category) {
                 "电影" -> "热门"
@@ -245,6 +245,17 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 "动漫" -> "动漫"
                 "短剧" -> "热门"
                 else -> category
+            }
+            category == "动漫" -> when (subCategory) {
+                "日本" -> "日本动画"
+                "国产" -> "国产动画"
+                "欧美" -> "欧美动画"
+                else -> subCategory
+            }
+            category == "剧集" -> when (subCategory) {
+                "韩剧" -> "韩国"
+                "日剧" -> "日本"
+                else -> subCategory
             }
             category == "短剧" && subCategory == "最新" -> "最新"
             else -> subCategory
@@ -287,9 +298,16 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun updateCategoryFlow(category: String, results: List<SearchResult>) {
         when (category) {
+            "热门" -> {
+                // 热门通常由 loadHomeData 处理，但如果子分类选择了具体 tag
+                _hotMovies.value = results
+            }
             "电影" -> _recommended.value = results
             "剧集" -> _hotMovies.value = results
+            "动漫" -> _animeUpdates.value = results
             "综艺" -> _animeUpdates.value = results
+            "短剧" -> _shortDramas.value = results
+            else -> _recommended.value = results
         }
     }
 

@@ -47,7 +47,8 @@ fun DetailScreen(
     fallbackCover: String = "", // 新增 fallbackCover
     latencies: Map<String, Long> = emptyMap(),
     isAllSourcesLoading: Boolean = false,
-    isDarkTheme: Boolean = true, // 新增
+    searchProgress: Float = 0f, // 新增：搜索进度
+    isDarkTheme: Boolean = true,
     onThemeToggle: () -> Unit = {}, // 新增
     onEpisodeClick: (Episode) -> Unit,
     onToggleFavorite: () -> Unit,
@@ -91,11 +92,28 @@ fun DetailScreen(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
+                    // 进度条
+                    Box(
+                        modifier = Modifier
+                            .width(200.dp)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(secondaryTextColor.copy(alpha = 0.1f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(searchProgress)
+                                .background(PrimaryGreen)
+                        )
+                    }
                     Text(
-                        "正在匹配最佳播放源",
-                        color = secondaryTextColor.copy(alpha = 0.7f),
-                        fontSize = 12.sp
+                        text = "${(searchProgress * 100).toInt()}%",
+                        color = PrimaryGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }

@@ -1,6 +1,7 @@
 package com.supertv.app.data
 
 import com.supertv.app.api.ApiService
+import com.supertv.app.model.ApiSite
 import com.supertv.app.model.SearchResult
 import com.supertv.app.model.VideoDetail
 import com.supertv.app.utils.SearchUtils
@@ -18,6 +19,50 @@ class SearchRepository {
 
     companion object {
         private const val SEARCH_TIMEOUT_MS = 15_000L
+        
+        // 内存详情池：用于“秒开”已搜索过的详情 (对齐 supertvold SearchDetailPool)
+        private val detailPool = mutableMapOf<String, VideoDetail>()
+        
+        fun getFromPool(id: String, source: String): VideoDetail? {
+            return detailPool["${source}_$id"]
+        }
+        
+        fun addToPool(detail: VideoDetail) {
+            detailPool["${detail.source}_${detail.id}"] = detail
+        }
+    }
+
+    /**
+     * 获取所有可用资源站点 (对齐 supertvold api.getResources)
+     */
+    suspend fun getSites(): List<ApiSite> {
+        return try {
+            val response = apiService().getSites()
+            if (response.isSuccessful) {
+                response.body() ?: emptyList()
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * 搜索单个源 (对齐 supertvold api.searchVideo)
+     */
+    suspend fun searchVideo(query: String, sourceId: String): List<SearchResult> {
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        return try {
+            withTimeout(SEARCH_TIMEOUT_MS) {
+                // 假设后端支持 search/one 或者在 search 接口带 source 参数
+                val response = apiService().search(encodedQuery, sourceId)
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    body?.results ?: body?.data ?: emptyList()
+                } else emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     /**

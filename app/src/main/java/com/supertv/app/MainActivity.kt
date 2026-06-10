@@ -136,8 +136,17 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    // 所有主标签页都展示全局搜索顶栏
                     val mainDestinations = remember {
-                        setOf(R.id.nav_transform) // 仅首页显示搜索顶栏，其他页面“空出来”留给子分类
+                        setOf(
+                            R.id.nav_transform,
+                            R.id.nav_movie,
+                            R.id.nav_tv,
+                            R.id.nav_anime,
+                            R.id.nav_show,
+                            R.id.nav_short_drama,
+                            R.id.nav_live
+                        )
                     }
 
                     // 使用更稳定的方式监听目的地变化，减少重组造成的闪烁
@@ -166,13 +175,13 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
 
-                        Surface(
+                        // 使用 Box 代替 Surface 确保背景色填充状态栏区域
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .statusBarsPadding(), // 留下和背景相同颜色的空白占位
-                            color = MaterialTheme.colorScheme.background
+                                .background(MaterialTheme.colorScheme.background)
+                                .statusBarsPadding()
                         ) {
-                            // 使用 Crossfade 或简单的 if 判断，配合 showHeader 逻辑
                             if (showHeader) {
                                 GlobalHeader(
                                     onUserClick = { 

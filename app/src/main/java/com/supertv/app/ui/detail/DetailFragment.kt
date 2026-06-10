@@ -57,6 +57,7 @@ class DetailFragment : Fragment() {
                     val allSources by viewModel.allSources.collectAsState()
                     val latencies by viewModel.latencies.collectAsState()
                     val isAllSourcesLoading by viewModel.allSourcesLoading.collectAsState()
+                    val searchProgress by viewModel.searchProgress.collectAsState()
                     
                     DetailScreen(
                         detail = detail,
@@ -68,6 +69,7 @@ class DetailFragment : Fragment() {
                         fallbackCover = cover, // 传递 fallbackCover
                         latencies = latencies,
                         isAllSourcesLoading = isAllSourcesLoading,
+                        searchProgress = searchProgress,
                         isDarkTheme = uiIsDark,
                         onThemeToggle = { mainViewModel.toggleTheme() },
                         onEpisodeClick = { episode ->

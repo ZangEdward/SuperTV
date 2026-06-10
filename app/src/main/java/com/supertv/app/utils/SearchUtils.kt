@@ -108,16 +108,44 @@ object SearchUtils {
         return variants.distinct()
     }
 
-    private fun normalizeChineseNumbers(str: String): String {
+    /**
+     * 将中文数字归一化为阿拉伯数字
+     */
+    fun normalizeChineseNumbers(str: String): String {
         val map = mapOf(
             '一' to '1', '二' to '2', '三' to '3', '四' to '4', '五' to '5',
-            '六' to '6', '七' to '7', '八' to '8', '九' to '9', '零' to '0'
+            '六' to '6', '七' to '7', '八' to '8', '九' to '9', '零' to '0',
+            '〇' to '0', '两' to '2'
         )
         val sb = StringBuilder()
         for (char in str) {
             sb.append(map[char] ?: char)
         }
         return sb.toString()
+    }
+
+    /**
+     * 增强标题匹配逻辑：对齐 supertvold titleMatches
+     */
+    fun titleMatches(searchTitle: String, targetTitle: String): Boolean {
+        val s = cleanTitle(searchTitle)
+        val t = cleanTitle(targetTitle)
+        
+        // 1. 物理精准匹配
+        if (s == t) return true
+        
+        // 2. 归一化中文数字后匹配
+        val sNorm = normalizeChineseNumbers(s)
+        val tNorm = normalizeChineseNumbers(t)
+        if (sNorm == tNorm) return true
+        
+        // 3. 相互包含匹配
+        if (t.contains(s) || s.contains(t)) return true
+        
+        // 4. 归一化后相互包含
+        if (tNorm.contains(sNorm) || sNorm.contains(tNorm)) return true
+        
+        return false
     }
 
     /**

@@ -504,7 +504,7 @@ fun HomeScreen(
                         }
                         "短剧" -> {
                             item {
-                                SectionHeader("热门短剧")
+                                SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧")
                                 VideoCardRow(items = shortDramas, onClick = onItemClick, isGrid = true)
                             }
                         }
@@ -537,24 +537,25 @@ fun SubCategoryBar(
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .background(MaterialTheme.colorScheme.background)
+            .padding(vertical = 8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(subCategories) { subCategory ->
             val isSelected = subCategory == selectedSubCategory
             Surface(
                 onClick = { onSubCategoryClick(subCategory) },
-                shape = RoundedCornerShape(16.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+                shape = RoundedCornerShape(20.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                tonalElevation = if (isSelected) 4.dp else 0.dp
             ) {
                 Text(
                     text = subCategory,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
             }
         }
