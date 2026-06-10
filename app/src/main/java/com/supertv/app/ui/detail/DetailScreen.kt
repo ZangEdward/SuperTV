@@ -191,7 +191,26 @@ fun DetailScreen(
 
             if (detail.desc.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
-                Text(detail.desc, fontSize = 14.sp, color = textColor.copy(alpha = 0.8f), maxLines = 5, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
+                var isExpanded by remember { mutableStateOf(false) }
+                Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
+                    Text(
+                        text = detail.desc,
+                        fontSize = 14.sp,
+                        color = textColor.copy(alpha = 0.8f),
+                        maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 20.sp
+                    )
+                    if (detail.desc.length > 100) { // 简单判断是否可能超过5行
+                        Text(
+                            text = if (isExpanded) "收起" else "展开全部",
+                            color = PrimaryGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
             }
 
             if (detail.director.isNotBlank()) { Spacer(Modifier.height(8.dp)); Text("导演: " + detail.director, fontSize = 13.sp, color = secondaryTextColor) }

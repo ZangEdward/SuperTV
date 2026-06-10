@@ -18,7 +18,7 @@
         <item name="colorOnBackground">@color/text_primary</item>
 
         <!-- Status bar -->
-        <item name="android:statusBarColor">@color/background_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
 
         <!-- Navigation bar -->
         <item name="android:navigationBarColor">@color/background_dark</item>

@@ -25,18 +25,26 @@ class SearchRepository {
      */
     suspend fun searchRaw(query: String, sources: List<String> = listOf("all")): List<SearchResult> {
         val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        
+        // 预定义所有支持的源 (对齐 supertvold 逻辑)
+        val allSources = listOf("all") 
+
         return coroutineScope {
-            val deferredList = sources.map { source ->
+            val deferredList = allSources.map { source ->
                 async(Dispatchers.IO) {
                     try {
                         withTimeout(SEARCH_TIMEOUT_MS) {
                             val response = apiService().search(encodedQuery, source)
                             if (response.isSuccessful) {
                                 val body = response.body()
+                                // 处理不同的 API 返回结构
                                 body?.results ?: body?.data ?: emptyList()
                             } else emptyList()
                         }
-                    } catch (e: Exception) { emptyList() }
+                    } catch (e: Exception) { 
+                        android.util.Log.e("SearchRepository", "Search source $source failed: ${e.message}")
+                        emptyList() 
+                    }
                 }
             }
             deferredList.flatMap { it.await() }
@@ -60,47 +68,53 @@ class SearchRepository {
     suspend fun aggressiveSearch(query: String, sources: List<String> = listOf("all"), onlyExact: Boolean = false): List<SearchResult> {
         val cleanedQuery = SearchUtils.cleanTitle(query)
         
-        // 1. 第一阶段：尝试精准搜索 (精准匹配 = 去空格去符号后完全一致)
-        val rawResults = search(query, sources)
+        // 1. 第一阶段：多线程并行尝试精准搜索
+        val rawResults = searchRaw(query, sources)
         var results = rawResults.filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
         
-        // 如果原始查询没搜到精准匹配，尝试用清洗后的纯净词再试一次精准碰撞
+        // 如果原始查询没搜到精准匹配，并行尝试清洗后的纯净词
         if (results.isEmpty()) {
             val pureTerm = query.replace("\\s+".toRegex(), "")
             if (pureTerm != query) {
-                val vResults = search(pureTerm, sources).filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
+                val vResults = searchRaw(pureTerm, sources).filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
                 if (vResults.isNotEmpty()) results = vResults
             }
         }
 
-        // 如果找到了精准匹配的结果，按要求：只显示精准匹配的结果，不再进行模糊搜索
+        // 如果找到了精准匹配的结果，只显示精准匹配的结果，不再进行模糊搜索
         if (results.isNotEmpty()) {
-            return results
+            return SearchUtils.mergeResults(results)
         }
 
         // 如果要求“仅精准”，或者已经找到了结果（上面已 return），则不再往下走
         if (onlyExact) return emptyList()
 
-        // 2. 第二阶段：精准匹配失败，才启动模糊匹配与去尾变体搜索
-        android.util.Log.d("SearchRepository", "Precise match failed for: $query, starting fuzzy/variant search")
+        // 2. 第二阶段：精准匹配失败，多线程并行执行模糊匹配与去尾变体搜索
+        android.util.Log.d("SearchRepository", "Precise match failed for: $query, starting concurrent fuzzy/variant search")
         
-        // 首先看原始搜索结果中是否有包含查询词的结果（作为一种较近的模糊匹配）
-        results = rawResults.filter { it.title.contains(query) || query.contains(it.title) }
-        
-        if (results.isEmpty()) {
-            // 最后尝试激进的去尾变体搜索
-            val variants = SearchUtils.generateSearchVariants(query)
-            for (term in variants) {
-                if (term == query) continue
-                val variantResults = search(term, sources)
-                if (variantResults.isNotEmpty()) {
-                    results = variantResults
-                    break
+        return coroutineScope {
+            // 生成变体
+            val variants = SearchUtils.generateSearchVariants(query).filter { it != query && it != cleanedQuery }
+            
+            // 并行执行变体搜索 (多线程)
+            val deferredVariants = variants.map { term ->
+                async(Dispatchers.IO) {
+                    try {
+                        val vResults = searchRaw(term, sources)
+                        // 过滤出包含原始词或变体词的结果，保证一定的相关度
+                        vResults.filter { it.title.contains(query) || it.title.contains(term) || query.contains(it.title) }
+                    } catch (e: Exception) { emptyList() }
                 }
             }
+            
+            // 合并所有模糊结果
+            val fuzzyResults = deferredVariants.flatMap { it.await() }
+            
+            // 加上最初的原始搜索中可能相关的部分
+            val relatedRaw = rawResults.filter { it.title.contains(query) || query.contains(it.title) }
+            
+            SearchUtils.mergeResults(fuzzyResults + relatedRaw)
         }
-
-        return results
     }
 
     /**
