@@ -58,6 +58,8 @@ fun SearchScreen(
     val searchHistory by viewModel.searchHistory.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
 
+    val suggestions by viewModel.suggestions.collectAsState()
+
     var showClearDialog by remember { mutableStateOf(false) }
     var selectedNetDiskType by remember { mutableStateOf("") }
     
@@ -100,7 +102,7 @@ fun SearchScreen(
                     },
                     trailingIcon = {
                         if (query.isNotBlank()) {
-                            IconButton(onClick = { viewModel.updateQuery("") }) {
+                            IconButton(onClick = { viewModel.clearResults() }) {
                                 Icon(Icons.Default.Clear, contentDescription = "清除", modifier = Modifier.size(20.dp))
                             }
                         }
@@ -281,7 +283,20 @@ fun SearchScreen(
             }
 
             else -> {
-                SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
+                if (query.isNotBlank() && suggestions.isNotEmpty() && results.isEmpty()) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(suggestions) { suggestion ->
+                            ListItem(
+                                headlineContent = { Text(suggestion) },
+                                leadingContent = { Icon(Icons.Default.History, null, tint = secondaryTextColor) },
+                                modifier = Modifier.clickable { viewModel.search(suggestion) }
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                    }
+                } else {
+                    SearchPlaceholder(searchHistory, onClearClick = { showClearDialog = true }, onSearch = { viewModel.search(it) })
+                }
             }
         }
 

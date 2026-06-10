@@ -226,8 +226,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     
                     // --- Phase 1: 精准并发搜索 ---
                     _currentSearchTerm.value = preciseTerm
-                    _searchProgress.value = 0.1f
-                    executeSearchPhase(preciseTerm, sites, allMatchedResults, isPrecise = true)
+                    executeSearchPhase(preciseTerm, sites, allMatchedResults, isPrecise = true, progressOffset = 0f, progressScale = 0.3f)
                     
                     if (allMatchedResults.isNotEmpty()) {
                         val merged = SearchUtils.mergeResults(allMatchedResults.toList())
@@ -239,10 +238,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         if (allMatchedResults.size >= 60) break
                         
                         _currentSearchTerm.value = fuzzyTerm
-                        _searchProgress.value = 0.2f + (idx.toFloat() / totalPhases) * 0.7f
+                        val offset = 0.3f + (idx.toFloat() / totalPhases) * 0.6f
+                        val scale = (1.0f / totalPhases) * 0.6f
                         
                         delay(400)
-                        executeSearchPhase(fuzzyTerm, sites, allMatchedResults, isPrecise = false)
+                        executeSearchPhase(fuzzyTerm, sites, allMatchedResults, isPrecise = false, progressOffset = offset, progressScale = scale)
                         withContext(Dispatchers.Main) {
                             val merged = SearchUtils.mergeResults(allMatchedResults.toList())
                             _results.value = merged.sortedBy { SearchUtils.calculateRelevance(rawTerm, it.title) }
@@ -284,10 +284,14 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         term: String,
         sites: List<ApiSite>,
         resultList: CopyOnWriteArrayList<SearchResult>,
-        isPrecise: Boolean
+        isPrecise: Boolean,
+        progressOffset: Float = 0f,
+        progressScale: Float = 1f
     ) = coroutineScope {
         val MAX_CONCURRENT = 32
         val semaphore = Semaphore(MAX_CONCURRENT)
+        val totalSites = sites.size
+        val completedSites = AtomicInteger(0)
         
         val jobs = sites.map { site ->
             launch(Dispatchers.IO) {
@@ -318,6 +322,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 } catch (_: Exception) {
                 } finally {
                     semaphore.release()
+                    val completed = completedSites.incrementAndGet()
+                    // 实时更新真实进度
+                    _searchProgress.value = progressOffset + (completed.toFloat() / totalSites) * progressScale
                 }
             }
         }
@@ -471,14 +478,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val allMatchedResults = java.util.concurrent.CopyOnWriteArrayList<SearchResult>()
-                // 1. 生成搜索项列表 (精准词 + 模糊变体)
-                val preciseTerm = SearchUtils.cleanTitle(title)
-                val fuzzyVariants = SearchUtils.generateFuzzyTerms(title)
-                val searchPhases = mutableListOf<String>()
-                searchPhases.add(preciseTerm)
-                fuzzyVariants.forEach { if (it != preciseTerm) searchPhases.add(it) }
-                
+                // 1. 生成增强的搜索变体列表 (包含精准、模糊及渐进式截断/去尾)
+                val searchPhases = SearchUtils.generateSearchVariants(title)
                 val totalPhases = searchPhases.size
+                val preciseTerm = SearchUtils.cleanTitle(title)
+                
                 var hasShownFirstResult = false
 
                 // 遍历每个搜索阶段 (精准 -> 变体)
@@ -486,7 +490,9 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     if (allMatchedResults.size >= 40) break
                     
                     val phaseProgressStart = 0.1f + (index.toFloat() / totalPhases) * 0.8f
-                    _searchProgress.value = phaseProgressStart
+                    val phaseProgressScale = (1.0f / totalPhases) * 0.8f
+                    
+                    _currentSearchTerm.value = term
                     
                     val completedSites = java.util.concurrent.atomic.AtomicInteger(0)
                     val totalSites = sites.size
@@ -523,7 +529,8 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                     }
                                 }
                             } finally {
-                                completedSites.incrementAndGet()
+                                val completed = completedSites.incrementAndGet()
+                                _searchProgress.value = phaseProgressStart + (completed.toFloat() / totalSites) * phaseProgressScale
                             }
                         }
                     }
@@ -739,8 +746,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
      * 清除搜索结果
      */
     fun clearResults() {
+        viewModelScope.coroutineContext.cancelChildren()
         _results.value = emptyList()
         _query.value = ""
+        _suggestions.value = emptyList()
+        _searchProgress.value = 0f
+        _currentSearchTerm.value = ""
+        _isSearching.value = false
         _error.value = null
     }
 

@@ -9,7 +9,8 @@ object SearchUtils {
      */
     fun cleanTitle(title: String): String {
         return title.replace("\\s+".toRegex(), "")
-            .replace("[\\p{Punct}\\p{IsPunct}]+".toRegex(), "") // 使用更通用的正则表达式清理符号
+            .replace("(?i)^re[:：]|^re".toRegex(), "") // 移除 Re: 或 Re 前缀 (针对异世界生活等)
+            .replace("[\\p{Punct}\\p{IsPunct}]+".toRegex(), "")
             .replace("[+·./\\\\()（）【】\\[\\]《》{}：:、;；，,。！？!?\"\"''『』«»\\-—–—_*~`@#$%^&|<>]+".toRegex(), "")
             .lowercase()
     }

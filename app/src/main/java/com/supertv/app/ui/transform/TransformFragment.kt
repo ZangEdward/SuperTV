@@ -436,6 +436,17 @@ fun HomeScreen(
         label = "CategoryAnimation",
         modifier = Modifier.fillMaxSize()
     ) { targetCategory ->
+                // 重新定义动漫需要的状态
+                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                var currentDay by remember {
+                    mutableIntStateOf(
+                        java.util.Calendar.getInstance()
+                            .get(java.util.Calendar.DAY_OF_WEEK).let {
+                                if (it == 1) 7 else it - 1
+                            }
+                    )
+                }
+
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (targetCategory) {
                         "热门" -> {
@@ -497,8 +508,28 @@ fun HomeScreen(
                             }
                         }
                         "动漫" -> {
-                            // 子分类网格模式 (对齐 Selene: 扁平化列表排布，提高切换速度)
-                            item { SectionHeader("$selectedSubCategory 动漫") }
+                            // 动漫模块：仅显示每日更新 (周一至周日)
+                            item {
+                                ScrollableTabRow(
+                                    selectedTabIndex = currentDay - 1,
+                                    containerColor = Color.Transparent,
+                                    contentColor = PrimaryGreen,
+                                    edgePadding = 16.dp,
+                                    divider = {}
+                                ) {
+                                    weekdays.forEachIndexed { index, name ->
+                                        Tab(
+                                            selected = currentDay == index + 1,
+                                            onClick = {
+                                                currentDay = index + 1
+                                                viewModel.selectWeekday(currentDay)
+                                            },
+                                            text = { Text(name, fontSize = 14.sp) }
+                                        )
+                                    }
+                                }
+                            }
+
                             items(animeUpdates.chunked(3)) { rowItems ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                                     rowItems.forEach { item ->

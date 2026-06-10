@@ -73,7 +73,17 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         val subCategory = _selectedSubCategory.value
         val cacheKey = "${category}_${subCategory}"
         
-        // 1. 优先从内存缓存读取，实现“即点即切换”的零延迟效果
+        // 动漫模块特殊处理：仅保留周一至周日更新，使用 Bangumi 数据源
+        if (category == "动漫") {
+            viewModelScope.launch {
+                _isLoading.value = true
+                loadAnimeData()
+                _isLoading.value = false
+            }
+            return
+        }
+
+        // 1. 优先从内存缓存读取
         val memCached = memoryCache[cacheKey]
         if (memCached != null && memCached.isNotEmpty()) {
             updateCategoryFlow(category, memCached)
@@ -271,6 +281,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private suspend fun loadAnimeData() {
         try {
+            // 动漫统一走 Bangumi
             val resp = apiService.getBangumiData("calendar")
             if (resp.isSuccessful) {
                 val body = resp.body()
@@ -284,12 +295,11 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 
                 _animeCalendar.value = calendarMap
                 
-                // 默认显示今天的
-                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK)
-                val bangumiIndex = if (today == 1) 7 else today - 1 // Bangumi 1-7 (Mon-Sun)
-                _animeUpdates.value = calendarMap[bangumiIndex] ?: emptyList()
-                
-                store.saveCategoryCache("动漫", _animeUpdates.value)
+                // 默认显示今天的 (Bangumi 1-7)
+                val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK).let {
+                    if (it == 1) 7 else it - 1
+                }
+                _animeUpdates.value = calendarMap[today] ?: emptyList()
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load anime data", e)
