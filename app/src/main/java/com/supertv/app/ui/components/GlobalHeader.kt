@@ -21,7 +21,7 @@ import coil.compose.AsyncImage
 import com.supertv.app.ui.theme.PrimaryGreen
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 import com.supertv.app.R
@@ -114,7 +114,7 @@ fun GlobalHeader(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
-                                indication = rememberRipple(bounded = true, color = PrimaryGreen.copy(alpha = 0.1f)),
+                                indication = ripple(bounded = true, color = PrimaryGreen.copy(alpha = 0.1f)),
                                 onClick = { onNavItemClick(item.id) }
                             )
                             .padding(horizontal = 12.dp, vertical = 8.dp),
