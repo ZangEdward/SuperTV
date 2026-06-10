@@ -146,6 +146,42 @@ fun SearchScreen(
             )
         }
 
+        // Search Progress Indicators (对齐用户要求：展示当前搜索词和进度)
+        if (isSearching && searchMode == 0) {
+            val progress by viewModel.searchProgress.collectAsState()
+            val currentTerm by viewModel.currentSearchTerm.collectAsState()
+            
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (currentTerm.isNotBlank()) "正在检索: $currentTerm" else "启动搜索引擎...",
+                        fontSize = 11.sp,
+                        color = PrimaryGreen,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(progress * 100).toInt()}%",
+                        fontSize = 11.sp,
+                        color = secondaryTextColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)),
+                    color = PrimaryGreen,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            }
+        }
+
         when {
             isSearching && results.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize()) { 

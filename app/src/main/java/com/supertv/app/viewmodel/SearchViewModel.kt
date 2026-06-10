@@ -94,6 +94,10 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     private val _searchProgress = MutableStateFlow(0f)
     val searchProgress: StateFlow<Float> = _searchProgress.asStateFlow()
 
+    // 当前正在执行的搜索词
+    private val _currentSearchTerm = MutableStateFlow("")
+    val currentSearchTerm: StateFlow<String> = _currentSearchTerm.asStateFlow()
+
     // 错误信息
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -201,50 +205,75 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         _isSearching.value = true
         _error.value = null
         _results.value = emptyList()
+        _searchProgress.value = 0f
+        _currentSearchTerm.value = ""
 
         viewModelScope.launch {
             try {
                 if (_searchMode.value == 0) {
-                    val preciseTerm = SearchUtils.cleanTitle(query)
-                    val fuzzyVariants = SearchUtils.generateSearchVariants(query)
-                    
-                    // 用于多阶段搜索的 Term 列表
-                    val searchPhases = mutableListOf<String>()
-                    searchPhases.add(preciseTerm)
-                    fuzzyVariants.forEach { v ->
-                        if (SearchUtils.cleanTitle(v) != preciseTerm) {
-                            searchPhases.add(v)
-                        }
-                    }
+                    val rawTerm = query.trim()
+                    // 1. 生成搜索项列表 (精准词 + 模糊变体)
+                    val preciseTerm = SearchUtils.cleanTitle(rawTerm)
+                    val fuzzyVariants = SearchUtils.generateFuzzyTerms(rawTerm)
+                    val searchTerms = mutableListOf<String>()
+                    searchTerms.add(preciseTerm)
+                    fuzzyVariants.forEach { if (it != preciseTerm) searchTerms.add(it) }
 
                     val sites = repository.getSites().filter { it.key != "douban" && it.key != "bangumi" }
                     val allMatchedResults = CopyOnWriteArrayList<SearchResult>()
                     
-                    // --- 第一阶段：精准并发搜索 (对齐 supertvold executeSearchPhase) ---
+                    val totalPhases = searchTerms.size
+                    
+                    // --- Phase 1: 精准并发搜索 ---
+                    _currentSearchTerm.value = preciseTerm
+                    _searchProgress.value = 0.1f
                     executeSearchPhase(preciseTerm, sites, allMatchedResults, isPrecise = true)
                     
-                    // 如果精准搜索已经找到了结果，立即显示并继续（supertvold 会延迟一下再进模糊）
                     if (allMatchedResults.isNotEmpty()) {
                         _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
                     }
 
-                    // --- 第二阶段：变体/模糊并发搜索 ---
-                    // 循环执行各个变体，直到结果足够丰富或搜完
-                    for (variant in searchPhases.drop(1)) {
-                        if (allMatchedResults.size >= 40) break // 结果够多了
+                    // --- Phase 2: 模糊搜索 (对齐 supertvold: 剧名可能包含搜索词，始终执行) ---
+                    for ((idx, fuzzyTerm) in searchTerms.drop(1).withIndex()) {
+                        if (allMatchedResults.size >= 40) break
                         
-                        // 模仿 supertvold 的 500ms 阶段间隔，给 UI 刷新时间
-                        delay(400)
+                        _currentSearchTerm.value = fuzzyTerm
+                        _searchProgress.value = 0.2f + (idx.toFloat() / totalPhases) * 0.5f
                         
-                        executeSearchPhase(variant, sites, allMatchedResults, isPrecise = false)
-                        
+                        // 阶段间间隔，给 UI 刷新时间
+                        delay(500)
+                        executeSearchPhase(fuzzyTerm, sites, allMatchedResults, isPrecise = false)
                         withContext(Dispatchers.Main) {
                             _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
                         }
                     }
 
+                    // --- Phase 3: 多策略搜索变体 (如果还是没结果) ---
+                    if (allMatchedResults.isEmpty()) {
+                        val variants = SearchUtils.generateSearchVariants(rawTerm)
+                        for (variant in variants.drop(1)) {
+                            if (allMatchedResults.isNotEmpty()) break
+                            _currentSearchTerm.value = "变体: $variant"
+                            delay(300)
+                            executeSearchPhase(variant, sites, allMatchedResults, isPrecise = false)
+                            withContext(Dispatchers.Main) {
+                                _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
+                            }
+                        }
+                    }
+
+                    _searchProgress.value = 1.0f
                     if (allMatchedResults.isEmpty()) {
                         _error.value = "未找到 \"$query\" 相关内容，建议简化关键词"
+                    } else {
+                        // [渐进排序] 按匹配深度排序
+                        val sorted = allMatchedResults.toList().sortedWith(compareBy { item ->
+                            val itemTitle = SearchUtils.cleanTitle(item.title)
+                            if (itemTitle == preciseTerm) 0
+                            else if (itemTitle.contains(preciseTerm)) 1
+                            else 2
+                        })
+                        _results.value = SearchUtils.mergeResults(sorted)
                     }
                 } else {
                     performNetDiskSearch(query)
@@ -288,13 +317,13 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     
                     val matched = if (isPrecise) {
                         val cleanTerm = SearchUtils.cleanTitle(term)
-                        results.filter { SearchUtils.cleanTitle(it.title) == cleanTerm }
-                    } else {
-                        // 模糊匹配
                         results.filter { 
-                            it.title.contains(term) || term.contains(it.title) || 
-                            it.title.contains(_query.value)
+                            val t = SearchUtils.cleanTitle(it.title)
+                            t == cleanTerm || t.contains(cleanTerm) || cleanTerm.contains(t)
                         }
+                    } else {
+                        // 模糊匹配：使用增强匹配逻辑
+                        results.filter { SearchUtils.titleMatches(term, it.title) || it.title.contains(_query.value) }
                     }
                     
                     if (matched.isNotEmpty()) {
@@ -453,22 +482,25 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val allMatchedResults = java.util.concurrent.CopyOnWriteArrayList<SearchResult>()
-                val searchPhases = SearchUtils.generateSearchVariants(title)
-                val totalPhases = searchPhases.size
+                // 1. 生成搜索项列表 (精准词 + 模糊变体)
+                val preciseTerm = SearchUtils.cleanTitle(title)
+                val fuzzyVariants = SearchUtils.generateFuzzyTerms(title)
+                val searchPhases = mutableListOf<String>()
+                searchPhases.add(preciseTerm)
+                fuzzyVariants.forEach { if (it != preciseTerm) searchPhases.add(it) }
                 
-                // 记录是否已经展示了第一个结果
+                val totalPhases = searchPhases.size
                 var hasShownFirstResult = false
 
                 // 遍历每个搜索阶段 (精准 -> 变体)
                 for ((index, term) in searchPhases.withIndex()) {
-                    if (allMatchedResults.size >= 30) break // 结果够多了
+                    if (allMatchedResults.size >= 40) break
                     
                     val phaseProgressStart = 0.1f + (index.toFloat() / totalPhases) * 0.8f
                     _searchProgress.value = phaseProgressStart
                     
                     val completedSites = java.util.concurrent.atomic.AtomicInteger(0)
                     val totalSites = sites.size
-                    
                     val isPrecise = index == 0
 
                     sites.forEach { site ->
@@ -479,9 +511,12 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                                 } ?: emptyList()
                                 
                                 val matched = if (isPrecise) {
-                                    results.filter { SearchUtils.cleanTitle(it.title) == SearchUtils.cleanTitle(term) }
+                                    results.filter { 
+                                        val t = SearchUtils.cleanTitle(it.title)
+                                        t == preciseTerm || t.contains(preciseTerm) || preciseTerm.contains(t)
+                                    }
                                 } else {
-                                    results.filter { SearchUtils.titleMatches(title, it.title) }
+                                    results.filter { SearchUtils.titleMatches(title, it.title) || it.title.contains(title) }
                                 }
                                 
                                 if (matched.isNotEmpty()) {
@@ -504,21 +539,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     }
 
-                    // 等待当前阶段完成或超时
+                    // 等待当前阶段
                     var waitTime = 0
-                    while (completedSites.get() < totalSites && waitTime < 20) {
+                    while (completedSites.get() < totalSites && waitTime < 25) {
                         delay(200)
                         waitTime++
-                        if (hasShownFirstResult && waitTime > 10) break // 有结果了就不用死等
+                        if (hasShownFirstResult && waitTime > 12) break
                     }
                     
                     withContext(Dispatchers.Main) {
                         updateFromMatchedResults(allMatchedResults.toList(), title)
-                    }
-                    
-                    if (isPrecise && allMatchedResults.isNotEmpty()) {
-                        // 精准命中了，可以稍微延后模糊匹配或跳过
-                        delay(300)
                     }
                 }
 

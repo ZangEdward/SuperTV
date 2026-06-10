@@ -56,48 +56,63 @@ object SearchUtils {
     }
 
     /**
-     * 生成增强的搜索变体列表 (模仿 supertvold & LunaTV 逻辑)
+     * 生成模糊词变体 (对齐 supertvold generateFuzzyTerms)
+     * 例如 "海贼王第1季" -> ["海贼王第1季", "海贼王"]
+     */
+    fun generateFuzzyTerms(term: String): List<String> {
+        val variants = mutableListOf<String>()
+        val cleaned = cleanTitle(term)
+        if (cleaned.isNotBlank()) variants.add(cleaned)
+
+        // 去除季/集后缀：Regex 对齐 JS 版
+        val seasonRemoved = cleaned.replace("第[一二三四五六七八九十\\d]+[季部期集].*$".toRegex(), "")
+        if (seasonRemoved.isNotBlank() && seasonRemoved != cleaned) {
+            variants.add(seasonRemoved)
+        }
+        return variants.distinct()
+    }
+
+    /**
+     * 生成增强的搜索变体列表 (对齐 supertvold generateSearchVariants)
      */
     fun generateSearchVariants(query: String): List<String> {
-        val trimmed = query.trim()
-        if (trimmed.isBlank()) return emptyList()
-
         val variants = mutableListOf<String>()
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return variants
+
+        // 1. 原始查询
         variants.add(trimmed)
 
-        // 1. 去除所有空格
+        // 2. 去除所有空格
         val noSpaces = trimmed.replace("\\s+".toRegex(), "")
         if (noSpaces != trimmed) variants.add(noSpaces)
 
-        // 2. 中文数字归一化变体 (例: 第四季 -> 第4季)
+        // 3. 中文数字归一化
         val numNormalized = normalizeChineseNumbers(noSpaces)
         if (numNormalized != noSpaces) variants.add(numNormalized)
 
-        // 3. 如果包含空格，生成关键词组合 (模仿 JS 版)
+        // 4. 空格相关变体
         if (trimmed.contains(" ")) {
-            val keywords = trimmed.split("\\s+".toRegex()).filter { it.isNotBlank() }
-            if (keywords.size >= 2) {
-                val mainKeyword = keywords[0]
-                val lastKeyword = keywords.last()
-                // 如果最后一段包含 第/季/集 等关键字，合并第一段和最后一段
+            val words = trimmed.split("\\s+".toRegex()).filter { it.isNotBlank() }
+            if (words.size >= 2) {
+                val mainKeyword = words[0]
+                val lastKeyword = words.last()
                 if (lastKeyword.contains(Regex("[第季集部篇章]"))) {
                     val combined = mainKeyword + lastKeyword
                     if (!variants.contains(combined)) variants.add(combined)
                 }
-                // 将空格替换为中文冒号
                 val withColon = trimmed.replace(" ", "：")
                 if (!variants.contains(withColon)) variants.add(withColon)
-                // 仅保留第一段（主标题）
                 if (mainKeyword.length > 1 && !variants.contains(mainKeyword)) {
                     variants.add(mainKeyword)
                 }
             }
         }
 
-        // 4. 渐进式搜索 (从全名开始，逐步去掉最后一个片段)
+        // 5. 渐进式搜索词 (对齐 JS progressiveSearchTerms)
         val parts = trimmed.split("\\s+".toRegex())
         if (parts.size > 1) {
-            for (i in parts.size - 1 downTo 1) {
+            for (i in parts.size downTo 1) {
                 val term = parts.take(i).joinToString("").replace("\\s+".toRegex(), "")
                 if (term.isNotBlank() && !variants.contains(term)) {
                     variants.add(term)
@@ -125,12 +140,14 @@ object SearchUtils {
     }
 
     /**
-     * 增强标题匹配逻辑：对齐 supertvold titleMatches
+     * 增强标题匹配逻辑：对齐 supertvold titleMatches，支持包含功能
      */
     fun titleMatches(searchTitle: String, targetTitle: String): Boolean {
         val s = cleanTitle(searchTitle)
         val t = cleanTitle(targetTitle)
         
+        if (s.isBlank() || t.isBlank()) return false
+
         // 1. 物理精准匹配
         if (s == t) return true
         
@@ -139,7 +156,7 @@ object SearchUtils {
         val tNorm = normalizeChineseNumbers(t)
         if (sNorm == tNorm) return true
         
-        // 3. 相互包含匹配
+        // 3. 相互包含匹配 (核心修复：蘑菇搜索应该有的包含功能)
         if (t.contains(s) || s.contains(t)) return true
         
         // 4. 归一化后相互包含

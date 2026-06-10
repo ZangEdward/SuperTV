@@ -301,38 +301,76 @@ fun TVSearchScreen(
 
                 // Right Pane (Remaining)
                 Box(modifier = Modifier.weight(0.48f).padding(horizontal = 10.dp)) {
-                    if (isSearching && results.isEmpty()) {
-                        com.supertv.app.ui.components.ShimmerGrid(columns = 2, count = 6)
-                    } else if (results.isNotEmpty()) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            itemsIndexed(results) { _, item ->
-                                TVVideoCard(
-                                    result = item,
-                                    onClick = { onResultClick(item) }
+                    val progress by viewModel.searchProgress.collectAsState()
+                    val currentTerm by viewModel.currentSearchTerm.collectAsState()
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (isSearching) {
+                            // TV 版进度提示 (顶部小字)
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "正在检索全网源: $currentTerm",
+                                    color = PrimaryGreen,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${(progress * 100).toInt()}%",
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    fontSize = 14.sp
                                 )
                             }
-                            
-                            if (isSearching) {
-                                item(span = { GridItemSpan(maxLineSpan) }) {
-                                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.size(24.dp))
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
+                                color = PrimaryGreen,
+                                trackColor = Color(0xFF222222)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
+
+                        if (isSearching && results.isEmpty()) {
+                            com.supertv.app.ui.components.ShimmerGrid(columns = 2, count = 6)
+                        } else if (results.isNotEmpty()) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                itemsIndexed(results) { _, item ->
+                                    TVVideoCard(
+                                        result = item,
+                                        onClick = { onResultClick(item) }
+                                    )
+                                }
+                                
+                                if (isSearching) {
+                                    item(span = { GridItemSpan(maxLineSpan) }) {
+                                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.size(24.dp))
+                                        }
                                     }
                                 }
                             }
+                        } else if (viewModelQuery.isNotEmpty() && !isSearching) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    "未找到 \"$viewModelQuery\" 相关内容",
+                                    color = Color(0xFF888888),
+                                    fontSize = 16.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
-                    } else if (viewModelQuery.isNotEmpty() && !isSearching) {
-                        Text(
-                            "未找到 \"$viewModelQuery\" 相关内容",
-                            color = Color(0xFF888888),
-                            fontSize = 16.sp,
-                            modifier = Modifier.align(Alignment.Center),
-                            textAlign = TextAlign.Center
-                        )
                     }
                 }
             }

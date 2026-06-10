@@ -118,70 +118,57 @@ class SearchRepository {
     }
 
     /**
-     * 激进搜索：精准匹配 -> 去尾搜索
+     * 激进搜索：精准匹配 -> 模糊变体匹配
      * @param onlyExact 是否仅执行精准搜索 (精准定义：先去空格，再去符号)
      */
     suspend fun aggressiveSearch(query: String, sources: List<String> = listOf("all"), onlyExact: Boolean = false): List<SearchResult> {
         val cleanedQuery = SearchUtils.cleanTitle(query)
         
-        // 1. 第一阶段：多线程并行尝试精准搜索
+        // 1. 第一阶段：尝试物理精准及“包含”匹配 (对齐 supertvold)
         val rawResults = searchRaw(query, sources)
-        var results = rawResults.filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
-        
-        // 2. 如果原始查询没搜到精准匹配，尝试“去尾精准匹配”
-        // 逻辑：去除最后一个空格后面的内容，再进行“去空格符号”匹配
-        if (results.isEmpty()) {
-            val tailTrimmed = SearchUtils.getTailTrimTitle(query)
-            if (tailTrimmed != query) {
-                val cleanedTailTrimmed = SearchUtils.cleanTitle(tailTrimmed)
-                // 优先搜索去尾后的词
-                val tailResults = searchRaw(tailTrimmed, sources)
-                results = tailResults.filter { SearchUtils.cleanTitle(it.title) == cleanedTailTrimmed }
-            }
+        var results = rawResults.filter { 
+            val t = SearchUtils.cleanTitle(it.title)
+            t == cleanedQuery || t.contains(cleanedQuery) || cleanedQuery.contains(t)
         }
         
-        // 3. 尝试清洗后的纯净词 (无空格) 精准匹配
-        if (results.isEmpty()) {
-            val pureTerm = query.replace("\\s+".toRegex(), "")
-            if (pureTerm != query) {
-                val vResults = searchRaw(pureTerm, sources).filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
-                if (vResults.isNotEmpty()) results = vResults
-            }
-        }
-
-        // 如果找到了精准匹配（或去尾精准匹配）的结果，立即返回，不再进行后续模糊搜索
-        if (results.isNotEmpty()) {
+        if (results.isNotEmpty() || onlyExact) {
             return SearchUtils.mergeResults(results)
         }
 
-        // 如果要求“仅精准”，或者已经找到了结果，则不再往下走
-        if (onlyExact) return emptyList()
-
-        // 4. 第二阶段：精准匹配完全失败，并行执行变体模糊搜索
-        android.util.Log.d("SearchRepository", "Precise/Tail-Trim match failed for: $query, starting concurrent fuzzy search")
+        // 2. 第二阶段：精准匹配完全失败，执行变体搜索 (对齐 supertvold)
+        android.util.Log.d("SearchRepository", "Precise match failed for: $query, starting concurrent fuzzy search")
         
         return coroutineScope {
-            // 生成变体
-            val variants = SearchUtils.generateSearchVariants(query).filter { it != query && it != cleanedQuery }
+            val fuzzyTerms = SearchUtils.generateFuzzyTerms(query)
+                .filter { it != cleanedQuery }
             
-            // 并行执行变体搜索 (多线程)
-            val deferredVariants = variants.map { term ->
+            val deferredVariants = fuzzyTerms.map { term ->
                 async(Dispatchers.IO) {
                     try {
                         val vResults = searchRaw(term, sources)
-                        // 过滤出包含原始词或变体词的结果，保证一定的相关度
-                        vResults.filter { it.title.contains(query) || it.title.contains(term) || query.contains(it.title) }
+                        vResults.filter { SearchUtils.titleMatches(query, it.title) }
                     } catch (e: Exception) { emptyList() }
                 }
             }
             
-            // 合并所有模糊结果
             val fuzzyResults = deferredVariants.flatMap { it.await() }
             
-            // 加上最初的原始搜索中可能相关的部分
-            val relatedRaw = rawResults.filter { it.title.contains(query) || query.contains(it.title) }
-            
-            SearchUtils.mergeResults(fuzzyResults + relatedRaw)
+            // 3. 如果还是没有，尝试更激进的变体
+            if (fuzzyResults.isEmpty()) {
+                val variants = SearchUtils.generateSearchVariants(query)
+                    .filter { it != query && it != cleanedQuery && !fuzzyTerms.contains(it) }
+                
+                val deferredAggressive = variants.map { term ->
+                    async(Dispatchers.IO) {
+                        try {
+                            searchRaw(term, sources).filter { SearchUtils.titleMatches(query, it.title) }
+                        } catch (e: Exception) { emptyList() }
+                    }
+                }
+                SearchUtils.mergeResults(fuzzyResults + deferredAggressive.flatMap { it.await() } + results)
+            } else {
+                SearchUtils.mergeResults(fuzzyResults + results)
+            }
         }
     }
 
