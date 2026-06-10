@@ -96,9 +96,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadHomeData() = coroutineScope {
-        val repository = com.supertv.app.data.SearchRepository()
-
         // 1. 并发抓取各板块 Metadata (快)
+        // 对齐 Selene: 列表只加载元数据，不做全网匹配，详情页再匹配
         val jobs = listOf(
             launch { fetchHotMovies() },
             launch { fetchRecommended() },
@@ -106,11 +105,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             launch { fetchShortDramas() }
         )
         
-        // 等待 Metadata 抓取完成即可，这样 loadData 就能结束 isLoading 状态
+        // 等待 Metadata 抓取完成即可
         jobs.forEach { it.join() }
-        
-        // 2. 匹配播放源逻辑移到后台，不阻塞 loadHomeData 的返回
-        // 已经在各 fetch 方法内部通过 viewModelScope.launch 处理了
     }
 
     private suspend fun fetchHotMovies() {
@@ -123,9 +119,6 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val results = items.map { it.toSearchResult() }
                 _hotMovies.value = results
                 store.saveCategoryCache("热门", results)
-                
-                // 异步匹配，不阻塞主流程
-                matchSourcesAsync(results) { _hotMovies.value = it }
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchHotMovies failed", e)
@@ -141,7 +134,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 _recommended.value = results
-                matchSourcesAsync(results) { _recommended.value = it }
+                store.saveCategoryCache("电影_热门", results) // 对应电影频道的全部
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchRecommended failed", e)
@@ -157,7 +150,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val bangumiIndex = if (today == 1) 6 else today - 2
                 val results = (body?.getOrNull(bangumiIndex)?.items ?: emptyList()).map { it.toSearchResult() }
                 _animeUpdates.value = results
-                matchSourcesAsync(results) { _animeUpdates.value = it }
+                store.saveCategoryCache("动漫", results)
             } else {
                 // Fallback to Douban
                 val doubanResp = apiService.getDoubanData("tv", java.net.URLEncoder.encode("动漫", "UTF-8"))
@@ -165,7 +158,6 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                     val body = doubanResp.body()
                     val results = (body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()).map { it.toSearchResult() }
                     _animeUpdates.value = results
-                    matchSourcesAsync(results) { _animeUpdates.value = it }
                 }
             }
         } catch (e: Exception) {
@@ -180,36 +172,14 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val body = resp.body()
                 val results = (body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()).map { it.toSearchResult() }
                 _shortDramas.value = results
-                matchSourcesAsync(results) { _shortDramas.value = it }
+                store.saveCategoryCache("短剧_热门", results)
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchShortDramas failed", e)
         }
     }
 
-    private fun matchSourcesAsync(results: List<SearchResult>, onUpdate: (List<SearchResult>) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val repository = com.supertv.app.data.SearchRepository()
-            // 并行化匹配逻辑
-            val matched = results.chunked(6).flatMap { chunk ->
-                chunk.map { item ->
-                    async { 
-                        // 优先从匹配池获取，避免重复搜索
-                        com.supertv.app.data.SearchRepository.getMatch(item.title)?.let { return@async it }
-                        
-                        val matchedItem = repository.aggressiveSearch(item.title, onlyExact = true).firstOrNull() ?: item
-                        if (matchedItem !== item) {
-                            com.supertv.app.data.SearchRepository.addMatch(item.title, matchedItem)
-                        }
-                        matchedItem
-                    }
-                }.awaitAll()
-            }
-            withContext(Dispatchers.Main) {
-                onUpdate(matched)
-            }
-        }
-    }
+    // 移除 matchSourcesAsync，不在列表页进行耗时的全网源匹配，对齐 Selene 逻辑
 
     private suspend fun loadCategoryData(category: String) {
         val subCategory = _selectedSubCategory.value
@@ -267,11 +237,10 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
                 store.saveCategoryCache(cacheKey, results)
 
-                // 1. 立即更新 UI (Metadata)
+                // 立即更新 UI (Metadata)
                 updateCategoryFlow(category, results)
-
-                // 2. 异步匹配，不阻塞 loadCategoryData 的返回
-                matchSourcesAsync(results) { updateCategoryFlow(category, it) }
+                
+                // 不再在此处调用 matchSourcesAsync
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load category $category with tag $tag", e)

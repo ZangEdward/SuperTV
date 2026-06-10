@@ -16,9 +16,12 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.supertv.app.data.SearchPagingSource
 import com.supertv.app.utils.SearchUtils
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModel(application: Application) : AndroidViewModel(application) {
@@ -185,37 +188,72 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     val navigateToDetail: SharedFlow<SearchResult> = _navigateToDetail.asSharedFlow()
 
     /**
-     * 执行搜索
+     * 执行聚合搜索 - 完全对齐 supertvold 核心搜索逻辑
      */
     fun search(query: String) {
         if (query.isBlank()) return
+        
+        // 停止之前的搜索
+        viewModelScope.coroutineContext.cancelChildren()
+        
         _query.value = query
-        _searchQuery.value = query // 同步更新分页查询
+        _searchQuery.value = query
         _isSearching.value = true
         _error.value = null
+        _results.value = emptyList()
 
         viewModelScope.launch {
             try {
                 if (_searchMode.value == 0) {
-                    // 1. 尝试精准匹配 (只包含播放源)
-                    val exactResults = repository.aggressiveSearch(query, onlyExact = true)
-                        .filter { it.source != "douban" && it.source != "bangumi" }
+                    val preciseTerm = SearchUtils.cleanTitle(query)
+                    val fuzzyVariants = SearchUtils.generateSearchVariants(query)
+                    
+                    // 用于多阶段搜索的 Term 列表
+                    val searchPhases = mutableListOf<String>()
+                    searchPhases.add(preciseTerm)
+                    fuzzyVariants.forEach { v ->
+                        if (SearchUtils.cleanTitle(v) != preciseTerm) {
+                            searchPhases.add(v)
+                        }
+                    }
 
-                    if (exactResults.isNotEmpty()) {
-                        // 发现精准匹配结果，只展示精准匹配的结果
-                        _results.value = SearchUtils.mergeResults(exactResults)
-                    } else {
-                        // 无精准结果，才启动模糊/变体搜索
-                        val results = repository.aggressiveSearch(query, onlyExact = false)
-                        val filtered = results.filter { it.source != "douban" && it.source != "bangumi" }
-                        _results.value = SearchUtils.mergeResults(filtered)
+                    val sites = repository.getSites().filter { it.key != "douban" && it.key != "bangumi" }
+                    val allMatchedResults = CopyOnWriteArrayList<SearchResult>()
+                    
+                    // --- 第一阶段：精准并发搜索 (对齐 supertvold executeSearchPhase) ---
+                    executeSearchPhase(preciseTerm, sites, allMatchedResults, isPrecise = true)
+                    
+                    // 如果精准搜索已经找到了结果，立即显示并继续（supertvold 会延迟一下再进模糊）
+                    if (allMatchedResults.isNotEmpty()) {
+                        _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
+                    }
+
+                    // --- 第二阶段：变体/模糊并发搜索 ---
+                    // 循环执行各个变体，直到结果足够丰富或搜完
+                    for (variant in searchPhases.drop(1)) {
+                        if (allMatchedResults.size >= 40) break // 结果够多了
+                        
+                        // 模仿 supertvold 的 500ms 阶段间隔，给 UI 刷新时间
+                        delay(400)
+                        
+                        executeSearchPhase(variant, sites, allMatchedResults, isPrecise = false)
+                        
+                        withContext(Dispatchers.Main) {
+                            _results.value = SearchUtils.mergeResults(allMatchedResults.toList())
+                        }
+                    }
+
+                    if (allMatchedResults.isEmpty()) {
+                        _error.value = "未找到 \"$query\" 相关内容，建议简化关键词"
                     }
                 } else {
                     performNetDiskSearch(query)
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SearchViewModel", "Search failed", e)
-                _error.value = "搜索异常: ${e.message}"
+                if (e !is CancellationException) {
+                    android.util.Log.e("SearchViewModel", "Search error", e)
+                    _error.value = "搜索异常: ${e.message}"
+                }
             } finally {
                 _isSearching.value = false
             }
@@ -226,6 +264,53 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             store.addSearchHistory(query)
             loadSearchHistory()
         } catch (_: Exception) {}
+    }
+
+    /**
+     * 并发执行单个搜索阶段 (对齐 supertvold 32路并发逻辑)
+     */
+    private suspend fun executeSearchPhase(
+        term: String,
+        sites: List<ApiSite>,
+        resultList: CopyOnWriteArrayList<SearchResult>,
+        isPrecise: Boolean
+    ) = coroutineScope {
+        val MAX_CONCURRENT = 32
+        val semaphore = Semaphore(MAX_CONCURRENT)
+        
+        val jobs = sites.map { site ->
+            launch(Dispatchers.IO) {
+                try {
+                    semaphore.acquire()
+                    val results = withTimeoutOrNull(8000L) {
+                        repository.searchVideo(term, site.key)
+                    } ?: emptyList()
+                    
+                    val matched = if (isPrecise) {
+                        val cleanTerm = SearchUtils.cleanTitle(term)
+                        results.filter { SearchUtils.cleanTitle(it.title) == cleanTerm }
+                    } else {
+                        // 模糊匹配
+                        results.filter { 
+                            it.title.contains(term) || term.contains(it.title) || 
+                            it.title.contains(_query.value)
+                        }
+                    }
+                    
+                    if (matched.isNotEmpty()) {
+                        synchronized(resultList) {
+                            val existingKeys = resultList.map { it.id + it.source }.toSet()
+                            val newOnes = matched.filter { (it.id + it.source) !in existingKeys }
+                            resultList.addAll(newOnes)
+                        }
+                    }
+                } catch (_: Exception) {
+                } finally {
+                    semaphore.release()
+                }
+            }
+        }
+        jobs.joinAll()
     }
 
     private fun performNetDiskSearch(query: String) {
@@ -353,7 +438,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * 加载全网来源 - 对齐 supertvold 激进全网并发加载逻辑
+     * 加载全网来源 - 对齐 Selene 极致并发与即时反馈逻辑
      */
     private fun loadAllSources(title: String, currentId: String?, currentSource: String?) {
         viewModelScope.launch {
@@ -361,7 +446,6 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _searchProgress.value = 0.1f
             
             try {
-                // 1. 获取所有可用站点
                 val sites: List<ApiSite> = repository.getSites().filter { it.key != "douban" && it.key != "bangumi" }
                 if (sites.isEmpty()) {
                     _allSourcesLoading.value = false
@@ -369,43 +453,52 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val totalSites = sites.size
-                var completedSites = 0
+                val completedSites = java.util.concurrent.atomic.AtomicInteger(0)
                 val allMatchedResults = java.util.concurrent.CopyOnWriteArrayList<SearchResult>()
 
-                // 2. [极致并发]：同时启动所有源的检索
+                // 记录是否已经展示了第一个结果，用于 Path B 快速响应
+                var hasShownFirstResult = false
+
+                // 2. [极致并发]：同时启动所有源的检索 (类似 Selene 32路并发)
                 sites.forEach { site ->
-                    launch {
+                    launch(Dispatchers.IO) {
                         try {
-                            // 使用 repository.searchVideo 搜索特定源
-                            val results = repository.searchVideo(title, site.key)
+                            // 单个源超时限制 (对齐 Selene 8s)
+                            val results = withTimeoutOrNull(8000L) {
+                                repository.searchVideo(title, site.key)
+                            } ?: emptyList()
                             
-                            // 使用 titleMatches 增强匹配 (对齐 supertvold)
                             val matched = results.filter { 
                                 SearchUtils.titleMatches(title, it.title) 
                             }
                             
-                            allMatchedResults.addAll(matched)
+                            if (matched.isNotEmpty()) {
+                                allMatchedResults.addAll(matched)
+                                // [即时反馈]：一旦发现匹配结果，立即尝试更新 UI
+                                if (!hasShownFirstResult) {
+                                    hasShownFirstResult = true
+                                    withContext(Dispatchers.Main) {
+                                        updateFromMatchedResults(allMatchedResults.toList(), title)
+                                    }
+                                }
+                            }
                         } catch (_: Exception) {
                         } finally {
-                            completedSites++
-                            _searchProgress.value = 0.1f + (completedSites.toFloat() / totalSites) * 0.8f
+                            val completed = completedSites.incrementAndGet()
+                            _searchProgress.value = 0.1f + (completed.toFloat() / totalSites) * 0.8f
                         }
                     }
                 }
 
-                // 3. 等待过程中的“首次合并”优化 (Path B 逻辑)
-                // 模仿 supertvold: 只要有结果且当前是资料源，就尝试更新 detail
-                while (completedSites < totalSites && _allSourcesLoading.value) {
-                    kotlinx.coroutines.delay(500)
+                // 3. 轮询器：定期同步合并结果 (对齐 Selene flushBatch 逻辑)
+                while (completedSites.get() < totalSites && _allSourcesLoading.value) {
+                    kotlinx.coroutines.delay(800) // 稍长一点的间隔，减少主线程压力
                     if (allMatchedResults.isNotEmpty()) {
-                        val currentDetail = _detail.value
-                        if (currentDetail == null || currentDetail.source in listOf("douban", "bangumi")) {
-                            updateFromMatchedResults(allMatchedResults.toList(), title)
-                        }
+                        updateFromMatchedResults(allMatchedResults.toList(), title)
                     }
                 }
 
-                // 4. 最终展示与排序
+                // 4. 最终展示与彻底排序
                 val finalPlaybackSources = SearchUtils.mergeResultsBySource(allMatchedResults.toList(), title)
                     .filter { it.id != currentId || it.source != currentSource }
                     .sortedByDescending { it.episodes.size }
@@ -413,10 +506,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                 _allSources.value = finalPlaybackSources
                 _searchProgress.value = 1.0f
                 
-                // 确保至少更新一次详情（如果需要）
                 updateFromMatchedResults(allMatchedResults.toList(), title)
-
-                // 5. 后台自动测速与重排
                 autoTestAndResort()
 
             } catch (e: Exception) {
@@ -436,28 +526,69 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         val isMetadataOnly = currentDetail?.source == "douban" || currentDetail?.source == "bangumi"
 
         if (currentDetail == null || currentDetail.episodes.isEmpty() || isMetadataOnly) {
-            // 选择评分最高（目前暂无测速则按集数）的源
+            // 选择集数最多的源作为首选
             val bestSource = playbackSources.maxByOrNull { it.episodes.size } ?: playbackSources.first()
             
-            viewModelScope.launch {
-                val detail = repository.getDetail(bestSource.id, bestSource.source)
-                if (detail != null) {
-                    // 合并所有剧集（解决缺集问题）
-                    var mergedEpisodes = detail.episodes
-                    playbackSources.forEach { ps ->
-                        mergedEpisodes = SearchUtils.mergeEpisodes(mergedEpisodes, ps.episodes)
-                    }
+            // 优化：如果 SearchResult 中已经包含了剧集信息，直接合并应用，不再重复请求详情接口 (对齐 Selene 逻辑)
+            if (bestSource.episodes.isNotEmpty()) {
+                val mergedEpisodes = bestSource.episodes
+                // 这里我们也可以尝试合并其他源的集数，但为了速度，优先展示 bestSource
+                
+                if (currentDetail != null && isMetadataOnly) {
+                    _detail.value = currentDetail.copy(
+                        id = bestSource.id,
+                        episodesList = mergedEpisodes,
+                        source = bestSource.source,
+                        sourceName = bestSource.sourceName,
+                        totalEpisodes = mergedEpisodes.size
+                    )
+                } else if (currentDetail == null) {
+                    _detail.value = VideoDetail(
+                        id = bestSource.id,
+                        title = bestSource.title,
+                        cover = bestSource.cover,
+                        poster = bestSource.poster,
+                        source = bestSource.source,
+                        sourceName = bestSource.sourceName,
+                        episodesList = mergedEpisodes,
+                        totalEpisodes = mergedEpisodes.size,
+                        year = bestSource.year,
+                        rating = bestSource.rating,
+                        desc = bestSource.desc
+                    )
+                }
+                
+                // 虽然已经快速更新了 UI，但后台可以异步拿一下完整详情（如更完整的简介）
+                viewModelScope.launch {
+                    try {
+                        val fullDetail = repository.getDetail(bestSource.id, bestSource.source)
+                        if (fullDetail != null && fullDetail.desc.length > (bestSource.desc.length)) {
+                             _detail.value = _detail.value?.copy(desc = fullDetail.desc)
+                        }
+                    } catch (_: Exception) {}
+                }
+            } else {
+                // 实在没有剧集信息，才请求详情
+                viewModelScope.launch {
+                    val detail = repository.getDetail(bestSource.id, bestSource.source)
+                    if (detail != null) {
+                        // ... 合并逻辑
+                        var mergedEpisodes = detail.episodes
+                        playbackSources.forEach { ps ->
+                            mergedEpisodes = SearchUtils.mergeEpisodes(mergedEpisodes, ps.episodes)
+                        }
 
-                    if (currentDetail != null && isMetadataOnly) {
-                        _detail.value = currentDetail.copy(
-                            id = detail.id,
-                            episodesList = mergedEpisodes,
-                            source = detail.source,
-                            sourceName = detail.sourceName,
-                            totalEpisodes = mergedEpisodes.size
-                        )
-                    } else if (currentDetail == null) {
-                        _detail.value = detail.copy(episodesList = mergedEpisodes)
+                        if (currentDetail != null && isMetadataOnly) {
+                            _detail.value = currentDetail.copy(
+                                id = detail.id,
+                                episodesList = mergedEpisodes,
+                                source = detail.source,
+                                sourceName = detail.sourceName,
+                                totalEpisodes = mergedEpisodes.size
+                            )
+                        } else if (currentDetail == null) {
+                            _detail.value = detail.copy(episodesList = mergedEpisodes)
+                        }
                     }
                 }
             }

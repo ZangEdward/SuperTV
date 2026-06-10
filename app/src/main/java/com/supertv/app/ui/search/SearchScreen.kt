@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -146,19 +147,19 @@ fun SearchScreen(
         }
 
         when {
-            isSearching -> {
+            isSearching && results.isEmpty() -> {
                 Box(modifier = Modifier.fillMaxSize()) { 
                     if (searchMode == 0) {
-                        ShimmerGrid(columns = 2) 
+                        ShimmerGrid(columns = 3) // 对齐手机端 3 列
                     } else {
                         CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.align(Alignment.Center))
                     }
                 }
             }
 
-            searchMode == 0 && results.isNotEmpty() -> {
+            searchMode == 0 && (results.isNotEmpty() || (isSearching && results.isNotEmpty())) -> {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3), // 改为 3 列，对齐 Selene 手机端
+                    columns = GridCells.Fixed(3),
                     contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -167,8 +168,23 @@ fun SearchScreen(
                     items(results, key = { "${it.id}${it.source}" }) { item ->
                         VideoCard(result = item, onClick = { 
                             selectedResultForSources = item 
-                            viewModel.loadDetail(item.id, item.source, item.title) // 提前加载备选源
+                            viewModel.loadDetail(item.id, item.source, item.title)
                         })
+                    }
+                    
+                    if (isSearching) {
+                        // 搜索中且已有结果，在底部显示正在检索的提示
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = PrimaryGreen)
+                                Spacer(Modifier.width(12.dp))
+                                Text("全网激进检索中...", fontSize = 12.sp, color = secondaryTextColor)
+                            }
+                        }
                     }
                 }
             }

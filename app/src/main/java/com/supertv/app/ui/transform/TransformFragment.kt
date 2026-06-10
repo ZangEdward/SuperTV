@@ -335,6 +335,8 @@ fun TVHomeScreen(
             label = "TVCategoryAnimation",
             modifier = Modifier.fillMaxSize()
         ) { targetCategory ->
+            val playRecords by viewModel.playRecords.collectAsState(initial = emptyList())
+            
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
@@ -342,10 +344,26 @@ fun TVHomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                if (targetCategory == "热门" && playRecords.isNotEmpty()) {
+                    // TV 端也展示最近播放
+                    items(playRecords.take(5)) { record ->
+                        PosterCard(
+                            result = SearchResult(
+                                title = record.title,
+                                cover = record.cover,
+                                sourceName = record.sourceName
+                            ),
+                            onClick = { /* ... */ }
+                        )
+                    }
+                }
+
                 val content = when (targetCategory) {
                     "热门" -> hotMovies
                     "电影" -> recommended
-                    "剧集" -> animeUpdates
+                    "剧集" -> hotMovies
+                    "动漫" -> animeUpdates
+                    "综艺" -> animeUpdates
                     "短剧" -> shortDramas
                     else -> emptyList()
                 }
@@ -368,6 +386,7 @@ fun HomeScreen(
     val recommended by viewModel.recommended.collectAsState(initial = emptyList())
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
+    val playRecords by viewModel.playRecords.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
     
     val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
@@ -397,9 +416,9 @@ fun HomeScreen(
         }
 
         if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
+            val configuration = LocalConfiguration.current
+            val columns = if (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION) 5 else 3
+            com.supertv.app.ui.components.ShimmerGrid(columns = columns)
         } else {
     AnimatedContent(
         targetState = selectedCategory,
@@ -431,6 +450,24 @@ fun HomeScreen(
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (targetCategory) {
                         "热门" -> {
+                            if (playRecords.isNotEmpty()) {
+                                item {
+                                    SectionHeader("最近播放")
+                                    VideoCardRow(
+                                        items = playRecords.map { record ->
+                                            SearchResult(
+                                                title = record.title,
+                                                cover = record.cover,
+                                                source = record.searchTitle, // 临时借用
+                                                sourceName = record.sourceName,
+                                                id = record.title, // 临时
+                                                year = record.year
+                                            )
+                                        }, 
+                                        onClick = { /* 这里需要处理 record 跳转，目前先保持展示 */ }
+                                    )
+                                }
+                            }
                             item {
                                 SectionHeader("豆瓣热播")
                                 VideoCardRow(items = hotMovies, onClick = onItemClick)
@@ -586,16 +623,18 @@ fun SectionHeader(title: String) {
 
 @Composable
 fun VideoCardRow(items: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
+    val configuration = LocalConfiguration.current
+    val isTv = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    
     if (isGrid) {
-        val configuration = LocalConfiguration.current
-        val columns = if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 5 else 3
+        val columns = if (isTv) 5 else if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
         
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.heightIn(max = 5000.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.heightIn(max = 10000.dp) // 增加高度限制确保能显示全
         ) {
             items(items) { item ->
                 PosterCard(result = item, onClick = { onClick(item) })

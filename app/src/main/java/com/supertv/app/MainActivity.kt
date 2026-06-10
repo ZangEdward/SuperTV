@@ -475,7 +475,7 @@ class MainActivity : AppCompatActivity() {
                                     restoreState = true
                                 }
                                 
-                                // 立即更新索引，确保连续点击时方向正确
+                                // 立即同步更新索引，确保连续点击时方向计算绝对正确
                                 selectedIndex = index
                                 navController.navigate(item.id, null, navOptions)
                             },
@@ -511,6 +511,19 @@ class MainActivity : AppCompatActivity() {
         val currentDestination = navBackStackEntry?.destination
         val items = remember { getNavItems() }
 
+        // 记录当前选中的索引，用于判断方向
+        var selectedIndex by remember { 
+            mutableIntStateOf(items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)) 
+        }
+
+        // 同步目的地变化到 selectedIndex
+        LaunchedEffect(currentDestination?.id) {
+            val idx = items.indexOfFirst { it.id == currentDestination?.id }
+            if (idx != -1) {
+                selectedIndex = idx
+            }
+        }
+
         NavigationRail(
             containerColor = MaterialTheme.colorScheme.surface,
             header = {
@@ -540,21 +553,19 @@ class MainActivity : AppCompatActivity() {
                             return@NavigationRailItem
                         }
 
-                        val isFromIndependentPage = currentDestination?.id == R.id.nav_detail || 
-                                                   currentDestination?.id == R.id.nav_search || 
-                                                   currentDestination?.id == R.id.nav_slideshow
-
-                        val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
-                        val isForward = index > currentIndex
+                        // 核心逻辑：直接比较目标索引和当前记录的索引
+                        val isForward = index > selectedIndex
 
                         val navOptions = navOptions {
                             anim {
                                 if (isForward) {
+                                    // 目标在右边 -> 向左滑入 (从右侧进入)
                                     enter = R.anim.slide_in_right
                                     exit = R.anim.slide_out_left
                                     popEnter = R.anim.slide_in_left
                                     popExit = R.anim.slide_out_right
                                 } else {
+                                    // 目标在左边 -> 向右滑入 (从左侧进入)
                                     enter = R.anim.slide_in_left
                                     exit = R.anim.slide_out_right
                                     popEnter = R.anim.slide_in_right
@@ -565,8 +576,11 @@ class MainActivity : AppCompatActivity() {
                                 saveState = true
                             }
                             launchSingleTop = true
-                            restoreState = !isFromIndependentPage
+                            restoreState = true
                         }
+                        
+                        // 立即同步更新索引，确保连续点击时方向计算绝对正确
+                        selectedIndex = index
                         navController.navigate(item.id, null, navOptions)
                     },
                     colors = NavigationRailItemDefaults.colors(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -300,8 +301,8 @@ fun TVSearchScreen(
 
                 // Right Pane (Remaining)
                 Box(modifier = Modifier.weight(0.48f).padding(horizontal = 10.dp)) {
-                    if (isSearching) {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = PrimaryGreen)
+                    if (isSearching && results.isEmpty()) {
+                        com.supertv.app.ui.components.ShimmerGrid(columns = 2, count = 6)
                     } else if (results.isNotEmpty()) {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
@@ -315,8 +316,16 @@ fun TVSearchScreen(
                                     onClick = { onResultClick(item) }
                                 )
                             }
+                            
+                            if (isSearching) {
+                                item(span = { GridItemSpan(maxLineSpan) }) {
+                                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(color = PrimaryGreen, modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                            }
                         }
-                    } else if (viewModelQuery.isNotEmpty()) {
+                    } else if (viewModelQuery.isNotEmpty() && !isSearching) {
                         Text(
                             "未找到 \"$viewModelQuery\" 相关内容",
                             color = Color(0xFF888888),
