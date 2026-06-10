@@ -67,16 +67,17 @@ object RetrofitClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
-        .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)) // 优化连接池 (对齐 supertvold)
+        .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES))
         .addInterceptor(loggingInterceptor)
         .addInterceptor { chain ->
             val request = chain.request()
             val requestBuilder = request.newBuilder()
                 .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                .addHeader("Accept", "application/json, text/plain, */*")
+                .addHeader("Accept", "application/json")
                 .addHeader("Referer", "https://movie.douban.com/")
-                .addHeader("Connection", "keep-alive") // 保持长连接
-                .addHeader("Accept-Encoding", "gzip, deflate, br") // 启用压缩
+                .addHeader("Connection", "keep-alive")
+            
+            // 注意：不要手动添加 Accept-Encoding，让 OkHttp 自动处理 Gzip，否则拦截器读到的是压缩后的乱码
             
             // 添加 Token (Selene 风格)
             authToken?.let {
@@ -103,9 +104,15 @@ object RetrofitClient {
                 }
             }
             
-            // 优化乱码处理：检测 UTF-8 异常并尝试 GBK 补救
+            // 优化乱码处理：仅在 JSON 响应且未显式指定 UTF-8 时尝试修复
             val contentType = response.body?.contentType()
-            if (contentType != null && contentType.subtype == "json" && contentType.charset() == null) {
+            val isJson = contentType?.subtype?.contains("json", ignoreCase = true) == true
+            
+            // 检查响应头是否已经经过了 Gzip 处理（OkHttp 自动解压后会移除该头）
+            // 如果该头还在，说明我们要么手动加了头，要么 OkHttp 没自动处理
+            val isCompressed = response.header("Content-Encoding") != null
+
+            if (isJson && !isCompressed) {
                 val source = response.body?.source()
                 source?.request(Long.MAX_VALUE)
                 val buffer = source?.buffer
@@ -113,17 +120,20 @@ object RetrofitClient {
                 // 尝试以 UTF-8 读取
                 var bodyString = buffer?.clone()?.readString(Charsets.UTF_8) ?: ""
                 
-                // 如果包含替换字符，说明可能是 GBK 编码
-                if (bodyString.contains("\ufffd")) {
-                    android.util.Log.w("RetrofitClient", "Detected probable GBK response, retrying decode...")
+                // 如果包含替换字符，且不包含正常的 JSON 特征，说明可能是 GBK 编码
+                if (bodyString.contains("\ufffd") && !bodyString.startsWith("{") && !bodyString.startsWith("[")) {
+                    android.util.Log.w("RetrofitClient", "Detected probable encoded response, retrying decode...")
                     bodyString = buffer?.clone()?.readString(Charset.forName("GBK")) ?: ""
                 }
                 
-                @Suppress("DEPRECATION")
-                val newBody = okhttp3.ResponseBody.create(contentType, bodyString)
-                return@addInterceptor response.newBuilder()
-                    .body(newBody)
-                    .build()
+                // 关键修复：如果修复逻辑导致 body 为空或异常，不替换原 body
+                if (bodyString.isNotBlank()) {
+                    @Suppress("DEPRECATION")
+                    val newBody = okhttp3.ResponseBody.create(contentType, bodyString)
+                    return@addInterceptor response.newBuilder()
+                        .body(newBody)
+                        .build()
+                }
             }
             
             response
