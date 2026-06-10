@@ -104,7 +104,11 @@ fun VideoCard(
                 .fillMaxWidth()
                 .aspectRatio(0.7f),
             shape = RoundedCornerShape(10.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            )
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 AsyncImage(
@@ -236,13 +240,13 @@ fun ShimmerGrid(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = BackgroundCard)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(0.67f)
-                        .background(BackgroundSurface)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                 )
                 Spacer(Modifier.height(8.dp))
                 Box(
@@ -251,7 +255,7 @@ fun ShimmerGrid(
                         .height(16.dp)
                         .padding(horizontal = 8.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(BackgroundSurface)
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                 )
                 Spacer(Modifier.height(8.dp))
             }

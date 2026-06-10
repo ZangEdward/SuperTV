@@ -56,6 +56,7 @@ class DetailFragment : Fragment() {
                         cachedEpisodes = emptySet(),
                         allSources = allSources,
                         currentSource = detail?.source ?: source,
+                        fallbackCover = cover, // 传递 fallbackCover
                         latencies = latencies,
                         isAllSourcesLoading = isAllSourcesLoading,
                         isDarkTheme = isDarkTheme,

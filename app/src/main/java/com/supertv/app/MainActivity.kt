@@ -351,32 +351,44 @@ class MainActivity : AppCompatActivity() {
                             .padding(vertical = 2.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
-                                if (currentDestination?.id != item.id) {
-                                    // 根据索引关系决定滑动方向
-                                    val isForward = index > lastSelectedIndex
-
-                                    val navOptions = navOptions {
-                                        anim {
-                                            if (isForward) {
-                                                enter = R.anim.slide_in_right
-                                                exit = R.anim.slide_out_left
-                                                popEnter = R.anim.slide_in_left
-                                                popExit = R.anim.slide_out_right
-                                            } else {
-                                                enter = R.anim.slide_in_left
-                                                exit = R.anim.slide_out_right
-                                                popEnter = R.anim.slide_in_right
-                                                popExit = R.anim.slide_out_left
-                                            }
-                                        }
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                    navController.navigate(item.id, null, navOptions)
+                                if (currentDestination?.id == item.id) {
+                                    // 如果已经在当前标签页，且不在根页面（比如在详情页），则回到根页面
+                                    navController.popBackStack(item.id, false)
+                                    return@clickable
                                 }
+
+                                // 判断是否从详情页、搜索页、缓存页切出
+                                val isFromIndependentPage = currentDestination?.id == R.id.nav_detail || 
+                                                           currentDestination?.id == R.id.nav_search || 
+                                                           currentDestination?.id == R.id.nav_slideshow
+
+                                // 根据索引关系决定滑动方向
+                                val isForward = index > lastSelectedIndex
+
+                                val navOptions = navOptions {
+                                    anim {
+                                        if (isForward) {
+                                            enter = R.anim.slide_in_right
+                                            exit = R.anim.slide_out_left
+                                            popEnter = R.anim.slide_in_left
+                                            popExit = R.anim.slide_out_right
+                                        } else {
+                                            enter = R.anim.slide_in_left
+                                            exit = R.anim.slide_out_right
+                                            popEnter = R.anim.slide_in_right
+                                            popExit = R.anim.slide_out_left
+                                        }
+                                    }
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    // 如果是从详情等独立页面切出，或者用户点击了标签，通常期望回到该标签的根部
+                                    // 这里我们保持 restoreState 为 true 以保持各标签页的状态，
+                                    // 但通过上面的 popBackStack 处理重选，通过合理的 popUpTo 处理切换。
+                                    restoreState = !isFromIndependentPage 
+                                }
+                                navController.navigate(item.id, null, navOptions)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -434,32 +446,39 @@ class MainActivity : AppCompatActivity() {
                     },
                     selected = isSelected,
                     onClick = {
-                        if (currentDestination?.id != item.id) {
-                            val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
-                            val isForward = index > currentIndex
-
-                            val navOptions = navOptions {
-                                anim {
-                                    if (isForward) {
-                                        enter = R.anim.slide_in_right
-                                        exit = R.anim.slide_out_left
-                                        popEnter = R.anim.slide_in_left
-                                        popExit = R.anim.slide_out_right
-                                    } else {
-                                        enter = R.anim.slide_in_left
-                                        exit = R.anim.slide_out_right
-                                        popEnter = R.anim.slide_in_right
-                                        popExit = R.anim.slide_out_left
-                                    }
-                                }
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                    restoreState = true
-                            }
-                            navController.navigate(item.id, null, navOptions)
+                        if (currentDestination?.id == item.id) {
+                            navController.popBackStack(item.id, false)
+                            return@NavigationRailItem
                         }
+
+                        val isFromIndependentPage = currentDestination?.id == R.id.nav_detail || 
+                                                   currentDestination?.id == R.id.nav_search || 
+                                                   currentDestination?.id == R.id.nav_slideshow
+
+                        val currentIndex = items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)
+                        val isForward = index > currentIndex
+
+                        val navOptions = navOptions {
+                            anim {
+                                if (isForward) {
+                                    enter = R.anim.slide_in_right
+                                    exit = R.anim.slide_out_left
+                                    popEnter = R.anim.slide_in_left
+                                    popExit = R.anim.slide_out_right
+                                } else {
+                                    enter = R.anim.slide_in_left
+                                    exit = R.anim.slide_out_right
+                                    popEnter = R.anim.slide_in_right
+                                    popExit = R.anim.slide_out_left
+                                }
+                            }
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = !isFromIndependentPage
+                        }
+                        navController.navigate(item.id, null, navOptions)
                     },
                     colors = NavigationRailItemDefaults.colors(
                         selectedIconColor = MaterialTheme.colorScheme.primary,

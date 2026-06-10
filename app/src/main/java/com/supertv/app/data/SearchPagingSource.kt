@@ -18,12 +18,15 @@ class SearchPagingSource(
             // 这里我们保持 position 但处理包装类
             val response = apiService.search(query, source)
             val body = response.body()
-            val results = (body?.results ?: body?.data ?: emptyList()).distinctBy { it.id + it.source }
+            val rawResults = (body?.results ?: body?.data ?: emptyList()).distinctBy { it.id + it.source }
+            
+            // 彻底排除 douban/bangumi 元数据源
+            val playbackResults = rawResults.filter { it.source != "douban" && it.source != "bangumi" }
             
             LoadResult.Page(
-                data = results,
+                data = playbackResults,
                 prevKey = if (position == 1) null else position - 1,
-                nextKey = if (results.isEmpty()) null else position + 1
+                nextKey = if (playbackResults.isEmpty()) null else position + 1
             )
         } catch (exception: Exception) {
             LoadResult.Error(exception)

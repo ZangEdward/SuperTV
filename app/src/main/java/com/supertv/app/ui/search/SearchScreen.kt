@@ -164,12 +164,7 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // 聚合逻辑：按标题+年份+集数去重展示
-                    val aggregated = results.distinctBy { 
-                        it.title.trim() + it.year + (it.episodes.size > 1) 
-                    }
-                    
-                    items(aggregated, key = { "${it.id}${it.source}" }) { item ->
+                    items(results, key = { "${it.id}${it.source}" }) { item ->
                         VideoCard(result = item, onClick = { 
                             selectedResultForSources = item 
                             viewModel.loadDetail(item.id, item.source, item.title) // 提前加载备选源
@@ -289,16 +284,30 @@ fun SearchScreen(
                     Text("选择播放源", modifier = Modifier.padding(16.dp), fontWeight = FontWeight.Bold, color = PrimaryGreen)
 
                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                        val currentSources = if (allSources.any { it.title == result.title }) allSources else listOf(result)
-                        items(currentSources) { source ->
-                            SearchSourceItem(
-                                context = LocalContext.current,
-                                source = source,
-                                onClick = {
-                                    onResultClick(source)
-                                    selectedResultForSources = null
+                        val currentSources = (if (allSources.any { it.title == result.title }) allSources else listOf(result))
+                            .filter { it.source != "douban" && it.source != "bangumi" }
+                            
+                        if (currentSources.isEmpty()) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = PrimaryGreen, strokeWidth = 2.dp)
+                                        Spacer(Modifier.height(16.dp))
+                                        Text("全网激进检索播放源中...", color = secondaryTextColor, fontSize = 14.sp)
+                                    }
                                 }
-                            )
+                            }
+                        } else {
+                            items(currentSources) { source ->
+                                SearchSourceItem(
+                                    context = LocalContext.current,
+                                    source = source,
+                                    onClick = {
+                                        onResultClick(source)
+                                        selectedResultForSources = null
+                                    }
+                                )
+                            }
                         }
                     }
                 }

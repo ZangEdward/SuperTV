@@ -44,6 +44,7 @@ fun DetailScreen(
     cachedEpisodes: Set<Int>,
     allSources: List<SearchResult> = emptyList(),
     currentSource: String = "",
+    fallbackCover: String = "", // 新增 fallbackCover
     latencies: Map<String, Long> = emptyMap(),
     isAllSourcesLoading: Boolean = false,
     isDarkTheme: Boolean = true, // 新增
@@ -56,12 +57,21 @@ fun DetailScreen(
 ) {
     val context = LocalContext.current
     val cacheManager = remember { EpisodeCacheManager(context) }
-    var showSourcesDialog by remember { mutableStateOf(false) }
     var showCacheDialog by remember { mutableStateOf(false) }
+
+    // 自动切换逻辑：如果当前是元数据源（豆瓣/Bangumi）且没有剧集，但全网搜索已完成并有结果，自动切换到第一个有效源
+    LaunchedEffect(detail, allSources, isAllSourcesLoading) {
+        if (!isAllSourcesLoading && detail != null && detail.episodes.isEmpty() && 
+            (detail.source == "douban" || detail.source == "bangumi")) {
+            val validSource = allSources.firstOrNull { it.episodes.isNotEmpty() }
+            if (validSource != null) {
+                onSourceSelect(validSource)
+            }
+        }
+    }
 
     // 使用主题色替代硬编码色
     val backgroundColor = MaterialTheme.colorScheme.background
-    val cardColor = MaterialTheme.colorScheme.surfaceVariant
     val textColor = MaterialTheme.colorScheme.onBackground
     val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -104,8 +114,12 @@ fun DetailScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(backgroundColor)
     ) {
         Box(modifier = Modifier.fillMaxWidth().height(280.dp)) {
+            val displayCover = if (!detail.cover.isNullOrBlank()) detail.cover 
+                               else if (fallbackCover.isNotBlank()) fallbackCover
+                               else allSources.firstOrNull { it.cover.isNotBlank() }?.cover ?: ""
+                               
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(detail.cover).crossfade(true).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(displayCover).crossfade(true).build(),
                 contentDescription = detail.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -175,25 +189,6 @@ fun DetailScreen(
                 Text(epText, fontSize = 13.sp, color = secondaryTextColor)
             }
 
-            Spacer(Modifier.height(8.dp))
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable { showSourcesDialog = true },
-                shape = RoundedCornerShape(8.dp),
-                color = cardColor
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Source, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    val sourceText = if (currentSource.isBlank()) detail.sourceName else currentSource
-                    Text("当前源: " + sourceText, color = textColor, fontSize = 14.sp)
-                    Spacer(Modifier.weight(1f))
-                    Text(allSources.size.toString() + "个备选源 >", color = PrimaryGreen, fontSize = 13.sp)
-                }
-            }
-
             if (detail.desc.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Text(detail.desc, fontSize = 14.sp, color = textColor.copy(alpha = 0.8f), maxLines = 5, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
@@ -253,7 +248,18 @@ fun DetailScreen(
         // 剧集网格
         if (detail.episodes.isEmpty()) {
             Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                Text("暂无剧集信息", color = secondaryTextColor)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("当前源暂无剧集", color = secondaryTextColor)
+                    if (allSources.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(onClick = { 
+                            // 寻找第一个有剧集的源进行切换
+                            allSources.firstOrNull { it.episodes.isNotEmpty() }?.let { onSourceSelect(it) }
+                        }) {
+                            Text("点击尝试自动切换有效源", color = PrimaryGreen)
+                        }
+                    }
+                }
             }
         } else {
             LazyVerticalGrid(
@@ -275,15 +281,26 @@ fun DetailScreen(
     } else {
         // 播放源列表
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            allSources.forEach { source ->
-                val latency = latencies[source.id + source.source]
-                SourceItem(
-                    context = context,
-                    source = source,
-                    isSelected = source.source == currentSource && source.id == detail.id,
-                    latency = latency,
-                    onClick = { onSourceSelect(source) }
-                )
+            val playbackSources = allSources.filter { it.source != "douban" && it.source != "bangumi" }
+            if (playbackSources.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(Modifier.size(20.dp), color = PrimaryGreen, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text("全网激进检索播放源中...", color = secondaryTextColor, fontSize = 13.sp)
+                    }
+                }
+            } else {
+                playbackSources.forEach { source ->
+                    val latency = latencies[source.id + source.source]
+                    SourceItem(
+                        context = context,
+                        source = source,
+                        isSelected = source.source == currentSource && source.id == detail.id,
+                        latency = latency,
+                        onClick = { onSourceSelect(source) }
+                    )
+                }
             }
         }
     }
@@ -293,21 +310,6 @@ fun DetailScreen(
         Spacer(Modifier.height(40.dp))
     }
 
-
-    if (showSourcesDialog && allSources.isNotEmpty()) {
-        SourceSelectionSheet(
-            sources = allSources,
-            currentSource = currentSource,
-            currentId = detail.id,
-            cover = detail.cover,
-            title = detail.title,
-            onSourceSelected = { source ->
-                onSourceSelect(source)
-                showSourcesDialog = false
-            },
-            onDismiss = { showSourcesDialog = false }
-        )
-    }
 
     if (showCacheDialog && detail != null) {
         EpisodeCacheDialog(

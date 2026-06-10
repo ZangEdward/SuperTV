@@ -341,7 +341,13 @@ fun MobilePortraitPlayerScreen(
                 isSeeking = false
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            colors = SliderDefaults.colors(thumbColor = PrimaryGreen, activeTrackColor = PrimaryGreen)
+            colors = SliderDefaults.colors(
+                thumbColor = PrimaryGreen,
+                activeTrackColor = PrimaryGreen,
+                inactiveTrackColor = PrimaryGreen.copy(alpha = 0.24f),
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent
+            )
         )
 
         // Info & Tabs Section
@@ -601,8 +607,14 @@ fun MobilePlayerScreen(
                             player.seekTo(position)
                             isSeeking = false
                         },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        colors = SliderDefaults.colors(thumbColor = PrimaryGreen, activeTrackColor = PrimaryGreen)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = PrimaryGreen,
+                            activeTrackColor = PrimaryGreen,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                            activeTickColor = Color.Transparent,
+                            inactiveTickColor = Color.Transparent
+                        )
                     )
 
                     Row(

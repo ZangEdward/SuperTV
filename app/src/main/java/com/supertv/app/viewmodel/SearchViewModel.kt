@@ -39,15 +39,7 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
     // TV 搜索结果（去重处理）
     val tvResults: StateFlow<List<SearchResult>> = _results.map { list ->
-        val map = mutableMapOf<String, SearchResult>()
-        list.forEach { item ->
-            val key = item.title.replace("\\s+".toRegex(), "")
-            val existing = map[key]
-            if (existing == null || (item.episodes.size > existing.episodes.size)) {
-                map[key] = item
-            }
-        }
-        map.values.toList()
+        SearchUtils.mergeResults(list)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     // Paging 3 搜索结果
@@ -146,21 +138,22 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 // 1. 尝试精准匹配
-                val exactResults = repository.aggressiveSearch(query, onlyExact = true)
-                val validExactResults = exactResults.filter { 
-                    it.source != "douban" && it.source != "bangumi" || it.episodes.isNotEmpty() 
-                }
+                val allRawResults = repository.aggressiveSearch(query, onlyExact = true)
+                // 彻底排除 douban/bangumi
+                val playbackResults = allRawResults.filter { it.source != "douban" && it.source != "bangumi" }
 
-                if (validExactResults.isNotEmpty()) {
-                    val bestMatch = validExactResults.maxByOrNull { it.episodes.size } ?: validExactResults.first()
-                    _results.value = validExactResults
+                if (playbackResults.isNotEmpty()) {
+                    val bestMatch = playbackResults.maxByOrNull { it.episodes.size } ?: playbackResults.first()
+                    _results.value = SearchUtils.mergeResults(playbackResults)
                     _navigateToDetail.emit(bestMatch)
                     
                     launch {
-                        _results.value = repository.aggressiveSearch(query)
+                        val fuzzyResults = repository.aggressiveSearch(query)
+                        _results.value = SearchUtils.mergeResults(fuzzyResults.filter { it.source != "douban" && it.source != "bangumi" })
                     }
                 } else {
-                    _results.value = repository.aggressiveSearch(query)
+                    val results = repository.aggressiveSearch(query)
+                    _results.value = SearchUtils.mergeResults(results.filter { it.source != "douban" && it.source != "bangumi" })
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SearchViewModel", "searchTV failed", e)
@@ -205,36 +198,29 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 if (_searchMode.value == 0) {
-                    // 1. 首先尝试精准匹配 (清洗逻辑：先去空格，再去符号)
-                    val exactResults = repository.aggressiveSearch(query, onlyExact = true)
+                    // 1. 首先尝试精准匹配
+                    val allExactResults = repository.aggressiveSearch(query, onlyExact = true)
                     
-                    // 排除 douban/bangumi 作为【自动跳转】目标，因为它们不能作为播放源
-                    val playbackExactResults = exactResults.filter { 
+                    // 排除 douban/bangumi
+                    val playbackExactResults = allExactResults.filter { 
                         it.source != "douban" && it.source != "bangumi"
                     }
 
                     if (playbackExactResults.isNotEmpty()) {
                         // 发现精准匹配的播放源，立即通知 UI 跳转
                         val bestMatch = playbackExactResults.maxByOrNull { it.episodes.size } ?: playbackExactResults.first()
-                        _results.value = exactResults // 列表可以包含豆瓣等元数据源供查看
+                        _results.value = SearchUtils.mergeResults(playbackExactResults)
                         _navigateToDetail.emit(bestMatch)
                         
                         // 后台继续加载完整结果（模糊匹配）
                         launch {
                             val fuzzyResults = repository.aggressiveSearch(query, onlyExact = false)
-                            _results.value = fuzzyResults
-                        }
-                    } else if (exactResults.isNotEmpty()) {
-                        // 虽然有精准匹配，但全是元数据源（豆瓣/Bangumi），则展示列表而不自动跳转
-                        // 或者根据需求也可以跳转，但通常用户希望直接播放，所以此处仅更新列表
-                        _results.value = exactResults
-                        launch {
-                            val fuzzyResults = repository.aggressiveSearch(query, onlyExact = false)
-                            _results.value = fuzzyResults
+                            _results.value = SearchUtils.mergeResults(fuzzyResults.filter { it.source != "douban" && it.source != "bangumi" })
                         }
                     } else {
-                        // 无精准匹配，直接执行模糊匹配
-                        _results.value = repository.aggressiveSearch(query)
+                        // 无精准播放源匹配，执行模糊匹配并过滤元数据源
+                        val results = repository.aggressiveSearch(query)
+                        _results.value = SearchUtils.mergeResults(results.filter { it.source != "douban" && it.source != "bangumi" })
                     }
                 } else {
                     performNetDiskSearch(query)

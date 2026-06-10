@@ -47,9 +47,14 @@ fun SourceSelectionSheet(
     var latencies by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var isTesting by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    
+    // 过滤掉元数据源，仅保留真实播放源
+    val playbackSources = remember(sources) {
+        sources.filter { it.source != "douban" && it.source != "bangumi" }
+    }
 
-    LaunchedEffect(sources, currentSource, currentId) {
-        val idx = sources.indexOfFirst { it.source == currentSource && it.id == currentId }
+    LaunchedEffect(playbackSources, currentSource, currentId) {
+        val idx = playbackSources.indexOfFirst { it.source == currentSource && it.id == currentId }
         if (idx >= 0) listState.animateScrollToItem(idx)
     }
 
@@ -57,7 +62,7 @@ fun SourceSelectionSheet(
         scope.launch {
             isTesting = true
             val base = RetrofitClient.getCurrentBaseUrl().trimEnd('/')
-            val urlMap = sources.associate { (it.source + "+" + it.id) to (base + "/api/v1/douban/hot") }
+            val urlMap = playbackSources.associate { (it.source + "+" + it.id) to (base + "/api/v1/douban/hot") }
             latencies = speedTestService.testAll(urlMap)
             isTesting = false
         }
@@ -71,7 +76,7 @@ fun SourceSelectionSheet(
         Column {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = PrimaryGreen, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
-                val sourceCount = sources.size
+                val sourceCount = playbackSources.size
                 Text("换源 (" + sourceCount + ")", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
                 IconButton(onClick = { runSpeedTest() }, enabled = !isTesting) {
                     if (isTesting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = PrimaryGreen)
@@ -88,20 +93,31 @@ fun SourceSelectionSheet(
                     }
                     Column {
                         Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        val sourceInfo = "共 " + sources.size + " 个播放源"
+                        val sourceInfo = "共 " + playbackSources.size + " 个有效播放源"
                         Text(sourceInfo, fontSize = 12.sp, color = TextSecondary)
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
-            LazyColumn(state = listState, modifier = Modifier.heightIn(max = 400.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(sources) { _, source ->
-                    val key = source.source + "+" + source.id
-                    SourceItem(context = context, source = source,
-                        isSelected = source.source == currentSource && source.id == currentId,
-                        latency = latencies[key], isTesting = isTesting,
-                        onClick = { onSourceSelected(source) })
+            
+            if (playbackSources.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = PrimaryGreen)
+                        Spacer(Modifier.height(16.dp))
+                        Text("全网激进检索播放源中...", color = TextSecondary)
+                    }
+                }
+            } else {
+                LazyColumn(state = listState, modifier = Modifier.heightIn(max = 400.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(playbackSources) { _, source ->
+                        val key = source.source + "+" + source.id
+                        SourceItem(context = context, source = source,
+                            isSelected = source.source == currentSource && source.id == currentId,
+                            latency = latencies[key], isTesting = isTesting,
+                            onClick = { onSourceSelected(source) })
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))

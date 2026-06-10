@@ -190,10 +190,12 @@ class DlnaService(private val context: Context) {
         val locationRegex = Regex("""LOCATION:\s*(http://[^\s]+)""", RegexOption.IGNORE_CASE)
         val usnRegex = Regex("""USN:\s*([^\s]+)""", RegexOption.IGNORE_CASE)
         val serverRegex = Regex("""SERVER:\s*([^\r\n]+)""", RegexOption.IGNORE_CASE)
+        val friendlyNameRegex = Regex("""(?:FRIENDLYNAME|X-Friendly-Name):\s*([^\r\n]+)""", RegexOption.IGNORE_CASE)
 
         val location = locationRegex.find(response)?.groupValues?.getOrNull(1) ?: return null
         val usn = usnRegex.find(response)?.groupValues?.getOrNull(1) ?: return null
         val server = serverRegex.find(response)?.groupValues?.getOrNull(1) ?: "Unknown"
+        val friendlyName = friendlyNameRegex.find(response)?.groupValues?.getOrNull(1)
 
         val host = try {
             InetAddress.getByName(java.net.URL(location).host).hostAddress ?: ""
@@ -203,9 +205,20 @@ class DlnaService(private val context: Context) {
             java.net.URL(location).port
         } catch (_: Exception) { 0 }
 
+        // 规范化设备名称：优先使用 friendlyName，否则尝试从 Server 提取或使用 IP
+        val normalizedName = when {
+            !friendlyName.isNullOrBlank() -> friendlyName.trim()
+            server.contains("UPnP/1.0") -> {
+                // 如果 Server 是标准 UPnP 格式，尝试取前半部分并过滤掉 Linux 等通用词
+                val raw = server.substringBefore(" ").trim()
+                if (raw.lowercase() in listOf("linux", "windows", "unix", "unknown")) "DLNA Device ($host)" else raw
+            }
+            else -> "DLNA Device ($host)"
+        }
+
         return DLNADevice(
             id = usn,
-            name = server.substringBefore(" "),
+            name = normalizedName,
             host = host,
             port = if (port > 0) port else 80,
             controlUrl = location,
