@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -215,12 +216,24 @@ fun TVHomeScreen(
     onUserClick: () -> Unit
 ) {
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
     val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
     val recommended by viewModel.recommended.collectAsState(initial = emptyList())
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
     val shortDramas by viewModel.shortDramas.collectAsState(initial = emptyList())
     
     val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+    val subCategories = remember(selectedCategory) {
+        when (selectedCategory) {
+            "热门" -> emptyList()
+            "电影" -> listOf("全部", "热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
+            "剧集" -> listOf("全部", "热门", "华语", "欧美", "韩剧", "日剧", "泰国")
+            "动漫" -> listOf("全部", "日本", "国产", "欧美")
+            "综艺" -> listOf("全部", "内地", "港台", "日韩", "欧美")
+            "短剧" -> listOf("热门", "最新")
+            else -> listOf("全部")
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -259,8 +272,6 @@ fun TVHomeScreen(
                 IconButton(onClick = onUserClick) { Icon(Icons.Outlined.AccountCircle, null, tint = MaterialTheme.colorScheme.onBackground) }
             }
         }
-
-        // Category Bar
         LazyRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -280,6 +291,32 @@ fun TVHomeScreen(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                }
+            }
+        }
+
+        // TV SubCategory Bar
+        if (selectedCategory != "热门" && subCategories.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(subCategories) { subCategory ->
+                    val isSelected = subCategory == selectedSubCategory
+                    Surface(
+                        onClick = { viewModel.selectSubCategory(subCategory) },
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else Color.Transparent,
+                        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Text(
+                            text = subCategory,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -327,6 +364,7 @@ fun HomeScreen(
     onItemClick: (SearchResult) -> Unit
 ) {
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
     val hotMovies by viewModel.hotMovies.collectAsState(initial = emptyList())
     val recommended by viewModel.recommended.collectAsState(initial = emptyList())
     val animeUpdates by viewModel.animeUpdates.collectAsState(initial = emptyList())
@@ -334,6 +372,17 @@ fun HomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     
     val categories = listOf("热门", "电影", "剧集", "动漫", "综艺", "短剧")
+    val subCategories = remember(selectedCategory) {
+        when (selectedCategory) {
+            "热门" -> emptyList()
+            "电影" -> listOf("全部", "热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
+            "剧集" -> listOf("全部", "热门", "华语", "欧美", "韩剧", "日剧", "泰国")
+            "动漫" -> listOf("全部", "日本", "国产", "欧美")
+            "综艺" -> listOf("全部", "内地", "港台", "日韩", "欧美")
+            "短剧" -> listOf("热门", "最新")
+            else -> listOf("全部")
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -341,6 +390,14 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
+        if (selectedCategory != "热门" && subCategories.isNotEmpty()) {
+            SubCategoryBar(
+                subCategories = subCategories,
+                selectedSubCategory = selectedSubCategory,
+                onSubCategoryClick = { viewModel.selectSubCategory(it) }
+            )
+        }
+
         if (isLoading && hotMovies.isEmpty() && recommended.isEmpty() && animeUpdates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -455,6 +512,39 @@ fun HomeScreen(
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SubCategoryBar(
+    subCategories: List<String>,
+    selectedSubCategory: String,
+    onSubCategoryClick: (String) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(subCategories) { subCategory ->
+            val isSelected = subCategory == selectedSubCategory
+            Surface(
+                onClick = { onSubCategoryClick(subCategory) },
+                shape = RoundedCornerShape(16.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
+            ) {
+                Text(
+                    text = subCategory,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
             }
         }
     }

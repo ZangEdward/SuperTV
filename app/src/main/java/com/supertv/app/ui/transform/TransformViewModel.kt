@@ -36,6 +36,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedCategory = MutableStateFlow("热门")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
+    private val _selectedSubCategory = MutableStateFlow("全部")
+    val selectedSubCategory: StateFlow<String> = _selectedSubCategory.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -50,15 +53,25 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectCategory(category: String) {
         if (_selectedCategory.value != category) {
             _selectedCategory.value = category
+            _selectedSubCategory.value = if (category == "短剧") "热门" else "全部"
+            loadData()
+        }
+    }
+
+    fun selectSubCategory(subCategory: String) {
+        if (_selectedSubCategory.value != subCategory) {
+            _selectedSubCategory.value = subCategory
             loadData()
         }
     }
 
     private fun loadData() {
         val category = _selectedCategory.value
+        val subCategory = _selectedSubCategory.value
+        val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
         
-        // 先从缓存加载，实现“秒开”效果，类似 Selene
-        val cached = store.getCategoryCache(category)
+        // 先从缓存加载
+        val cached = store.getCategoryCache(cacheKey)
         if (cached.isNotEmpty()) {
             when (category) {
                 "热门" -> {
@@ -206,48 +219,61 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private suspend fun loadCategoryData(category: String) {
-        if (category == "动漫") {
+        val subCategory = _selectedSubCategory.value
+        
+        // 动漫特殊处理：如果选了“全部”且是星期几切换，走 Bangumi 逻辑
+        if (category == "动漫" && subCategory == "全部") {
             loadAnimeData()
             return
         }
         
-        val (type, tag) = when (category) {
-            "电影" -> "movie" to "热门"
-            "剧集" -> "tv" to "热门"
-            "综艺" -> "tv" to "综艺"
-            "短剧" -> {
-                val resp = apiService.getShortDramaHot(1)
-                if (resp.isSuccessful) {
-                    val body = resp.body()
-                    val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
-                    val results = items.map { it.toSearchResult() }
-                    _shortDramas.value = results
-                    store.saveCategoryCache("短剧", results)
-                }
-                return
+        val type = when (category) {
+            "电影" -> "movie"
+            "剧集" -> "tv"
+            "综艺" -> "tv"
+            "短剧" -> "movie"
+            "动漫" -> "tv"
+            else -> "movie"
+        }
+
+        // 映射子分类到豆瓣 Tag
+        val tag = when {
+            subCategory == "全部" -> when (category) {
+                "电影" -> "热门"
+                "剧集" -> "热门"
+                "综艺" -> "综艺"
+                "动漫" -> "动漫"
+                "短剧" -> "热门"
+                else -> category
             }
-            else -> "movie" to category
+            category == "短剧" && subCategory == "最新" -> "最新"
+            else -> subCategory
         }
 
         try {
             val encodedTag = java.net.URLEncoder.encode(tag, "UTF-8")
-            val resp = apiService.getDoubanData(type, encodedTag)
+            val resp = if (category == "短剧" && tag == "热门") {
+                apiService.getShortDramaHot(1)
+            } else {
+                apiService.getDoubanData(type, encodedTag)
+            }
+            
             if (resp.isSuccessful) {
                 val body = resp.body()
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 
-                // 保存基础缓存 (豆瓣元数据)
-                store.saveCategoryCache(category, results)
+                // 保存基础缓存
+                val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
+                store.saveCategoryCache(cacheKey, results)
 
-                // 立即更新 UI (先显示豆瓣数据)
+                // 立即更新 UI
                 updateCategoryFlow(category, results)
 
-                // 后台匹配播放源 (对齐 supertvold 逻辑)
+                // 后台匹配播放源
                 viewModelScope.launch {
                     val repository = com.supertv.app.data.SearchRepository()
                     val matchedResults = results.map { item ->
-                        // 激进搜索匹配后台
                         val playable = repository.aggressiveSearch(item.title)
                         playable.firstOrNull() ?: item
                     }
@@ -255,7 +281,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("TransformViewModel", "Failed to load category $category", e)
+            android.util.Log.e("TransformViewModel", "Failed to load category $category with tag $tag", e)
         }
     }
 
