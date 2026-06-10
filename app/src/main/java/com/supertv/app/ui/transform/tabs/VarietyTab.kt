@@ -18,12 +18,12 @@ fun VarietyTab(
     viewModel: TransformViewModel,
     onItemClick: (SearchResult) -> Unit
 ) {
-    val animeUpdates by viewModel.animeUpdates.collectAsState()
+    val varietyUpdates by viewModel.varietyUpdates.collectAsState()
     val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
 
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         item { SectionHeader(if (selectedSubCategory == "热门") "热门综艺" else "$selectedSubCategory 综艺") }
-        items(animeUpdates.chunked(3)) { rowItems ->
+        items(varietyUpdates.chunked(3)) { rowItems ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                 rowItems.forEach { item ->
                     Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }

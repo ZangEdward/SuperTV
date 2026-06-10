@@ -29,6 +29,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _animeUpdates = MutableStateFlow<List<SearchResult>>(emptyList<SearchResult>())
     val animeUpdates: StateFlow<List<SearchResult>> = _animeUpdates.asStateFlow()
 
+    private val _varietyUpdates = MutableStateFlow<List<SearchResult>>(emptyList<SearchResult>())
+    val varietyUpdates: StateFlow<List<SearchResult>> = _varietyUpdates.asStateFlow()
+
     private val _animeCalendar = MutableStateFlow<Map<Int, List<SearchResult>>>(emptyMap())
     val animeCalendar: StateFlow<Map<Int, List<SearchResult>>> = _animeCalendar.asStateFlow()
 
@@ -310,7 +313,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             "电影" -> _recommended.value = results
             "剧集" -> _hotMovies.value = results
             "动漫" -> _animeUpdates.value = results
-            "综艺" -> _animeUpdates.value = results
+            "综艺" -> _varietyUpdates.value = results
             "短剧" -> _shortDramas.value = results
             "热门" -> {
                 // 热门频道特殊逻辑由 loadHomeData 分支处理
