@@ -186,6 +186,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             else -> "movie"
         }
 
+        // 重新校对后端 Tag 映射，确保每个页面都有数据 (对齐 LunaTV-Enhanced)
         val tag = when {
             category == "动漫" -> when (subCategory) {
                 "热门" -> "动漫"
@@ -196,34 +197,51 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
             }
             category == "剧集" -> when (subCategory) {
                 "热门" -> "最近热门"
+                "华语" -> "华语"
+                "欧美" -> "欧美"
                 "韩剧" -> "韩国"
                 "日剧" -> "日本"
                 else -> subCategory
             }
-            category == "电影" && subCategory == "热门" -> "热门"
-            category == "综艺" && subCategory == "热门" -> "综艺"
-            category == "短剧" && subCategory == "热门" -> "热门"
-            category == "短剧" && subCategory == "最新" -> "最新"
+            category == "电影" -> when (subCategory) {
+                "热门" -> "热门"
+                "最新" -> "最新"
+                "豆瓣高分" -> "豆瓣高分"
+                "冷门佳片" -> "冷门佳片"
+                else -> subCategory
+            }
+            category == "综艺" -> when (subCategory) {
+                "热门" -> "综艺"
+                else -> subCategory
+            }
+            category == "短剧" -> when (subCategory) {
+                "热门" -> "热门"
+                "最新" -> "最新"
+                else -> subCategory
+            }
             else -> subCategory
         }
 
         try {
+            // 手动执行 UTF-8 编码，防止部分服务器节点解析乱码
+            val encodedTag = java.net.URLEncoder.encode(tag, "UTF-8")
             val resp = if (category == "短剧" && tag == "热门") {
                 apiService.getShortDramaHot(1)
             } else {
-                apiService.getDoubanData(type, tag)
+                apiService.getDoubanData(type, encodedTag)
             }
             
             if (resp.isSuccessful) {
                 val body = resp.body()
-                val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
+                // 兼容 list 和 items 两种返回格式 (对齐 Selene)
+                val items = body?.list?.ifEmpty { body.items } ?: body?.items ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 
                 val cacheKey = "${category}_${subCategory}"
-                store.saveCategoryCache(cacheKey, results)
-
-                // 立即更新 UI (Metadata)
-                updateCategoryFlow(category, results)
+                if (results.isNotEmpty()) {
+                    store.saveCategoryCache(cacheKey, results)
+                    updateCategoryFlow(category, results)
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load category $category with tag $tag", e)
