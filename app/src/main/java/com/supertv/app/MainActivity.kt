@@ -405,23 +405,22 @@ class MainActivity : AppCompatActivity() {
         val currentDestination = navBackStackEntry?.destination
         val items = remember { getNavItems() }
         
-        // 记录上一次选中的索引，用于判断方向
-        var lastSelectedIndex by remember { 
+        // 记录当前选中的索引，用于判断方向
+        var selectedIndex by remember { 
             mutableIntStateOf(items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)) 
         }
 
-        // 监听目的地变化，更新当前索引
+        // 同步目的地变化到 selectedIndex
         LaunchedEffect(currentDestination?.id) {
             val idx = items.indexOfFirst { it.id == currentDestination?.id }
             if (idx != -1) {
-                lastSelectedIndex = idx
+                selectedIndex = idx
             }
         }
 
         Surface(
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 8.dp,
-            shape = androidx.compose.ui.graphics.RectangleShape,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
@@ -446,27 +445,23 @@ class MainActivity : AppCompatActivity() {
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 if (currentDestination?.id == item.id) {
-                                    // 如果已经在当前标签页，且不在根页面（比如在详情页），则回到根页面
                                     navController.popBackStack(item.id, false)
                                     return@clickable
                                 }
 
-                                // 判断是否从详情页、搜索页、缓存页切出
-                                val isFromIndependentPage = currentDestination?.id == R.id.nav_detail || 
-                                                           currentDestination?.id == R.id.nav_search || 
-                                                           currentDestination?.id == R.id.nav_slideshow
-
-                                // 根据索引关系决定滑动方向
-                                val isForward = index > lastSelectedIndex
+                                // 核心逻辑：直接比较目标索引和当前记录的索引
+                                val isForward = index > selectedIndex
 
                                 val navOptions = navOptions {
                                     anim {
                                         if (isForward) {
+                                            // 目标在右边 -> 向左滑入 (从右侧进入)
                                             enter = R.anim.slide_in_right
                                             exit = R.anim.slide_out_left
                                             popEnter = R.anim.slide_in_left
                                             popExit = R.anim.slide_out_right
                                         } else {
+                                            // 目标在左边 -> 向右滑入 (从左侧进入)
                                             enter = R.anim.slide_in_left
                                             exit = R.anim.slide_out_right
                                             popEnter = R.anim.slide_in_right
@@ -477,11 +472,11 @@ class MainActivity : AppCompatActivity() {
                                         saveState = true
                                     }
                                     launchSingleTop = true
-                                    // 如果是从详情等独立页面切出，或者用户点击了标签，通常期望回到该标签的根部
-                                    // 这里我们保持 restoreState 为 true 以保持各标签页的状态，
-                                    // 但通过上面的 popBackStack 处理重选，通过合理的 popUpTo 处理切换。
-                                    restoreState = !isFromIndependentPage 
+                                    restoreState = true
                                 }
+                                
+                                // 立即更新索引，确保连续点击时方向正确
+                                selectedIndex = index
                                 navController.navigate(item.id, null, navOptions)
                             },
                         contentAlignment = Alignment.Center

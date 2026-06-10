@@ -20,8 +20,11 @@ class SearchRepository {
     companion object {
         private const val SEARCH_TIMEOUT_MS = 15_000L
         
-        // 内存详情池：用于“秒开”已搜索过的详情 (对齐 supertvold SearchDetailPool)
+        // 1. 详情池：存储完整的剧集详情 (对齐 supertvold)
         private val detailPool = mutableMapOf<String, VideoDetail>()
+        
+        // 2. 匹配池：存储标题到播放源的映射关系，避免重复激进搜索
+        private val matchPool = mutableMapOf<String, SearchResult>()
         
         fun getFromPool(id: String, source: String): VideoDetail? {
             return detailPool["${source}_$id"]
@@ -29,6 +32,14 @@ class SearchRepository {
         
         fun addToPool(detail: VideoDetail) {
             detailPool["${detail.source}_${detail.id}"] = detail
+        }
+
+        fun getMatch(title: String): SearchResult? {
+            return matchPool[SearchUtils.cleanTitle(title)]
+        }
+
+        fun addMatch(title: String, result: SearchResult) {
+            matchPool[SearchUtils.cleanTitle(title)] = result
         }
     }
 

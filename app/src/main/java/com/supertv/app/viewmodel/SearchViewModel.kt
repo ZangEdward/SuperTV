@@ -290,25 +290,38 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
             _allSources.value = emptyList()
             _searchProgress.value = 0f
             
-            // 1. [秒开优化]：从内存详情池获取
-            val pooled = SearchRepository.getFromPool(id, source)
+            // 1. [秒开优化]：优先从内存详情池或匹配池获取，解决“为何还要再匹配一次”的问题
+            val searchTitle = title ?: ""
+            var actualId = id
+            var actualSource = source
+
+            if (source == "douban" || source == "bangumi") {
+                val matched = SearchRepository.getMatch(searchTitle)
+                if (matched != null) {
+                    actualId = matched.id
+                    actualSource = matched.source
+                    android.util.Log.d("SearchViewModel", "[MATCH POOL] Found playable source for $searchTitle -> $actualSource")
+                }
+            }
+
+            val pooled = SearchRepository.getFromPool(actualId, actualSource)
             if (pooled != null) {
                 _detail.value = pooled
                 _isLoadingDetail.value = false
-                android.util.Log.d("SearchViewModel", "[POOL] Cache hit for $title")
+                android.util.Log.d("SearchViewModel", "[POOL] Cache hit for $searchTitle")
                 
                 // 仍需异步刷新全网来源（不阻塞）
-                loadAllSources(title ?: pooled.title, id, source)
+                loadAllSources(searchTitle.ifBlank { pooled.title }, actualId, actualSource)
                 return@launch
             }
 
             try {
                 // [资料源识别]
-                val isMetadataSource = source == "douban" || source == "bangumi"
+                val isMetadataSource = actualSource == "douban" || actualSource == "bangumi"
                 
-                if (!isMetadataSource && id.isNotBlank() && id != "0") {
+                if (!isMetadataSource && actualId.isNotBlank() && actualId != "0") {
                     // [路径 A]：有确定的视频源，优先加载
-                    val result = repository.getDetail(id, source)
+                    val result = repository.getDetail(actualId, actualSource)
                     if (result != null) {
                         _detail.value = result
                         SearchRepository.addToPool(result)
@@ -316,17 +329,16 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                         
                         // 后台异步加载其他换源（不阻塞当前展示）
                         launch {
-                            loadAllSources(title ?: result.title, id, source)
+                            loadAllSources(searchTitle.ifBlank { result.title }, actualId, actualSource)
                         }
                     } else {
                         // 首选源加载失败，走全网探测
-                        loadAllSources(title ?: "", id, source)
+                        loadAllSources(searchTitle, null, actualSource)
                     }
                 } else {
                     // [路径 B]：纯资料源，直接全网激进探测
-                    val searchTitle = title ?: ""
                     if (searchTitle.isNotBlank()) {
-                        loadAllSources(searchTitle, null, source)
+                        loadAllSources(searchTitle, null, actualSource)
                     } else {
                         _error.value = "标题不能为空"
                         _isLoadingDetail.value = false
