@@ -25,8 +25,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.navOptions
 import com.supertv.app.data.AuthRepository
 import com.supertv.app.data.RetrofitClient
 import com.supertv.app.data.SyncService
@@ -144,25 +144,23 @@ class MainActivity : AppCompatActivity() {
                                     onUserClick = { if (isLoggedIn) showUserMenu = true else showLoginDialog = true },
                                     onSearchClick = { 
                                         if (currentDestId != R.id.nav_search) {
-                                            navController.navigate(R.id.nav_search, null, navOptions {
-                                                anim {
-                                                    enter = R.anim.slide_in_top
-                                                    exit = android.R.anim.fade_out
-                                                    popEnter = android.R.anim.fade_in
-                                                    popExit = R.anim.slide_out_top
-                                                }
-                                            })
+                                            val options = NavOptions.Builder()
+                                                .setEnterAnim(R.anim.slide_in_top)
+                                                .setExitAnim(android.R.anim.fade_out)
+                                                .setPopEnterAnim(android.R.anim.fade_in)
+                                                .setPopExitAnim(R.anim.slide_out_top)
+                                                .build()
+                                            navController.navigate(R.id.nav_search, null, options)
                                         }
                                     },
                                     onDownloadClick = { 
-                                        navController.navigate(R.id.nav_slideshow, null, navOptions {
-                                            anim {
-                                                enter = R.anim.slide_in_top
-                                                exit = android.R.anim.fade_out
-                                                popEnter = android.R.anim.fade_in
-                                                popExit = R.anim.slide_out_top
-                                            }
-                                        })
+                                        val options = NavOptions.Builder()
+                                            .setEnterAnim(R.anim.slide_in_top)
+                                            .setExitAnim(android.R.anim.fade_out)
+                                            .setPopEnterAnim(android.R.anim.fade_in)
+                                            .setPopExitAnim(R.anim.slide_out_top)
+                                            .build()
+                                        navController.navigate(R.id.nav_slideshow, null, options)
                                     },
                                     onThemeToggle = { viewModel.toggleTheme() },
                                     isDarkTheme = uiIsDark,
@@ -170,11 +168,12 @@ class MainActivity : AppCompatActivity() {
                                     currentDestId = currentDestId,
                                     onNavItemClick = { id ->
                                         if (id != currentDestId) {
-                                            navController.navigate(id) {
-                                                popUpTo(navController.graph.startDestinationId) { saveState = false }
-                                                launchSingleTop = true
-                                                restoreState = false
-                                            }
+                                            val options = NavOptions.Builder()
+                                                .setPopUpTo(navController.graph.startDestinationId, false, false)
+                                                .setLaunchSingleTop(true)
+                                                .setRestoreState(false)
+                                                .build()
+                                            navController.navigate(id, null, options)
                                         }
                                     }
                                 )
@@ -189,24 +188,22 @@ class MainActivity : AppCompatActivity() {
                                     val bundle = Bundle().apply {
                                         putString("id", id); putString("source", source); putString("title", title)
                                     }
-                                    navController.navigate(R.id.nav_detail, bundle, navOptions {
-                                        anim {
-                                            enter = R.anim.slide_up
-                                            exit = android.R.anim.fade_out
-                                            popEnter = android.R.anim.fade_in
-                                            popExit = R.anim.slide_down
-                                        }
-                                    })
+                                    val options = NavOptions.Builder()
+                                        .setEnterAnim(R.anim.slide_up)
+                                        .setExitAnim(android.R.anim.fade_out)
+                                        .setPopEnterAnim(android.R.anim.fade_in)
+                                        .setPopExitAnim(R.anim.slide_down)
+                                        .build()
+                                    navController.navigate(R.id.nav_detail, bundle, options)
                                 },
                                 onNavigateToDownloads = {
-                                    navController.navigate(R.id.nav_slideshow, null, navOptions {
-                                        anim {
-                                            enter = R.anim.slide_in_top
-                                            exit = android.R.anim.fade_out
-                                            popEnter = android.R.anim.fade_in
-                                            popExit = R.anim.slide_out_top
-                                        }
-                                    })
+                                    val options = NavOptions.Builder()
+                                        .setEnterAnim(R.anim.slide_in_top)
+                                        .setExitAnim(android.R.anim.fade_out)
+                                        .setPopEnterAnim(android.R.anim.fade_in)
+                                        .setPopExitAnim(R.anim.slide_out_top)
+                                        .build()
+                                    navController.navigate(R.id.nav_slideshow, null, options)
                                 }
                             )
                         }
@@ -294,11 +291,12 @@ class MainActivity : AppCompatActivity() {
                     selected = isSelected,
                     onClick = {
                         if (currentRoute != item.id) {
-                            navController.navigate(item.id) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = false }
-                                launchSingleTop = true
-                                restoreState = false
-                            }
+                            val options = NavOptions.Builder()
+                                .setPopUpTo(navController.graph.startDestinationId, false, false)
+                                .setLaunchSingleTop(true)
+                                .setRestoreState(false)
+                                .build()
+                            navController.navigate(item.id, null, options)
                         }
                     },
                     colors = NavigationBarItemDefaults.colors(
