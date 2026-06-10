@@ -128,6 +128,14 @@ object SearchUtils {
     }
 
     /**
+     * 获取去尾标题：去除最后一个空格及其后面的内容
+     */
+    fun getTailTrimTitle(title: String): String {
+        if (!title.contains(" ")) return title
+        return title.substringBeforeLast(" ").trim()
+    }
+
+    /**
      * 合并剧集列表 (模仿 supertvold mergeEpisodes)
      * 将多个来源的剧集进行对齐合并
      */

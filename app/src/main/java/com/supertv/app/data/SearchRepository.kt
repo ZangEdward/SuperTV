@@ -72,7 +72,19 @@ class SearchRepository {
         val rawResults = searchRaw(query, sources)
         var results = rawResults.filter { SearchUtils.cleanTitle(it.title) == cleanedQuery }
         
-        // 如果原始查询没搜到精准匹配，并行尝试清洗后的纯净词
+        // 2. 如果原始查询没搜到精准匹配，尝试“去尾精准匹配”
+        // 逻辑：去除最后一个空格后面的内容，再进行“去空格符号”匹配
+        if (results.isEmpty()) {
+            val tailTrimmed = SearchUtils.getTailTrimTitle(query)
+            if (tailTrimmed != query) {
+                val cleanedTailTrimmed = SearchUtils.cleanTitle(tailTrimmed)
+                // 优先搜索去尾后的词
+                val tailResults = searchRaw(tailTrimmed, sources)
+                results = tailResults.filter { SearchUtils.cleanTitle(it.title) == cleanedTailTrimmed }
+            }
+        }
+        
+        // 3. 尝试清洗后的纯净词 (无空格) 精准匹配
         if (results.isEmpty()) {
             val pureTerm = query.replace("\\s+".toRegex(), "")
             if (pureTerm != query) {
@@ -81,16 +93,16 @@ class SearchRepository {
             }
         }
 
-        // 如果找到了精准匹配的结果，只显示精准匹配的结果，不再进行模糊搜索
+        // 如果找到了精准匹配（或去尾精准匹配）的结果，立即返回，不再进行后续模糊搜索
         if (results.isNotEmpty()) {
             return SearchUtils.mergeResults(results)
         }
 
-        // 如果要求“仅精准”，或者已经找到了结果（上面已 return），则不再往下走
+        // 如果要求“仅精准”，或者已经找到了结果，则不再往下走
         if (onlyExact) return emptyList()
 
-        // 2. 第二阶段：精准匹配失败，多线程并行执行模糊匹配与去尾变体搜索
-        android.util.Log.d("SearchRepository", "Precise match failed for: $query, starting concurrent fuzzy/variant search")
+        // 4. 第二阶段：精准匹配完全失败，并行执行变体模糊搜索
+        android.util.Log.d("SearchRepository", "Precise/Tail-Trim match failed for: $query, starting concurrent fuzzy search")
         
         return coroutineScope {
             // 生成变体
