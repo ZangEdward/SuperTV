@@ -452,61 +452,83 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     return@launch
                 }
 
-                val totalSites = sites.size
-                val completedSites = java.util.concurrent.atomic.AtomicInteger(0)
                 val allMatchedResults = java.util.concurrent.CopyOnWriteArrayList<SearchResult>()
-
-                // 记录是否已经展示了第一个结果，用于 Path B 快速响应
+                val searchPhases = SearchUtils.generateSearchVariants(title)
+                val totalPhases = searchPhases.size
+                
+                // 记录是否已经展示了第一个结果
                 var hasShownFirstResult = false
 
-                // 2. [极致并发]：同时启动所有源的检索 (类似 Selene 32路并发)
-                sites.forEach { site ->
-                    launch(Dispatchers.IO) {
-                        try {
-                            // 单个源超时限制 (对齐 Selene 8s)
-                            val results = withTimeoutOrNull(8000L) {
-                                repository.searchVideo(title, site.key)
-                            } ?: emptyList()
-                            
-                            val matched = results.filter { 
-                                SearchUtils.titleMatches(title, it.title) 
-                            }
-                            
-                            if (matched.isNotEmpty()) {
-                                allMatchedResults.addAll(matched)
-                                // [即时反馈]：一旦发现匹配结果，立即尝试更新 UI
-                                if (!hasShownFirstResult) {
-                                    hasShownFirstResult = true
-                                    withContext(Dispatchers.Main) {
-                                        updateFromMatchedResults(allMatchedResults.toList(), title)
+                // 遍历每个搜索阶段 (精准 -> 变体)
+                for ((index, term) in searchPhases.withIndex()) {
+                    if (allMatchedResults.size >= 30) break // 结果够多了
+                    
+                    val phaseProgressStart = 0.1f + (index.toFloat() / totalPhases) * 0.8f
+                    _searchProgress.value = phaseProgressStart
+                    
+                    val completedSites = java.util.concurrent.atomic.AtomicInteger(0)
+                    val totalSites = sites.size
+                    
+                    val isPrecise = index == 0
+
+                    sites.forEach { site ->
+                        launch(Dispatchers.IO) {
+                            try {
+                                val results = withTimeoutOrNull(6000L) {
+                                    repository.searchVideo(term, site.key)
+                                } ?: emptyList()
+                                
+                                val matched = if (isPrecise) {
+                                    results.filter { SearchUtils.cleanTitle(it.title) == SearchUtils.cleanTitle(term) }
+                                } else {
+                                    results.filter { SearchUtils.titleMatches(title, it.title) }
+                                }
+                                
+                                if (matched.isNotEmpty()) {
+                                    synchronized(allMatchedResults) {
+                                        val existingKeys = allMatchedResults.map { it.id + it.source }.toSet()
+                                        val newOnes = matched.filter { (it.id + it.source) !in existingKeys }
+                                        allMatchedResults.addAll(newOnes)
+                                    }
+                                    
+                                    if (!hasShownFirstResult) {
+                                        hasShownFirstResult = true
+                                        withContext(Dispatchers.Main) {
+                                            updateFromMatchedResults(allMatchedResults.toList(), title)
+                                        }
                                     }
                                 }
+                            } finally {
+                                completedSites.incrementAndGet()
                             }
-                        } catch (_: Exception) {
-                        } finally {
-                            val completed = completedSites.incrementAndGet()
-                            _searchProgress.value = 0.1f + (completed.toFloat() / totalSites) * 0.8f
                         }
                     }
-                }
 
-                // 3. 轮询器：定期同步合并结果 (对齐 Selene flushBatch 逻辑)
-                while (completedSites.get() < totalSites && _allSourcesLoading.value) {
-                    kotlinx.coroutines.delay(800) // 稍长一点的间隔，减少主线程压力
-                    if (allMatchedResults.isNotEmpty()) {
+                    // 等待当前阶段完成或超时
+                    var waitTime = 0
+                    while (completedSites.get() < totalSites && waitTime < 20) {
+                        delay(200)
+                        waitTime++
+                        if (hasShownFirstResult && waitTime > 10) break // 有结果了就不用死等
+                    }
+                    
+                    withContext(Dispatchers.Main) {
                         updateFromMatchedResults(allMatchedResults.toList(), title)
+                    }
+                    
+                    if (isPrecise && allMatchedResults.isNotEmpty()) {
+                        // 精准命中了，可以稍微延后模糊匹配或跳过
+                        delay(300)
                     }
                 }
 
-                // 4. 最终展示与彻底排序
+                // 最终展示与彻底排序
                 val finalPlaybackSources = SearchUtils.mergeResultsBySource(allMatchedResults.toList(), title)
                     .filter { it.id != currentId || it.source != currentSource }
-                    .sortedByDescending { it.episodes.size }
                 
                 _allSources.value = finalPlaybackSources
                 _searchProgress.value = 1.0f
                 
-                updateFromMatchedResults(allMatchedResults.toList(), title)
                 autoTestAndResort()
 
             } catch (e: Exception) {

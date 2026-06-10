@@ -17,7 +17,7 @@ interface ApiService {
     @GET("api/douban")
     suspend fun getDoubanData(
         @Query("type") type: String,
-        @Query("tag", encoded = true) tag: String,
+        @Query("tag") tag: String,
         @Query("pageSize") pageSize: Int = 20,
         @Query("pageStart") pageStart: Int = 0
     ): Response<DoubanResponse>

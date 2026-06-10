@@ -38,7 +38,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedCategory = MutableStateFlow("热门")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    private val _selectedSubCategory = MutableStateFlow("全部")
+    private val _selectedSubCategory = MutableStateFlow("热门")
     val selectedSubCategory: StateFlow<String> = _selectedSubCategory.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
@@ -55,7 +55,8 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectCategory(category: String) {
         if (_selectedCategory.value != category) {
             _selectedCategory.value = category
-            _selectedSubCategory.value = if (category == "短剧") "热门" else "全部"
+            // 移除“全部”，默认改为“热门”
+            _selectedSubCategory.value = "热门"
             loadData()
         }
     }
@@ -70,13 +71,12 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private fun loadData() {
         val category = _selectedCategory.value
         val subCategory = _selectedSubCategory.value
-        val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
+        val cacheKey = "${category}_${subCategory}"
         
         // 1. 优先从内存缓存读取，实现“即点即切换”的零延迟效果
         val memCached = memoryCache[cacheKey]
         if (memCached != null && memCached.isNotEmpty()) {
             updateCategoryFlow(category, memCached)
-            // 内存已有数据，无需设置 isLoading，直接进入后台刷新
         } else {
             // 2. 内存没有，尝试从持久化缓存恢复
             val diskCached = store.getCategoryCache(cacheKey)
@@ -115,7 +115,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun fetchHotMovies() {
         try {
             // 所有分类统一走豆瓣后端源 (对齐用户要求：豆瓣源快很多)
-            val tag = java.net.URLEncoder.encode("热门", "UTF-8")
+            val tag = "热门"
             val resp = apiService.getDoubanData("movie", tag)
             if (resp.isSuccessful) {
                 val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
@@ -130,13 +130,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private suspend fun fetchRecommended() {
         try {
-            val tag = java.net.URLEncoder.encode("豆瓣高分", "UTF-8")
+            val tag = "豆瓣高分"
             val resp = apiService.getDoubanData("movie", tag)
             if (resp.isSuccessful) {
                 val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _recommended.value = results
                 memoryCache["电影"] = results
-                memoryCache["电影_全部"] = results
+                memoryCache["电影_热门"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchRecommended failed", e)
@@ -146,12 +146,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private suspend fun fetchAnimeUpdates() {
         try {
             // 列表页统一使用豆瓣源替代 Bangumi (对齐用户要求：豆瓣源获取快)
-            val tag = java.net.URLEncoder.encode("动漫", "UTF-8")
+            val tag = "动漫"
             val resp = apiService.getDoubanData("tv", tag)
             if (resp.isSuccessful) {
                 val results = (resp.body()?.list ?: emptyList()).map { it.toSearchResult() }
                 _animeUpdates.value = results
                 memoryCache["动漫"] = results
+                memoryCache["动漫_热门"] = results
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "fetchAnimeUpdates failed", e)
@@ -175,10 +176,6 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private suspend fun loadCategoryData(category: String) {
         val subCategory = _selectedSubCategory.value
-        if (category == "动漫" && subCategory == "全部") {
-            loadAnimeData()
-            return
-        }
         
         val type = when (category) {
             "电影" -> "movie"
@@ -190,35 +187,31 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         val tag = when {
-            subCategory == "全部" -> when (category) {
-                "电影" -> "热门"
-                "剧集" -> "热门"
-                "综艺" -> "综艺"
-                "动漫" -> "动漫"
-                "短剧" -> "热门"
-                else -> category
-            }
             category == "动漫" -> when (subCategory) {
+                "热门" -> "动漫"
                 "日本" -> "日本动画"
                 "国产" -> "国产动画"
                 "欧美" -> "欧美动画"
                 else -> subCategory
             }
             category == "剧集" -> when (subCategory) {
+                "热门" -> "最近热门"
                 "韩剧" -> "韩国"
                 "日剧" -> "日本"
                 else -> subCategory
             }
+            category == "电影" && subCategory == "热门" -> "热门"
+            category == "综艺" && subCategory == "热门" -> "综艺"
+            category == "短剧" && subCategory == "热门" -> "热门"
             category == "短剧" && subCategory == "最新" -> "最新"
             else -> subCategory
         }
 
         try {
-            val encodedTag = java.net.URLEncoder.encode(tag, "UTF-8")
             val resp = if (category == "短剧" && tag == "热门") {
                 apiService.getShortDramaHot(1)
             } else {
-                apiService.getDoubanData(type, encodedTag)
+                apiService.getDoubanData(type, tag)
             }
             
             if (resp.isSuccessful) {
@@ -226,13 +219,11 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
                 val items = body?.list?.ifEmpty { body.items } ?: emptyList<DoubanItem>()
                 val results = items.map { it.toSearchResult() }
                 
-                val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
+                val cacheKey = "${category}_${subCategory}"
                 store.saveCategoryCache(cacheKey, results)
 
                 // 立即更新 UI (Metadata)
                 updateCategoryFlow(category, results)
-                
-                // 不再在此处调用 matchSourcesAsync
             }
         } catch (e: Exception) {
             android.util.Log.e("TransformViewModel", "Failed to load category $category with tag $tag", e)
@@ -242,7 +233,7 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     private fun updateCategoryFlow(category: String, results: List<SearchResult>) {
         // 更新内存缓存以便下次即时切换
         val subCategory = _selectedSubCategory.value
-        val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
+        val cacheKey = "${category}_${subCategory}"
         if (results.isNotEmpty()) {
             memoryCache[cacheKey] = results
         }

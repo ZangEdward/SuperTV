@@ -226,12 +226,12 @@ fun TVHomeScreen(
     val subCategories = remember(selectedCategory) {
         when (selectedCategory) {
             "热门" -> emptyList()
-            "电影" -> listOf("全部", "热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
-            "剧集" -> listOf("全部", "热门", "华语", "欧美", "韩剧", "日剧", "泰国")
-            "动漫" -> listOf("全部", "日本", "国产", "欧美")
-            "综艺" -> listOf("全部", "内地", "港台", "日韩", "欧美")
+            "电影" -> listOf("热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
+            "剧集" -> listOf("热门", "华语", "欧美", "韩剧", "日剧", "泰国")
+            "动漫" -> listOf("热门", "日本", "国产", "欧美")
+            "综艺" -> listOf("热门", "内地", "港台", "日韩", "欧美")
             "短剧" -> listOf("热门", "最新")
-            else -> listOf("全部")
+            else -> listOf("热门")
         }
     }
 
@@ -393,12 +393,12 @@ fun HomeScreen(
     val subCategories = remember(selectedCategory) {
         when (selectedCategory) {
             "热门" -> emptyList()
-            "电影" -> listOf("全部", "热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
-            "剧集" -> listOf("全部", "热门", "华语", "欧美", "韩剧", "日剧", "泰国")
-            "动漫" -> listOf("全部", "日本", "国产", "欧美")
-            "综艺" -> listOf("全部", "内地", "港台", "日韩", "欧美")
+            "电影" -> listOf("热门", "最新", "豆瓣高分", "冷门佳片", "华语", "欧美", "韩国", "日本")
+            "剧集" -> listOf("热门", "华语", "欧美", "韩剧", "日剧", "泰国")
+            "动漫" -> listOf("热门", "日本", "国产", "欧美")
+            "综艺" -> listOf("热门", "内地", "港台", "日韩", "欧美")
             "短剧" -> listOf("热门", "最新")
-            else -> listOf("全部")
+            else -> listOf("热门")
         }
     }
 
@@ -436,17 +436,6 @@ fun HomeScreen(
         label = "CategoryAnimation",
         modifier = Modifier.fillMaxSize()
     ) { targetCategory ->
-                // 在 LazyColumn 外部定义需要 Composable 上下文的状态
-                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-                var currentDay by remember {
-                    mutableIntStateOf(
-                        java.util.Calendar.getInstance()
-                            .get(java.util.Calendar.DAY_OF_WEEK).let {
-                                if (it == 1) 7 else it - 1
-                            }
-                    )
-                }
-
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (targetCategory) {
                         "热门" -> {
@@ -486,7 +475,7 @@ fun HomeScreen(
                             }
                         }
                         "电影" -> {
-                            item { SectionHeader(if (selectedSubCategory == "全部") "精品电影" else "$selectedSubCategory 电影") }
+                            item { SectionHeader(if (selectedSubCategory == "热门") "精品电影" else "$selectedSubCategory 电影") }
                             items(recommended.chunked(3)) { rowItems ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                                     rowItems.forEach { item ->
@@ -497,7 +486,7 @@ fun HomeScreen(
                             }
                         }
                         "剧集" -> {
-                            item { SectionHeader(if (selectedSubCategory == "全部") "最新剧集" else "$selectedSubCategory 剧集") }
+                            item { SectionHeader(if (selectedSubCategory == "热门") "最新剧集" else "$selectedSubCategory 剧集") }
                             items(hotMovies.chunked(3)) { rowItems ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                                     rowItems.forEach { item ->
@@ -508,61 +497,24 @@ fun HomeScreen(
                             }
                         }
                         "动漫" -> {
-                            if (selectedSubCategory == "全部") {
-                                // 动漫主页展示：每日更新
-                                item {
-                                    ScrollableTabRow(
-                                        selectedTabIndex = currentDay - 1,
-                                        containerColor = Color.Transparent,
-                                        contentColor = PrimaryGreen,
-                                        edgePadding = 16.dp,
-                                        divider = {}
-                                    ) {
-                                        weekdays.forEachIndexed { index, name ->
-                                            Tab(
-                                                selected = currentDay == index + 1,
-                                                onClick = {
-                                                    currentDay = index + 1
-                                                    viewModel.selectWeekday(currentDay)
-                                                },
-                                                text = { Text(name, fontSize = 14.sp) }
-                                            )
+                            // 子分类网格模式 (对齐 Selene: 扁平化列表排布，提高切换速度)
+                            item { SectionHeader("$selectedSubCategory 动漫") }
+                            items(animeUpdates.chunked(3)) { rowItems ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                                    rowItems.forEach { item ->
+                                        Box(Modifier.weight(1f)) {
+                                            PosterCard(result = item, onClick = { onItemClick(item) })
                                         }
                                     }
-                                }
-                                
-                                items(animeUpdates.chunked(3)) { rowItems ->
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                        rowItems.forEach { item ->
-                                            Box(Modifier.weight(1f)) {
-                                                PosterCard(result = item, onClick = { onItemClick(item) })
-                                            }
-                                        }
-                                        if (rowItems.size < 3) {
-                                            repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                                        }
-                                    }
-                                }
-                            } else {
-                                // 子分类网格模式 (对齐 Selene: 扁平化列表排布，提高切换速度)
-                                item { SectionHeader("$selectedSubCategory 动漫") }
-                                items(animeUpdates.chunked(3)) { rowItems ->
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                                        rowItems.forEach { item ->
-                                            Box(Modifier.weight(1f)) {
-                                                PosterCard(result = item, onClick = { onItemClick(item) })
-                                            }
-                                        }
-                                        if (rowItems.size < 3) {
-                                            repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                                        }
+                                    if (rowItems.size < 3) {
+                                        repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                                     }
                                 }
                             }
                         }
                         // ...
                         "综艺" -> {
-                            item { SectionHeader(if (selectedSubCategory == "全部") "热门综艺" else "$selectedSubCategory 综艺") }
+                            item { SectionHeader(if (selectedSubCategory == "热门") "热门综艺" else "$selectedSubCategory 综艺") }
                             items(animeUpdates.chunked(3)) { rowItems ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                                     rowItems.forEach { item ->
