@@ -19,6 +19,7 @@
 
         <!-- Status bar -->
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowFullscreen">false</item>
         <item name="android:navigationBarColor">@color/background_dark</item>
     </style>
 

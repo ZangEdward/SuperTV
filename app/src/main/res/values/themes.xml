@@ -19,6 +19,7 @@
 
         <!-- Status bar -->
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowFullscreen">false</item>
 
         <!-- Navigation bar -->
         <item name="android:navigationBarColor">@color/background_dark</item>
@@ -31,11 +32,10 @@
     </style>
 
     <!-- 启动页主题：使用更具兼容性的父主题解决闪退 -->
-    <style name="Theme.App.Launch" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.App.Launch" parent="Theme.App">
         <item name="android:windowBackground">@drawable/boot_background</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
     </style>
 

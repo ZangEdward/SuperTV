@@ -239,7 +239,6 @@ fun TVHomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         // TV Header (SuperTV_old style)
         Row(
@@ -388,7 +387,6 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.statusBars)
     ) {
         if (selectedCategory != "热门" && subCategories.isNotEmpty()) {
             SubCategoryBar(
@@ -441,53 +439,64 @@ fun HomeScreen(
                         }
                         "电影" -> {
                             item {
-                                SectionHeader("精品电影")
+                                SectionHeader(if (selectedSubCategory == "全部") "精品电影" else "$selectedSubCategory 电影")
                                 VideoCardRow(items = recommended, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "剧集" -> {
                             item {
-                                SectionHeader("最新剧集")
+                                SectionHeader(if (selectedSubCategory == "全部") "最新剧集" else "$selectedSubCategory 剧集")
                                 VideoCardRow(items = hotMovies, onClick = onItemClick, isGrid = true)
                             }
                         }
                         "动漫" -> {
-                            item {
-                                // 星期选择器 (Task 4)
-                                val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-                                var currentDay by remember { mutableIntStateOf(
-                                    java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK).let { 
-                                        if (it == 1) 7 else it - 1 
-                                    }
-                                )}
-
-                                ScrollableTabRow(
-                                    selectedTabIndex = currentDay - 1,
-                                    containerColor = Color.Transparent,
-                                    contentColor = PrimaryGreen,
-                                    edgePadding = 16.dp,
-                                    divider = {}
-                                ) {
-                                    weekdays.forEachIndexed { index, name ->
-                                        Tab(
-                                            selected = currentDay == index + 1,
-                                            onClick = { 
-                                                currentDay = index + 1
-                                                viewModel.selectWeekday(currentDay)
-                                            },
-                                            text = { Text(name, fontSize = 14.sp) }
-                                        )
+                            val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+                            var currentDay by remember {
+                                mutableIntStateOf(
+                                    java.util.Calendar.getInstance()
+                                        .get(java.util.Calendar.DAY_OF_WEEK).let {
+                                            if (it == 1) 7 else it - 1
+                                        }
+                                )
+                            }
+                            
+                            if (selectedSubCategory == "全部") {
+                                item {
+                                    ScrollableTabRow(
+                                        selectedTabIndex = currentDay - 1,
+                                        containerColor = Color.Transparent,
+                                        contentColor = PrimaryGreen,
+                                        edgePadding = 16.dp,
+                                        divider = {}
+                                    ) {
+                                        weekdays.forEachIndexed { index, name ->
+                                            Tab(
+                                                selected = currentDay == index + 1,
+                                                onClick = {
+                                                    currentDay = index + 1
+                                                    viewModel.selectWeekday(currentDay)
+                                                },
+                                                text = { Text(name, fontSize = 14.sp) }
+                                            )
+                                        }
                                     }
                                 }
                                 
-                                Spacer(Modifier.height(16.dp))
-                                SectionHeader("每日更新动漫")
-                                VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                                item {
+                                    Spacer(Modifier.height(16.dp))
+                                    SectionHeader("每日更新动漫")
+                                    VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                                }
+                            } else {
+                                item {
+                                    SectionHeader("$selectedSubCategory 动漫")
+                                    VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
+                                }
                             }
                         }
                         "综艺" -> {
                             item {
-                                SectionHeader("热门综艺")
+                                SectionHeader(if (selectedSubCategory == "全部") "热门综艺" else "$selectedSubCategory 综艺")
                                 VideoCardRow(items = animeUpdates, onClick = onItemClick, isGrid = true)
                             }
                         }

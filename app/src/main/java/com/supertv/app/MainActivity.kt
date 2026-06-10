@@ -62,7 +62,14 @@ class MainActivity : AppCompatActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        
+        // 启用沉浸式布局，但确保系统栏可见
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT, 
+                android.graphics.Color.TRANSPARENT
+            )
+        )
 
         try {
             // 初始化全局 API 节点 (从 Store 读取并应用到 RetrofitClient)
@@ -130,15 +137,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val mainDestinations = remember {
-                        setOf(
-                            R.id.nav_transform,
-                            R.id.nav_movie,
-                            R.id.nav_tv,
-                            R.id.nav_anime,
-                            R.id.nav_show,
-                            R.id.nav_short_drama,
-                            R.id.nav_live
-                        )
+                        setOf(R.id.nav_transform) // 仅首页显示搜索顶栏，其他页面“空出来”留给子分类
                     }
 
                     // 使用更稳定的方式监听目的地变化，减少重组造成的闪烁
@@ -155,12 +154,14 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     SuperTVTheme(darkTheme = uiIsDark) {
-                        // 设置系统状态栏图标颜色
+                        // 强制显示系统状态栏并设置图标颜色
                         val view = androidx.compose.ui.platform.LocalView.current
                         if (!view.isInEditMode) {
                             SideEffect {
                                 val window = (view.context as android.app.Activity).window
                                 val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+                                // 确保状态栏显示 (避免被全屏主题残留影响)
+                                insetsController.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
                                 insetsController.isAppearanceLightStatusBars = !uiIsDark
                             }
                         }
