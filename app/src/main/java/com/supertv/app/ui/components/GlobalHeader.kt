@@ -20,40 +20,58 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.supertv.app.ui.theme.PrimaryGreen
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
+import com.supertv.app.R
+
+data class HeaderNavItem(
+    val id: Int,
+    val labelRes: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
+
 @Composable
 fun GlobalHeader(
     onUserClick: () -> Unit,
     onSearchClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onThemeToggle: () -> Unit,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    navItems: List<HeaderNavItem> = emptyList(),
+    currentDestId: Int? = null,
+    onNavItemClick: (Int) -> Unit = {}
 ) {
+    val isTablet = navItems.isNotEmpty()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp) // 降低高度
+            .height(if (isTablet) 64.dp else 56.dp)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp) // 减小间距
+        horizontalArrangement = Arrangement.spacedBy(if (isTablet) 12.dp else 8.dp)
     ) {
         // 左侧头像
         IconButton(
             onClick = onUserClick,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.size(if (isTablet) 40.dp else 36.dp)
         ) {
             Icon(
                 Icons.Outlined.AccountCircle,
                 contentDescription = "用户",
                 tint = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(if (isTablet) 32.dp else 28.dp)
             )
         }
 
-        // 中间搜索框 - 稍微拉长且变薄
+        // 中间搜索框
         Surface(
             modifier = Modifier
-                .weight(1f)
-                .height(36.dp) // 变薄
+                .widthIn(max = if (isTablet) 280.dp else 400.dp)
+                .then(if (isTablet) Modifier else Modifier.weight(1f))
+                .height(36.dp)
                 .clickable { onSearchClick() },
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
@@ -73,32 +91,77 @@ fun GlobalHeader(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "搜索影片、网盘资源...",
+                    "搜索影片...",
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     fontSize = 13.sp,
-                    maxLines = 1 // 拍成一行
+                    maxLines = 1
                 )
             }
         }
 
-        // 右侧下载/缓存按钮
-        IconButton(onClick = onDownloadClick, modifier = Modifier.size(36.dp)) {
-            Icon(
-                Icons.Outlined.FileDownload,
-                contentDescription = "下载",
-                tint = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(24.dp)
-            )
+        if (isTablet) {
+            // 平板导航项
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                navItems.forEach { item ->
+                    val isSelected = item.id == currentDestId
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = rememberRipple(bounded = true, color = PrimaryGreen.copy(alpha = 0.1f)),
+                                onClick = { onNavItemClick(item.id) }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(item.labelRes),
+                            color = if (isSelected) PrimaryGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 16.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                        if (isSelected) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(top = 28.dp)
+                                    .width(16.dp)
+                                    .height(3.dp)
+                                    .background(PrimaryGreen, RoundedCornerShape(2.dp))
+                            )
+                        }
+                    }
+                }
+            }
         }
 
-        // 主题切换按钮
-        IconButton(onClick = onThemeToggle, modifier = Modifier.size(36.dp)) {
-            Icon(
-                if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
-                contentDescription = "切换主题",
-                tint = if (isDarkTheme) Color(0xFFFFD700) else MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(24.dp)
-            )
+        // 右侧功能按钮
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // 主题切换按钮
+            IconButton(onClick = onThemeToggle, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                    contentDescription = "切换主题",
+                    tint = if (isDarkTheme) Color(0xFFFFD700) else MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            // 下载按钮
+            IconButton(onClick = onDownloadClick, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Outlined.FileDownload,
+                    contentDescription = "下载",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }

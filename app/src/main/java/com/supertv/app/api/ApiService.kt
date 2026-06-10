@@ -2,10 +2,7 @@ package com.supertv.app.api
 
 import com.supertv.app.model.*
 import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Query
+import retrofit2.http.*
 
 /**
  * API接口定义 - 对齐 supertvold & selene
@@ -40,6 +37,15 @@ interface ApiService {
         @Query("pageStart") pageStart: Int = 0
     ): Response<DoubanResponse>
 
+    @GET("api/douban/categories")
+    suspend fun getDoubanRexxar(
+        @Query("kind") kind: String,
+        @Query("category") category: String,
+        @Query("type") type: String,
+        @Query("limit") limit: Int = 20,
+        @Query("start") start: Int = 0
+    ): Response<DoubanResponse>
+
     // ==================== 搜索 ====================
 
     @GET("api/search")
@@ -57,12 +63,14 @@ interface ApiService {
 
     @GET("api/detail")
     suspend fun getDetail(
+        @Header("User-Agent") userAgent: String,
         @Query("id") id: String,
         @Query("source") source: String
     ): Response<VideoDetail>
 
     @GET("api/douban/details")
     suspend fun getDoubanDetail(
+        @Header("User-Agent") userAgent: String,
         @Query("id") id: String
     ): Response<DoubanDetailResponse>
 
@@ -175,7 +183,9 @@ interface ApiService {
 
     @GET("api/ai/recommend")
     suspend fun getAIRecommend(
-        @Query("context") context: String = ""
+        @Query("context") context: String = "",
+        @Query("category") category: String = "",
+        @Query("history") history: String = ""
     ): Response<AIRecommendResponse>
 
     @GET("api/calendar/release")

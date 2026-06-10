@@ -13,6 +13,10 @@ import com.supertv.app.ui.transform.PosterCard
 import com.supertv.app.ui.transform.SectionHeader
 import com.supertv.app.ui.transform.TransformViewModel
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.supertv.app.ui.transform.VideoCardRow
+
 @Composable
 fun ShortDramaTab(
     viewModel: TransformViewModel,
@@ -21,16 +25,9 @@ fun ShortDramaTab(
     val shortDramas by viewModel.shortDramas.collectAsState()
     val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item { SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧") }
-        items(shortDramas.chunked(3)) { rowItems ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                rowItems.forEach { item ->
-                    Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                }
-                if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-            }
-        }
-        item { Spacer(modifier = Modifier.height(80.dp)) }
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        SectionHeader(if (selectedSubCategory == "热门") "热门短剧" else "$selectedSubCategory 短剧")
+        VideoCardRow(itemsList = shortDramas, onClick = onItemClick, isGrid = true)
+        Spacer(modifier = Modifier.height(80.dp))
     }
 }

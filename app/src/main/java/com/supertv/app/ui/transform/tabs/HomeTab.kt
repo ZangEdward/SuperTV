@@ -20,9 +20,11 @@ fun HomeTab(
     val hotMovies by viewModel.hotMovies.collectAsState()
     val recommended by viewModel.recommended.collectAsState()
     val animeUpdates by viewModel.animeUpdates.collectAsState()
+    val aiRecommended by viewModel.aiRecommended.collectAsState()
     val shortDramas by viewModel.shortDramas.collectAsState()
     val playRecords by viewModel.playRecords.collectAsState()
 
+    // 首页保持 LazyRow，因为是混合布局
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         if (playRecords.isNotEmpty()) {
             item {
@@ -40,6 +42,12 @@ fun HomeTab(
                     },
                     onClick = { /* Handle play record */ }
                 )
+            }
+        }
+        if (aiRecommended.isNotEmpty()) {
+            item {
+                SectionHeader("AI 为您推荐")
+                VideoCardRow(itemsList = aiRecommended, onClick = onItemClick)
             }
         }
         item {

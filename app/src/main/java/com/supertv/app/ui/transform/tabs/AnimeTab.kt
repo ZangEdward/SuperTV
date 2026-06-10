@@ -16,6 +16,10 @@ import com.supertv.app.ui.theme.PrimaryGreen
 import com.supertv.app.ui.transform.PosterCard
 import com.supertv.app.ui.transform.TransformViewModel
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.supertv.app.ui.transform.VideoCardRow
+
 @Composable
 fun AnimeTab(
     viewModel: TransformViewModel,
@@ -32,40 +36,27 @@ fun AnimeTab(
         )
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item {
-            ScrollableTabRow(
-                selectedTabIndex = currentDay - 1,
-                containerColor = Color.Transparent,
-                contentColor = PrimaryGreen,
-                edgePadding = 16.dp,
-                divider = {}
-            ) {
-                weekdays.forEachIndexed { index, name ->
-                    Tab(
-                        selected = currentDay == index + 1,
-                        onClick = {
-                            currentDay = index + 1
-                            viewModel.selectWeekday(currentDay)
-                        },
-                        text = { Text(name, fontSize = 14.sp) }
-                    )
-                }
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        ScrollableTabRow(
+            selectedTabIndex = currentDay - 1,
+            containerColor = Color.Transparent,
+            contentColor = PrimaryGreen,
+            edgePadding = 16.dp,
+            divider = {}
+        ) {
+            weekdays.forEachIndexed { index, name ->
+                Tab(
+                    selected = currentDay == index + 1,
+                    onClick = {
+                        currentDay = index + 1
+                        viewModel.selectWeekday(currentDay)
+                    },
+                    text = { Text(name, fontSize = 14.sp) }
+                )
             }
         }
 
-        items(animeUpdates.chunked(3)) { rowItems ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                rowItems.forEach { item ->
-                    Box(Modifier.weight(1f)) {
-                        PosterCard(result = item, onClick = { onItemClick(item) })
-                    }
-                }
-                if (rowItems.size < 3) {
-                    repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-        item { Spacer(modifier = Modifier.height(80.dp)) }
+        VideoCardRow(itemsList = animeUpdates, onClick = onItemClick, isGrid = true)
+        Spacer(modifier = Modifier.height(80.dp))
     }
 }

@@ -412,10 +412,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
                     poster = preloaded?.poster ?: cover ?: "",
                     source = preloaded?.source ?: source,
                     sourceName = preloaded?.sourceName ?: (if (source == "douban") "豆瓣" else "Bangumi"),
-                    desc = "正在加载详情...",
+                    desc = preloaded?.desc ?: "正在加载详情...",
                     episodesList = preloaded?.episodes ?: emptyList()
                 )
-                // 已经有了播放源信息，将 Loading 设为 false
+                
+                // [核心优化]：立即允许进入详情页渲染，不等待后端
                 _isLoadingDetail.value = false
                 
                 if (preloaded != null) {
@@ -561,10 +562,11 @@ class SearchViewModel(application: Application) : AndroidViewModel(application) 
 
                     // 等待当前阶段
                     var waitTime = 0
-                    while (completedSites.get() < totalSites && waitTime < 25) {
-                        delay(200)
+                    while (completedSites.get() < totalSites && waitTime < 15) { // 缩短等待时间
+                        delay(150)
                         waitTime++
-                        if (hasShownFirstResult && waitTime > 12) break
+                        // 如果已经找到了第一个结果，且等待超过 1.2 秒，则不再强等
+                        if (hasShownFirstResult && waitTime > 8) break
                     }
                     
                     withContext(Dispatchers.Main) {

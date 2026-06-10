@@ -76,9 +76,9 @@ fun DetailScreen(
     val textColor = MaterialTheme.colorScheme.onBackground
     val secondaryTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    // 激进搜索加载状态 (模仿 SuperTV_old)
+    // 激进搜索加载状态 (仅在元数据也完全没有时才阻塞)
     val isAggressiveLoading = (detail?.source == "douban" || detail?.source == "bangumi") 
-        && (detail?.episodes?.isEmpty() == true) && isAllSourcesLoading
+        && (detail?.title.isNullOrBlank()) && isAllSourcesLoading
 
     if (isLoading || isAggressiveLoading) {
         Box(modifier = Modifier.fillMaxSize().background(backgroundColor), contentAlignment = Alignment.Center) {

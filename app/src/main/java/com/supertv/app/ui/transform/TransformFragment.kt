@@ -226,7 +226,15 @@ fun HomeScreen(
 
         if (isLoading && selectedCategory != "动漫") { // 动漫由自己的 Tab 处理 Loading 或缓存
              val configuration = LocalConfiguration.current
-             val columns = if (configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION) 5 else 3
+             val isTv = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+             val screenWidth = configuration.screenWidthDp
+             val columns = when {
+                 isTv -> 6
+                 screenWidth >= 1200 -> 8
+                 screenWidth >= 840 -> 6
+                 screenWidth >= 600 -> 4
+                 else -> 3
+             }
              com.supertv.app.ui.components.ShimmerGrid(columns = columns)
         } else {
             AnimatedContent(
@@ -449,16 +457,25 @@ fun SectionHeader(title: String) {
 fun VideoCardRow(itemsList: List<SearchResult>, onClick: (SearchResult) -> Unit, isGrid: Boolean = false) {
     val configuration = LocalConfiguration.current
     val isTv = configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val screenWidth = configuration.screenWidthDp
     
     if (isGrid) {
-        val columns = if (isTv) 5 else if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 4 else 3
+        val columns = when {
+            isTv -> 6
+            screenWidth >= 1200 -> 8
+            screenWidth >= 840 -> 6
+            screenWidth >= 600 -> 4
+            else -> 3
+        }
         
+        // 使用 Column 包装 Grid 以便在 Tabs 中嵌入，但要注意高度
+        // 更好的做法是在 Tab 中直接使用 Grid
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.heightIn(max = 10000.dp)
+            modifier = Modifier.heightIn(max = 2000.dp) // 限制最大高度
         ) {
             items(itemsList) { item ->
                 PosterCard(result = item, onClick = { onClick(item) })

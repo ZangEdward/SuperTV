@@ -13,6 +13,12 @@ import com.supertv.app.ui.transform.PosterCard
 import com.supertv.app.ui.transform.SectionHeader
 import com.supertv.app.ui.transform.TransformViewModel
 
+import com.supertv.app.ui.transform.VideoCardRow
+
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.supertv.app.ui.transform.VideoCardRow
+
 @Composable
 fun MovieTab(
     viewModel: TransformViewModel,
@@ -21,16 +27,9 @@ fun MovieTab(
     val recommended by viewModel.recommended.collectAsState()
     val selectedSubCategory by viewModel.selectedSubCategory.collectAsState()
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        item { SectionHeader(if (selectedSubCategory == "热门") "精品电影" else "$selectedSubCategory 电影") }
-        items(recommended.chunked(3)) { rowItems ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                rowItems.forEach { item ->
-                    Box(Modifier.weight(1f)) { PosterCard(result = item, onClick = { onItemClick(item) }) }
-                }
-                if (rowItems.size < 3) { repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) } }
-            }
-        }
-        item { Spacer(modifier = Modifier.height(80.dp)) }
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        SectionHeader(if (selectedSubCategory == "热门") "精品电影" else "$selectedSubCategory 电影")
+        VideoCardRow(itemsList = recommended, onClick = onItemClick, isGrid = true)
+        Spacer(modifier = Modifier.height(80.dp))
     }
 }

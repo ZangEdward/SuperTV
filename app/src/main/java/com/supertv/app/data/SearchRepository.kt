@@ -5,10 +5,13 @@ import com.supertv.app.model.ApiSite
 import com.supertv.app.model.SearchResult
 import com.supertv.app.model.VideoDetail
 import com.supertv.app.utils.SearchUtils
+import com.supertv.app.utils.UserAgentUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 /**
  * 搜索仓库 - 对应原项目的 services/api.ts 搜索相关逻辑
@@ -18,7 +21,7 @@ class SearchRepository {
     private fun apiService() = RetrofitClient.getApiService()
 
     companion object {
-        private const val SEARCH_TIMEOUT_MS = 15_000L
+        private const val SEARCH_TIMEOUT_MS = 30_000L
         
         // 1. 详情池：存储完整的剧集详情
         private val detailPool = mutableMapOf<String, VideoDetail>()
@@ -208,10 +211,15 @@ class SearchRepository {
      * 获取视频详情
      */
     suspend fun getDetail(id: String, source: String): VideoDetail? {
+        // 智能延时：避免被反爬限流 (对齐 LunaTV)
+        val delayTime = Random.nextLong(100, 400)
+        delay(delayTime)
+
         return try {
+            val ua = UserAgentUtils.getRandomUA()
             when (source) {
                 "douban" -> {
-                    val response = apiService().getDoubanDetail(id)
+                    val response = apiService().getDoubanDetail(ua, id)
                     if (response.isSuccessful) {
                         val data = response.body()?.data
                         data?.let {
@@ -250,7 +258,7 @@ class SearchRepository {
                     } else null
                 }
                 else -> {
-                    val response = apiService().getDetail(id, source)
+                    val response = apiService().getDetail(ua, id, source)
                     if (response.isSuccessful) {
                         val detail = response.body()
                         // 如果详情中没有剧集，尝试单独获取剧集列表
