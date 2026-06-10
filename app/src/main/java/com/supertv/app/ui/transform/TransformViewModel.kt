@@ -13,6 +13,9 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val store = Store.getInstance(application)
     private val apiService get() = RetrofitClient.getApiService()
+    
+    // 内存缓存：对齐 supertvold dataCache，实现即时切换
+    private val memoryCache = mutableMapOf<String, List<SearchResult>>()
 
     private val _playRecords = MutableStateFlow<List<PlayRecord>>(emptyList<PlayRecord>())
     val playRecords: StateFlow<List<PlayRecord>> = _playRecords.asStateFlow()
@@ -69,18 +72,24 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
         val subCategory = _selectedSubCategory.value
         val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
         
-        // 1. 先从内存/磁盘缓存恢复数据，实现“秒开”
-        val cached = store.getCategoryCache(cacheKey)
-        if (cached.isNotEmpty()) {
-            updateCategoryFlow(category, cached)
+        // 1. 优先从内存缓存读取，实现“即点即切换”的零延迟效果
+        val memCached = memoryCache[cacheKey]
+        if (memCached != null && memCached.isNotEmpty()) {
+            updateCategoryFlow(category, memCached)
+            // 内存已有数据，无需设置 isLoading，直接进入后台刷新
+        } else {
+            // 2. 内存没有，尝试从持久化缓存恢复
+            val diskCached = store.getCategoryCache(cacheKey)
+            if (diskCached.isNotEmpty()) {
+                updateCategoryFlow(category, diskCached)
+                memoryCache[cacheKey] = diskCached
+            } else {
+                // 3. 彻底没数据才显示 Loading
+                _isLoading.value = true
+            }
         }
 
         viewModelScope.launch {
-            // 2. 如果缓存为空，才显示 Loading 状态
-            if (cached.isEmpty()) {
-                _isLoading.value = true
-            }
-
             try {
                 if (category == "热门") {
                     loadHomeData()
@@ -248,6 +257,13 @@ class TransformViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun updateCategoryFlow(category: String, results: List<SearchResult>) {
+        // 更新内存缓存以便下次即时切换
+        val subCategory = _selectedSubCategory.value
+        val cacheKey = if (subCategory == "全部") category else "${category}_${subCategory}"
+        if (results.isNotEmpty()) {
+            memoryCache[cacheKey] = results
+        }
+
         when (category) {
             "热门" -> {
                 // 热门通常由 loadHomeData 处理，但如果子分类选择了具体 tag

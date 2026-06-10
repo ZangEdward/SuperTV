@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
  */
 object RetrofitClient {
 
-    private const val DEFAULT_TIMEOUT = 30L
-    private const val DEFAULT_BASE_URL = "https://ltv.955598.xyz/" // 使用默认有效节点替代 example.com
+    private const val DEFAULT_TIMEOUT = 10L
+    private const val DEFAULT_BASE_URL = "https://ltv.955598.xyz/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BASIC
@@ -63,15 +63,17 @@ object RetrofitClient {
     }
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
-        .readTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
-        .writeTimeout(DEFAULT_TIMEOUT, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS) // 缩短连接超时，更快切换坏节点
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true) // 启用自动重试 (对齐 supertvold)
         .addInterceptor(loggingInterceptor)
         .addInterceptor { chain ->
-            val requestBuilder = chain.request().newBuilder()
-                .addHeader("User-Agent", "SuperTV/1.0")
-                .addHeader("Accept", "application/json")
-                // 移除冗余且可能引起误解的 Accept-Charset，依靠标准 Accept 处理
+            val request = chain.request()
+            val requestBuilder = request.newBuilder()
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36") // 伪装成浏览器，避免被反爬 (对齐 Selene)
+                .addHeader("Accept", "application/json, text/plain, */*")
+                .addHeader("Referer", "https://movie.douban.com/") // 必须带 Referer (对齐 Selene)
             
             // 添加 Token (Selene 风格)
             authToken?.let {

@@ -405,16 +405,18 @@ class MainActivity : AppCompatActivity() {
         val currentDestination = navBackStackEntry?.destination
         val items = remember { getNavItems() }
         
-        // 记录当前选中的索引，用于判断方向
-        var selectedIndex by remember { 
-            mutableIntStateOf(items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)) 
+        // 建立 ID 到 1-7 编号的映射，对齐用户要求的物理逻辑
+        val idToIndex = remember(items) {
+            items.withIndex().associate { it.value.id to it.index + 1 }
         }
+        
+        // 记录上一次的绝对索引，初始值为 1 (首页)
+        var lastAbsoluteIndex by remember { mutableIntStateOf(1) }
 
-        // 同步目的地变化到 selectedIndex
+        // 同步当前位置到 lastAbsoluteIndex (当通过返回键或其它方式改变时)
         LaunchedEffect(currentDestination?.id) {
-            val idx = items.indexOfFirst { it.id == currentDestination?.id }
-            if (idx != -1) {
-                selectedIndex = idx
+            idToIndex[currentDestination?.id]?.let {
+                lastAbsoluteIndex = it
             }
         }
 
@@ -434,8 +436,9 @@ class MainActivity : AppCompatActivity() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Start
             ) {
-                items.forEachIndexed { index, item ->
+                items.forEachIndexed { _, item ->
                     val isSelected = currentDestination?.id == item.id
+                    val targetIndex = idToIndex[item.id] ?: 1
                     
                     Box(
                         modifier = Modifier
@@ -449,19 +452,19 @@ class MainActivity : AppCompatActivity() {
                                     return@clickable
                                 }
 
-                                // 核心逻辑：直接比较目标索引和当前记录的索引
-                                val isForward = index > selectedIndex
+                                // 核心逻辑：从小号标签切换到大号为从右划入，从大号标签切换到小号，为从左划入
+                                val isForward = targetIndex > lastAbsoluteIndex
 
                                 val navOptions = navOptions {
                                     anim {
                                         if (isForward) {
-                                            // 目标在右边 -> 向左滑入 (从右侧进入)
+                                            // 向右走：新页从右入(slide_in_right)，旧页从左出(slide_out_left)
                                             enter = R.anim.slide_in_right
                                             exit = R.anim.slide_out_left
                                             popEnter = R.anim.slide_in_left
                                             popExit = R.anim.slide_out_right
                                         } else {
-                                            // 目标在左边 -> 向右滑入 (从左侧进入)
+                                            // 向左走：新页从左入(slide_in_left)，旧页从右出(slide_out_right)
                                             enter = R.anim.slide_in_left
                                             exit = R.anim.slide_out_right
                                             popEnter = R.anim.slide_in_right
@@ -475,8 +478,8 @@ class MainActivity : AppCompatActivity() {
                                     restoreState = true
                                 }
                                 
-                                // 立即同步更新索引，确保连续点击时方向计算绝对正确
-                                selectedIndex = index
+                                // 立即更新索引，锁定方向
+                                lastAbsoluteIndex = targetIndex
                                 navController.navigate(item.id, null, navOptions)
                             },
                         contentAlignment = Alignment.Center
@@ -510,17 +513,16 @@ class MainActivity : AppCompatActivity() {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentDestination = navBackStackEntry?.destination
         val items = remember { getNavItems() }
-
-        // 记录当前选中的索引，用于判断方向
-        var selectedIndex by remember { 
-            mutableIntStateOf(items.indexOfFirst { it.id == currentDestination?.id }.coerceAtLeast(0)) 
+        
+        val idToIndex = remember(items) {
+            items.withIndex().associate { it.value.id to it.index + 1 }
         }
+        
+        var lastAbsoluteIndex by remember { mutableIntStateOf(1) }
 
-        // 同步目的地变化到 selectedIndex
         LaunchedEffect(currentDestination?.id) {
-            val idx = items.indexOfFirst { it.id == currentDestination?.id }
-            if (idx != -1) {
-                selectedIndex = idx
+            idToIndex[currentDestination?.id]?.let {
+                lastAbsoluteIndex = it
             }
         }
 
@@ -537,8 +539,10 @@ class MainActivity : AppCompatActivity() {
             },
             modifier = Modifier.fillMaxHeight().width(80.dp)
         ) {
-            items.forEachIndexed { index, item ->
+            items.forEachIndexed { _, item ->
                 val isSelected = currentDestination?.id == item.id
+                val targetIndex = idToIndex[item.id] ?: 1
+                
                 NavigationRailItem(
                     icon = {
                         Icon(item.icon, contentDescription = stringResource(item.labelRes), modifier = Modifier.size(26.dp))
@@ -553,19 +557,16 @@ class MainActivity : AppCompatActivity() {
                             return@NavigationRailItem
                         }
 
-                        // 核心逻辑：直接比较目标索引和当前记录的索引
-                        val isForward = index > selectedIndex
+                        val isForward = targetIndex > lastAbsoluteIndex
 
                         val navOptions = navOptions {
                             anim {
                                 if (isForward) {
-                                    // 目标在右边 -> 向左滑入 (从右侧进入)
                                     enter = R.anim.slide_in_right
                                     exit = R.anim.slide_out_left
                                     popEnter = R.anim.slide_in_left
                                     popExit = R.anim.slide_out_right
                                 } else {
-                                    // 目标在左边 -> 向右滑入 (从左侧进入)
                                     enter = R.anim.slide_in_left
                                     exit = R.anim.slide_out_right
                                     popEnter = R.anim.slide_in_right
@@ -579,8 +580,7 @@ class MainActivity : AppCompatActivity() {
                             restoreState = true
                         }
                         
-                        // 立即同步更新索引，确保连续点击时方向计算绝对正确
-                        selectedIndex = index
+                        lastAbsoluteIndex = targetIndex
                         navController.navigate(item.id, null, navOptions)
                     },
                     colors = NavigationRailItemDefaults.colors(
