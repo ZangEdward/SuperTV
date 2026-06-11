@@ -38,52 +38,75 @@ jobs:
       - name: Get version from build.gradle.kts
         id: get_version
         run: |
-          # 适配 Kotlin DSL: versionName = "x.x.x.x"（等号前后可能有空格）
-          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          # 适配 Kotlin DSL: versionName = "x.x.x.x"
+          VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/app/build.gradle.kts)
           if [ -z "$VERSION_NAME" ]; then
-            # 兼容旧版 Groovy DSL 格式: versionName "x.x.x.x"
-            VERSION_NAME=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle.kts)
-          fi
-          if [ -z "$VERSION_NAME" ]; then
-            echo "❌ 无法从 build.gradle.kts 中提取 versionName"
+            echo "❌ 无法从 android/app/build.gradle.kts 中提取 versionName"
             exit 1
           fi
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "✅ 版本号: $VERSION_NAME"
 
+      - name: Extract Secrets
+        id: extract_secrets
+        run: |
+          echo "${{ secrets.APP_SECRETS }}" > secrets.json
+          
+          # 提取签名相关
+          echo "SIGNING_KEY=$(jq -r '.signing_key' secrets.json)" >> $GITHUB_ENV
+          echo "KEY_ALIAS=$(jq -r '.key_alias' secrets.json)" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=$(jq -r '.key_password' secrets.json)" >> $GITHUB_ENV
+          
+          # 提取 API 节点并转义以便传递给 --dart-define
+          # 我们需要将 JSON 压缩成一行，并转义双引号
+          API_NODES=$(jq -c '.api_nodes_json' secrets.json | sed 's/"/\\"/g')
+          # 注意：api_nodes_json 在你的 secrets_backup.json 中本身就是一个转义的字符串，
+          # 我们需要获取它的原始值（即 JSON 数组）
+          API_NODES_RAW=$(jq -r '.api_nodes_json' secrets.json | jq -c .)
+          echo "API_NODES=$API_NODES_RAW" >> $GITHUB_ENV
+          
+          # 提取 OTA 相关
+          echo "PAT=$(jq -r '.pat' secrets.json)" >> $GITHUB_ENV
+          echo "SYNC_REPO=$(jq -r '.sync_repo' secrets.json)" >> $GITHUB_ENV
+          
+          echo "✅ Secrets 已提取"
+
       - name: Decode Keystore
         run: |
-          mkdir -p app
-          echo "${{ secrets.SIGNING_KEY }}" | base64 --decode > app/release-key.jks
-          echo "✅ 签名文件已写入 app/release-key.jks"
+          mkdir -p android/app
+          echo "${{ env.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+          echo "✅ 签名文件已写入 android/app/release-key.jks"
 
       - name: Configure Signing in gradle.properties
         run: |
-          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> gradle.properties
-          echo "✅ gradle.properties 已配置签名"
+          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ env.KEY_ALIAS }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ env.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ env.KEY_PASSWORD }}" >> android/gradle.properties
+          echo "✅ android/gradle.properties 已配置签名"
 
-      - name: Validate Gradle wrapper
-        run: |
-          if [ ! -s "gradlew" ]; then
-            echo "❌ gradlew 是空文件，正在重新生成..."
-            gradle wrapper --gradle-version=8.11.1
-          fi
-          chmod +x gradlew
-          echo "✅ gradlew 有效 ($(wc -c < gradlew) bytes)"
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.3"
+          channel: 'stable'
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
 
       - name: Build Release APK
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          flutter build apk --release \
+            --dart-define=API_NODES_JSON='${{ env.API_NODES }}' \
+            --split-per-abi \
+            --obfuscate \
+            --split-debug-info=build/app/outputs/symbols
 
       - name: Copy and Rename APK
         run: |
           mkdir -p output
-          cp app/build/outputs/apk/release/app-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
           echo "✅ APK 已生成: output/SuperTV-${{ env.VERSION_NAME }}.apk"
 
       - name: Upload APK artifact (for OTA)
@@ -131,9 +154,15 @@ jobs:
           fi
           echo "✅ 准备推送 OTA 版本: $VERSION"
 
+      - name: Extract Secrets for OTA
+        run: |
+          echo "${{ secrets.APP_SECRETS }}" > secrets.json
+          echo "PAT=$(jq -r '.pat' secrets.json)" >> $GITHUB_ENV
+          echo "SYNC_REPO=$(jq -r '.sync_repo' secrets.json)" >> $GITHUB_ENV
+
       - name: Clone OTA repository
         run: |
-          git clone https://x-access-token:${{ secrets.PAT }}@github.com/${{ secrets.SYNC_REPO }}.git sync-repo
+          git clone https://x-access-token:${{ env.PAT }}@github.com/${{ env.SYNC_REPO }}.git sync-repo
 
       - name: Update OTA files
         run: |
@@ -146,4 +175,4 @@ jobs:
           git add log/
           git commit -m "Update OTA to version $VERSION" || exit 0
           git push
-          echo "✅ OTA 已推送到 ${{ secrets.SYNC_REPO }}"
+          echo "✅ OTA 已推送到 ${{ env.SYNC_REPO }}"
