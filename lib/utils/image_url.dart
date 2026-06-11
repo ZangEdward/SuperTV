@@ -7,7 +7,6 @@ import '../services/user_data_service.dart';
 /// 返回可直接用于加载的图片地址。
 Future<String> getImageUrl(String originalUrl, String? source) async {
   if (source == 'douban' && originalUrl.isNotEmpty) {
-source == 'douban' && originalUrl.isNotEmpty) {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
     
     switch (imageSourceKey) {

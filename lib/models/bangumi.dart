@@ -103,12 +103,8 @@ class BangumiImages {
   });
 
   factory BangumiImages.fromJson(Map<String, dynamic> json) {
-return BangumiImages(
+    return BangumiImages(
       large: json['large']?.toString() ?? '',
-      common: json['common']?.toString() ?? '',
-      medium: json['medium']?.toString() ?? '',
-      small: json['small']?.toString() ?? '',
-      grid: json['grid']?.toString() ?? ''      large: json['large']?.toString() ?? '',
       common: json['common']?.toString() ?? '',
       medium: json['medium']?.toString() ?? '',
       small: json['small']?.toString() ?? '',
