@@ -706,14 +706,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   });
                                 },
                               ),
-                              // 隐藏真实的输入框但保持其功能，以便 _processUrl 正常工作
-                              const SizedBox(height: 0),
-                              Offstage(
-                                offstage: true,
-                                child: TextFormField(
-                                  controller: _urlController,
-                                ),
-                              ),
+                              // 如果需要手动输入，可以在这里加一个切换按钮或保持一个可见的输入框
+                              // 根据用户要求，“改为下拉选择框”，我们优先保证下拉框的体验
                             ],
                           )
                         : TextFormField(
