@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/download_service.dart';
 import '../models/download_task.dart';
 import '../utils/font_utils.dart';
+import 'player_screen.dart';
 
 class DownloadManagerScreen extends StatelessWidget {
   const DownloadManagerScreen({super.key});
@@ -211,21 +212,42 @@ class _DownloadTaskItem extends StatelessWidget {
             // 操作按钮
             Column(
               children: [
-                IconButton(
-                  icon: Icon(
-                    task.status == DownloadStatus.downloading
-                        ? LucideIcons.pause
-                        : LucideIcons.play,
-                    size: 20,
+                if (task.status == DownloadStatus.completed)
+                  IconButton(
+                    icon: const Icon(
+                      LucideIcons.playCircle,
+                      size: 20,
+                      color: Color(0xFF27ae60),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PlayerScreen(
+                            title: task.title,
+                            episodeTitle: task.episodeTitle,
+                            localPath: '${task.savePath}.ts',
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                else
+                  IconButton(
+                    icon: Icon(
+                      task.status == DownloadStatus.downloading
+                          ? LucideIcons.pause
+                          : LucideIcons.play,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      if (task.status == DownloadStatus.downloading) {
+                        service.pauseTask(task.id);
+                      } else {
+                        service.resumeTask(task.id);
+                      }
+                    },
                   ),
-                  onPressed: () {
-                    if (task.status == DownloadStatus.downloading) {
-                      service.pauseTask(task.id);
-                    } else {
-                      service.resumeTask(task.id);
-                    }
-                  },
-                ),
                 IconButton(
                   icon: const Icon(LucideIcons.trash2, size: 20, color: Colors.red),
                   onPressed: () => service.removeTask(task.id),

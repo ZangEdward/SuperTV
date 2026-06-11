@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../models/bangumi.dart';
-import 'api_service.dart';
-import 'douban_cache_service.dart';
-import 'user_data_service.dart';
+import 'package:supertv/services/api_service.dart';
+import 'package:supertv/services/douban_cache_service.dart';
+import 'package:supertv/services/user_data_service.dart';
 
 /// Bangumi 数据服务（函数级缓存，一天过期）
 class BangumiService {
@@ -16,6 +16,15 @@ class BangumiService {
       await _cache.init();
       _initialized = true;
     }
+  }
+
+  /// 清除 Bangumi 相关缓存
+  static Future<void> clearCache() async {
+    await _initCache();
+    // 清除不同数据源下的日历缓存
+    await _cache.delete('bangumi_calendar_direct_v1');
+    await _cache.delete('bangumi_calendar_proxy_v1');
+    // 注意：bangumi_details 缓存由于 key 包含 ID，暂时不批量清理
   }
 
   /// 获取当天的新番放送（根据当前星期几）
@@ -33,8 +42,9 @@ class BangumiService {
   ) async {
     await _initCache();
 
-    // 接口级缓存：缓存原始 API 数组，固定键，不含参数
-    const cacheKey = 'bangumi_calendar_raw_v1';
+    final dataSource = await UserDataService.getBangumiDataSourceKey();
+    // 接口级缓存：缓存原始 API 数组，包含数据源标识
+    final cacheKey = 'bangumi_calendar_${dataSource}_v1';
 
     // 先尝试读取原始数组缓存
     try {
@@ -60,8 +70,6 @@ class BangumiService {
 
     // 未命中缓存，请求接口
     try {
-      final dataSource = await UserDataService.getBangumiDataSourceKey();
-      
       if (dataSource == 'proxy') {
         final response = await ApiService.get<List<dynamic>>(
           '/api/proxy/bangumi?path=calendar',
@@ -92,11 +100,20 @@ class BangumiService {
         }
       }
 
-      // 降级或直连
-      final response = await ApiService.getBangumiCalendar();
+      // 降级或直连逻辑
+      // 如果设置的是直连，或者代理获取失败，尝试直连
+      const apiUrl = 'https://api.bgm.tv/calendar';
+      final headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+      };
 
-      if (response.success && response.data != null) {
-        final List<dynamic> responseData = response.data!;
+      final httpResponse = await http
+          .get(Uri.parse(apiUrl), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (httpResponse.statusCode == 200) {
+        final List<dynamic> responseData = json.decode(httpResponse.body);
 
         // 解析所有星期数据
         final List<BangumiCalendarResponse> calendarData = responseData
@@ -113,20 +130,16 @@ class BangumiService {
 
         final items = targetDay?.items ?? <BangumiItem>[];
 
-        // 写入接口级缓存：原始数组
+        // 写入接口级缓存
         try {
-          await _cache.set(
-            cacheKey,
-            responseData,
-            const Duration(days: 1),
-          );
+          await _cache.set(cacheKey, responseData, const Duration(days: 1));
         } catch (_) {}
 
-        return ApiResponse.success(items, statusCode: response.statusCode);
+        return ApiResponse.success(items, statusCode: httpResponse.statusCode);
       } else {
         return ApiResponse.error(
-          response.message ?? '获取 Bangumi 日历失败',
-          statusCode: response.statusCode,
+          '获取 Bangumi 日历失败: ${httpResponse.statusCode}',
+          statusCode: httpResponse.statusCode,
         );
       }
     } catch (e) {
@@ -144,10 +157,9 @@ class BangumiService {
   }) async {
     await _initCache();
 
-    // 生成缓存键
-    final cacheKey = _cache.generateBangumiDetailsCacheKey(
-      bangumiId: bangumiId,
-    );
+    final dataSource = await UserDataService.getBangumiDataSourceKey();
+    // 生成缓存键，包含数据源标识
+    final cacheKey = '${_cache.generateBangumiDetailsCacheKey(bangumiId: bangumiId)}_$dataSource';
 
     // 尝试从缓存获取数据
     try {
@@ -173,8 +185,6 @@ class BangumiService {
     }
 
     try {
-      final dataSource = await UserDataService.getBangumiDataSourceKey();
-      
       if (dataSource == 'proxy') {
         // 优先通过服务器代理获取详情 (使用 Bangumi v0 API)
         final response = await ApiService.get<Map<String, dynamic>>(
@@ -213,7 +223,7 @@ class BangumiService {
           final Map<String, dynamic> data = json.decode(response.body);
           final details = BangumiDetails.fromJson(data);
           
-          // 缓存成功的结果，缓存时间为24小时
+          // 缓存成功的结果，缓存时间为 3 天
           try {
             await _cache.set(
               cacheKey,
@@ -239,5 +249,3 @@ class BangumiService {
     }
   }
 }
-
-

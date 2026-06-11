@@ -10,6 +10,9 @@ import '../services/page_cache_service.dart';
 import '../services/live_service.dart';
 import '../services/local_search_cache_service.dart';
 import '../services/version_service.dart';
+import '../services/bangumi_service.dart';
+import 'bangumi_section.dart';
+import '../screens/anime_screen.dart';
 import '../utils/device_utils.dart';
 import '../utils/font_utils.dart';
 import 'update_dialog.dart';
@@ -806,6 +809,10 @@ class _UserMenuState extends State<UserMenu> {
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiDataSource(value);
+                        await BangumiService.clearCache();
+                        // 强制刷新首页的新番组件及动漫页面
+                        BangumiSection.refreshBangumiCalendar();
+                        AnimeScreen.refreshAnimeData();
                         if (!mounted) return;
                         setState(() {
                           _bangumiDataSource = value;
@@ -830,6 +837,10 @@ class _UserMenuState extends State<UserMenu> {
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiImageSource(value);
+                        await BangumiService.clearCache();
+                        // 强制刷新首页的新番组件及动漫页面以触发布建并更新图片URL
+                        BangumiSection.refreshBangumiCalendar();
+                        AnimeScreen.refreshAnimeData();
                         if (!mounted) return;
                         setState(() {
                           _bangumiImageSource = value;

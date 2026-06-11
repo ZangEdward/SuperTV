@@ -32,6 +32,8 @@ class PlayerScreen extends StatefulWidget {
   final String? stitle;
   final String? stype;
   final String? prefer;
+  final String? localPath;
+  final String? episodeTitle;
 
   const PlayerScreen({
     super.key,
@@ -42,6 +44,8 @@ class PlayerScreen extends StatefulWidget {
     this.stitle,
     this.stype,
     this.prefer,
+    this.localPath,
+    this.episodeTitle,
   });
 
   @override
@@ -197,6 +201,24 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void initVideoData() async {
     final loadGeneration = ++_loadGeneration;
+
+    if (widget.localPath != null) {
+      if (!_isActiveLoad(loadGeneration)) return;
+      setState(() {
+        videoTitle = widget.episodeTitle != null 
+            ? '${widget.title} - ${widget.episodeTitle}' 
+            : widget.title;
+        _isLoading = false;
+        currentSource = 'local';
+        currentID = 'local';
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_isActiveLoad(loadGeneration)) {
+          updateVideoUrl(widget.localPath!);
+        }
+      });
+      return;
+    }
 
     if (widget.source == null &&
         widget.id == null &&
@@ -670,9 +692,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       // 获取 M3U8 代理 URL
       final m3u8ProxyUrl = await UserDataService.getM3u8ProxyUrl();
 
-      // 如果代理 URL 不为空，则将 newUrl encode 后拼接到代理 URL 后面
+      // 如果代理 URL 不为空，且不是本地文件，则将 newUrl encode 后拼接到代理 URL 后面
       String finalUrl = newUrl;
-      if (m3u8ProxyUrl.isNotEmpty) {
+      final bool isLocalFile = newUrl.startsWith('/') || 
+                             newUrl.startsWith('file://') || 
+                             (Platform.isWindows && newUrl.contains(':\\'));
+                             
+      if (m3u8ProxyUrl.isNotEmpty && !isLocalFile) {
         final encodedUrl = Uri.encodeComponent(newUrl);
         finalUrl = '$m3u8ProxyUrl$encodedUrl';
         print("使用 M3U8 代理: $finalUrl");

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../services/theme_service.dart';
 import '../widgets/capsule_tab_switcher.dart';
@@ -219,15 +218,27 @@ class _AnimeScreenState extends State<AnimeScreen> {
   bool _hasMore = true;
   String? _errorMessage;
 
+  // 静态变量存储当前实例
+  static _AnimeScreenState? _currentInstance;
+
+  /// 静态方法：刷新数据
+  static Future<void> refreshAnimeData() async {
+    await _currentInstance?._fetchAnimeData(isRefresh: true);
+  }
+
   @override
   void initState() {
     super.initState();
+    _currentInstance = this;
     _fetchAnimeData(isRefresh: true);
     _scrollController.addListener(_handleScroll);
   }
 
   @override
   void dispose() {
+    if (_currentInstance == this) {
+      _currentInstance = null;
+    }
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     super.dispose();
@@ -551,6 +562,7 @@ class _AnimeScreenState extends State<AnimeScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not launch $url')),
       );
@@ -655,8 +667,8 @@ class _AnimeScreenState extends State<AnimeScreen> {
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
         color: themeService.isDarkMode
-            ? Colors.white.withOpacity(0.1)
-            : Colors.white.withOpacity(0.8),
+            ? Colors.white.withValues(alpha: 0.1)
+            : Colors.white.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -905,8 +917,8 @@ class _AnimeScreenState extends State<AnimeScreen> {
             height: 2,
             decoration: BoxDecoration(
               color: themeService.isDarkMode
-                  ? Colors.white.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.4),
+                  ? Colors.white.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(1),
             ),
           ),
@@ -916,7 +928,7 @@ class _AnimeScreenState extends State<AnimeScreen> {
             style: FontUtils.poppins(
               fontSize: 14,
               color: themeService.isDarkMode
-                  ? Colors.white.withOpacity(0.6)
+                  ? Colors.white.withValues(alpha: 0.6)
                   : Colors.grey[600],
               fontWeight: FontWeight.w400,
             ),
@@ -927,7 +939,7 @@ class _AnimeScreenState extends State<AnimeScreen> {
             style: FontUtils.poppins(
               fontSize: 12,
               color: themeService.isDarkMode
-                  ? Colors.white.withOpacity(0.4)
+                  ? Colors.white.withValues(alpha: 0.4)
                   : Colors.grey[500],
               fontWeight: FontWeight.w300,
             ),
