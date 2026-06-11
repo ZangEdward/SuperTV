@@ -334,7 +334,18 @@ class _MainLayoutState extends State<MainLayout> {
                             _buildHeader(context, themeService, isTablet),
                             // 主要内容区域
                             Expanded(
-                              child: widget.content,
+                              child: NotificationListener<ScrollNotification>(
+                                onNotification: (notification) {
+                                  if (notification is ScrollStartNotification || 
+                                      notification is ScrollUpdateNotification) {
+                                    if (_overlayEntry != null) {
+                                      _removeOverlay();
+                                    }
+                                  }
+                                  return false;
+                                },
+                                child: widget.content,
+                              ),
                             ),
                             // 底部导航栏（仅非平板模式显示）
                             if (!isTablet && widget.showBottomNav)
@@ -465,8 +476,8 @@ class _MainLayoutState extends State<MainLayout> {
     return Container(
       padding: EdgeInsets.only(
         top: topPadding,
-        left: 16,
-        right: 16,
+        left: 12,
+        right: 12,
         bottom: 8,
       ),
       decoration: BoxDecoration(
@@ -530,7 +541,7 @@ class _MainLayoutState extends State<MainLayout> {
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
           // 右侧按钮组
           _buildRightButtons(themeService),
         ],
@@ -675,7 +686,7 @@ class _MainLayoutState extends State<MainLayout> {
             // 搜索框在整个屏幕水平居中
             Center(
               child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.5,
+                width: MediaQuery.of(context).size.width * 0.7,
                 child: searchBoxWidget,
               ),
             ),
@@ -696,7 +707,7 @@ class _MainLayoutState extends State<MainLayout> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(child: searchBoxWidget),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
           _buildRightButtons(themeService),
         ],
       ),
@@ -709,6 +720,8 @@ class _MainLayoutState extends State<MainLayout> {
       children: [
         // 深浅模式切换按钮
         IconButton(
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(),
           icon: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             transitionBuilder: (Widget child, Animation<double> animation) {
@@ -720,21 +733,22 @@ class _MainLayoutState extends State<MainLayout> {
               color: themeService.isDarkMode
                   ? const Color(0xFFffffff)
                   : const Color(0xFF2c3e50),
-              size: 24,
+              size: 22, // 稍微缩小一点图标
             ),
           ),
           onPressed: () => themeService.toggleTheme(context),
           tooltip: themeService.isDarkMode ? '切换到浅色模式' : '切换到深色模式',
         ),
-        const SizedBox(width: 4),
         // 缓存管理按钮
         IconButton(
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(),
           icon: Icon(
             LucideIcons.download,
             color: themeService.isDarkMode
                 ? const Color(0xFFffffff)
                 : const Color(0xFF2c3e50),
-            size: 22,
+            size: 20, // 稍微缩小一点图标
           ),
           onPressed: () {
             Navigator.push(
@@ -744,15 +758,16 @@ class _MainLayoutState extends State<MainLayout> {
           },
           tooltip: '缓存管理',
         ),
-        const SizedBox(width: 4),
         // 用户按钮
         IconButton(
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(),
           icon: Icon(
             LucideIcons.user,
             color: themeService.isDarkMode
                 ? const Color(0xFFffffff)
                 : const Color(0xFF2c3e50),
-            size: 24,
+            size: 22, // 稍微缩小一点图标
           ),
           onPressed: () {
             setState(() {

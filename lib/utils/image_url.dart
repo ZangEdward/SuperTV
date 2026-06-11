@@ -6,6 +6,8 @@ import '../services/user_data_service.dart';
 /// - [source]: 数据来源（如 'douban'、'bangumi' 等）
 /// 返回可直接用于加载的图片地址。
 Future<String> getImageUrl(String originalUrl, String? source) async {
+  if (originalUrl.isEmpty) return originalUrl;
+
   if (source == 'douban' && originalUrl.isNotEmpty) {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
     
@@ -31,18 +33,24 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
     }
   }
 
-  if (source == 'bangumi' && originalUrl.isNotEmpty) {
-    // 优先使用服务器代理加载 Bangumi 图片，解决国内无法访问的问题
+  // 处理 // 开头的协议自适应地址
+  String processedUrl = originalUrl;
+  if (processedUrl.startsWith('//')) {
+    processedUrl = 'https:$processedUrl';
+  }
+
+  if ((source == 'bangumi' || processedUrl.contains('bgm.tv') || processedUrl.contains('manmankan.com')) && processedUrl.isNotEmpty) {
+    // 优先使用服务器代理加载图片，解决国内无法访问或防盗链的问题
     final baseUrl = await UserDataService.getServerUrl();
     if (baseUrl != null) {
       String cleanBaseUrl = baseUrl.endsWith('/')
           ? baseUrl.substring(0, baseUrl.length - 1)
           : baseUrl;
-      return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(originalUrl)}';
+      return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(processedUrl)}';
     }
   }
 
-  return originalUrl;
+  return processedUrl;
 }
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
@@ -60,6 +68,25 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     };
   }
+
+  final bool isBangumiSource = (source == 'bangumi') ||
+      RegExp(r'https?://([^/]+\.)?bgm\.tv', caseSensitive: false)
+          .hasMatch(imageUrl);
+
+  if (isBangumiSource) {
+    return <String, String>{
+      'Referer': 'https://bgm.tv/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+  }
+
+  if (imageUrl.contains('manmankan.com')) {
+    return <String, String>{
+      'Referer': 'https://www.manmankan.com/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+  }
+
   return null;
 }
 

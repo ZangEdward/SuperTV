@@ -103,12 +103,27 @@ class BangumiImages {
   });
 
   factory BangumiImages.fromJson(Map<String, dynamic> json) {
+    String processUrl(dynamic url) {
+      if (url == null) return '';
+      String s = url.toString();
+      if (s.isEmpty) return '';
+      // 处理 // 开头的协议自适应地址
+      if (s.startsWith('//')) {
+        return 'https:$s';
+      }
+      // 强制使用 https，避免 Mixed Content 问题
+      if (s.startsWith('http://')) {
+        return s.replaceFirst('http://', 'https://');
+      }
+      return s;
+    }
+
     return BangumiImages(
-      large: json['large']?.toString() ?? '',
-      common: json['common']?.toString() ?? '',
-      medium: json['medium']?.toString() ?? '',
-      small: json['small']?.toString() ?? '',
-      grid: json['grid']?.toString() ?? '',
+      large: processUrl(json['large']),
+      common: processUrl(json['common']),
+      medium: processUrl(json['medium']),
+      small: processUrl(json['small']),
+      grid: processUrl(json['grid']),
     );
   }
 
