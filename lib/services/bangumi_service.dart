@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/bangumi.dart';
 import 'api_service.dart';
 import 'douban_cache_service.dart';
+import 'user_data_service.dart';
 
 /// Bangumi 数据服务（函数级缓存，一天过期）
 class BangumiService {

@@ -27,6 +27,11 @@ class VideoPlayerWidget extends StatefulWidget {
   final String? sourceName;
   final VoidCallback? onShowEpisodes;
   final VoidCallback? onShowSources;
+  final Function(bool)? onWebFullscreenChanged;
+  final Function(VoidCallback)? onExitWebFullscreenCallbackReady;
+  final VoidCallback? onExitFullScreen;
+  final bool live;
+  final Function(bool)? onPipModeChanged;
 
   const VideoPlayerWidget({
     super.key,

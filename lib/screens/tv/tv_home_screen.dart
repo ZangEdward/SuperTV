@@ -4,6 +4,7 @@ import 'tv_search_screen.dart';
 import '../player_screen.dart';
 import '../home_screen.dart';
 import '../../models/video_info.dart';
+import '../../models/play_record.dart';
 import '../../widgets/hot_movies_section.dart';
 import '../../widgets/hot_tv_section.dart';
 import '../login_screen.dart';
@@ -19,15 +20,15 @@ class TvHomeScreen extends StatefulWidget {
 class _TvHomeScreenState extends State<TvHomeScreen> {
   int _currentIndex = 0;
 
-  void _navigateToPlayer(VideoInfo videoInfo) {
+  void _navigateToPlayer(PlayRecord record) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PlayerScreen(
-          title: videoInfo.title,
-          year: videoInfo.year,
-          source: videoInfo.source,
-          id: videoInfo.id,
+          title: record.title,
+          year: record.year,
+          source: record.source,
+          id: record.id,
         ),
       ),
     );

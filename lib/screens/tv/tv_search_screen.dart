@@ -4,6 +4,8 @@ import '../../services/api_service.dart';
 import '../../models/search_result.dart';
 import '../player_screen.dart';
 import '../../models/video_info.dart';
+import '../../models/douban_movie.dart';
+import '../../utils/font_utils.dart';
 import '../../widgets/douban_movies_grid.dart'; // Reusing existing grid if possible
 
 class TvSearchScreen extends StatefulWidget {
@@ -63,7 +65,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     });
     
     try {
-      final results = await ApiService.searchVideos(term);
+      final results = await ApiService.fetchSourcesData(term);
       setState(() {
         _results = results;
         _isLoading = false;
@@ -88,9 +90,11 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
           // Middle Pane: Suggestions
           Container(
             width: 250,
-            border: const Border(
-              left: BorderSide(color: Colors.white10),
-              right: BorderSide(color: Colors.white10),
+            decoration: const BoxDecoration(
+              border: Border(
+                left: BorderSide(color: Colors.white10),
+                right: BorderSide(color: Colors.white10),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,7 +129,12 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
                 : Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: DoubanMoviesGrid(
-                      movies: _results.map((r) => r.toVideoInfo()).toList(),
+                      movies: _results.map((r) => DoubanMovie(
+                        id: r.id,
+                        title: r.title,
+                        poster: r.poster,
+                        year: r.year,
+                      )).toList(),
                       isLoading: false,
                       onVideoTap: (videoInfo) {
                         Navigator.push(
