@@ -199,80 +199,83 @@ class _TopTabSwitcherState extends State<TopTabSwitcher>
                 });
               }
             : null,
-        child: GestureDetector(
-          onTap: () {
-            // 防止动画进行中的重复点击
-            if (!_animationController.isAnimating) {
-              widget.onTabChanged(label);
-            }
-          },
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              // 计算当前按钮的文字颜色
-              Color textColor;
-              FontWeight fontWeight;
-
-              if (label == '首页') {
-                // 首页按钮：动画值为0时选中
-                double progress = 1.0 - (_animation.value * 2).clamp(0.0, 1.0);
-                textColor = Color.lerp(
-                  themeService.isDarkMode
-                      ? const Color(0xFFb0b0b0)
-                      : const Color(0xFF7f8c8d),
-                  themeService.isDarkMode
-                      ? const Color(0xFFffffff)
-                      : const Color(0xFF2c3e50),
-                  progress,
-                )!;
-                fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
-              } else if (label == '播放历史') {
-                // 播放历史按钮：动画值为0.5时选中
-                double progress = 1.0 - ((_animation.value - 0.5).abs() * 2);
-                progress = progress.clamp(0.0, 1.0);
-                textColor = Color.lerp(
-                  themeService.isDarkMode
-                      ? const Color(0xFFb0b0b0)
-                      : const Color(0xFF7f8c8d),
-                  themeService.isDarkMode
-                      ? const Color(0xFFffffff)
-                      : const Color(0xFF2c3e50),
-                  progress,
-                )!;
-                fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
-              } else {
-                // 收藏夹按钮：动画值为1时选中
-                double progress =
-                    ((_animation.value - 0.5) * 2).clamp(0.0, 1.0);
-                textColor = Color.lerp(
-                  themeService.isDarkMode
-                      ? const Color(0xFFb0b0b0)
-                      : const Color(0xFF7f8c8d),
-                  themeService.isDarkMode
-                      ? const Color(0xFFffffff)
-                      : const Color(0xFF2c3e50),
-                  progress,
-                )!;
-                fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              // 防止动画进行中的重复点击
+              if (!_animationController.isAnimating) {
+                widget.onTabChanged(label);
               }
-
-              // PC端悬停时文字变绿色
-              if (isPC && isHovering) {
-                textColor = const Color(0xFF27AE60);
-              }
-
-              return Center(
-                child: Text(
-                  label,
-                  style: FontUtils.poppins(
-                    fontSize: 11,
-                    fontWeight: fontWeight,
-                    color: textColor,
-                  ),
-                ),
-              );
             },
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                // 计算当前按钮的文字颜色
+                Color textColor;
+                FontWeight fontWeight;
+
+                if (label == '首页') {
+                  // 首页按钮：动画值为0时选中
+                  double progress = 1.0 - (_animation.value * 2).clamp(0.0, 1.0);
+                  textColor = Color.lerp(
+                    themeService.isDarkMode
+                        ? const Color(0xFFb0b0b0)
+                        : const Color(0xFF7f8c8d),
+                    themeService.isDarkMode
+                        ? const Color(0xFFffffff)
+                        : const Color(0xFF2c3e50),
+                    progress,
+                  )!;
+                  fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
+                } else if (label == '播放历史') {
+                  // 播放历史按钮：动画值为0.5时选中
+                  double progress = 1.0 - ((_animation.value - 0.5).abs() * 2);
+                  progress = progress.clamp(0.0, 1.0);
+                  textColor = Color.lerp(
+                    themeService.isDarkMode
+                        ? const Color(0xFFb0b0b0)
+                        : const Color(0xFF7f8c8d),
+                    themeService.isDarkMode
+                        ? const Color(0xFFffffff)
+                        : const Color(0xFF2c3e50),
+                    progress,
+                  )!;
+                  fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
+                } else {
+                  // 收藏夹按钮：动画值为1时选中
+                  double progress =
+                      ((_animation.value - 0.5) * 2).clamp(0.0, 1.0);
+                  textColor = Color.lerp(
+                    themeService.isDarkMode
+                        ? const Color(0xFFb0b0b0)
+                        : const Color(0xFF7f8c8d),
+                    themeService.isDarkMode
+                        ? const Color(0xFFffffff)
+                        : const Color(0xFF2c3e50),
+                    progress,
+                  )!;
+                  fontWeight = progress > 0.5 ? FontWeight.w600 : FontWeight.w400;
+                }
+
+                // PC端悬停时文字变绿色
+                if (isPC && isHovering) {
+                  textColor = const Color(0xFF27AE60);
+                }
+
+                return Center(
+                  child: Text(
+                    label,
+                    style: FontUtils.poppins(
+                      fontSize: 11,
+                      fontWeight: fontWeight,
+                      color: textColor,
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),

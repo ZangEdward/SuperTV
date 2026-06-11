@@ -17,7 +17,7 @@
 # =========================
 # Project Specific
 # =========================
--keep class org.moontechlab.selene.MainActivity { *; }
+-keep class com.supertv.app.MainActivity { *; }
 
 # =========================
 # 关键属性 (用于调试)

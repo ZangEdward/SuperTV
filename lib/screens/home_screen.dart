@@ -35,17 +35,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentBottomNavIndex = 0;
+  int _previousBottomNavIndex = 0;
   String _selectedTopTab = '首页';
-  late PageController _pageController;
-  late PageController _bottomNavPageController;
+  int _currentTopTabIndex = 0;
+  int _previousTopTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    // 初始化 PageController，默认显示首页（索引0）
-    _pageController = PageController(initialPage: 0);
-    // 初始化底栏 PageController
-    _bottomNavPageController = PageController(initialPage: 0);
     // 进入首页时直接刷新播放记录和收藏夹缓存
     _refreshCacheOnHomeEnter();
     // 检查应用更新
@@ -78,8 +75,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
-    _bottomNavPageController.dispose();
     super.dispose();
   }
 
@@ -153,8 +148,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// 构建首页内容（带 PageView 支持滑动切换）
-  Widget _buildHomeContentWithPageView() {
+  /// 构建首页内容（带动画支持切换）
+  Widget _buildHomeContentWithAnimation() {
     return Column(
       children: [
         // 顶部导航栏
@@ -162,48 +157,38 @@ class _HomeScreenState extends State<HomeScreen> {
           selectedTab: _selectedTopTab,
           onTabChanged: _onTopTabChanged,
         ),
-        // PageView 支持左右滑动
+        // 使用 AnimatedSwitcher 支持动画
         Expanded(
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (index) {
-              if (!mounted) return;
-
-              // 根据页面索引更新选中的标签
-              String newTab;
-              switch (index) {
-                case 0:
-                  newTab = '首页';
-                  break;
-                case 1:
-                  newTab = '播放历史';
-                  break;
-                case 2:
-                  newTab = '收藏夹';
-                  break;
-                default:
-                  newTab = '首页';
-              }
-
-              // 只在标签真正改变时更新状态
-              if (_selectedTopTab != newTab) {
-                setState(() {
-                  _selectedTopTab = newTab;
-                });
-              }
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              final bool isMovingRight = _currentTopTabIndex > _previousTopTabIndex;
+              final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+              return SlideTransition(
+                position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                ),
+                child: child,
+              );
             },
-            children: [
-              // 首页内容
-              _buildHomeTabContent(),
-              // 播放历史内容
-              _buildHistoryTabContent(),
-              // 收藏夹内容
-              _buildFavoritesTabContent(),
-            ],
+            child: _getTopTabContent(_currentTopTabIndex),
           ),
         ),
       ],
     );
+  }
+
+  Widget _getTopTabContent(int index) {
+    switch (index) {
+      case 0:
+        return Container(key: const ValueKey('home_tab'), child: _buildHomeTabContent());
+      case 1:
+        return Container(key: const ValueKey('history_tab'), child: _buildHistoryTabContent());
+      case 2:
+        return Container(key: const ValueKey('favorites_tab'), child: _buildFavoritesTabContent());
+      default:
+        return Container(key: const ValueKey('home_tab'), child: _buildHomeTabContent());
+    }
   }
 
   /// 构建首页标签内容
@@ -390,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return MainLayout(
-      content: _buildBottomNavPageView(),
+      content: _buildBottomNavWithAnimation(),
       currentBottomNavIndex: _currentBottomNavIndex,
       onBottomNavChanged: _onBottomNavChanged,
       selectedTopTab: _selectedTopTab,
@@ -400,27 +385,41 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// 构建底栏 PageView，支持左右滑动切换
-  Widget _buildBottomNavPageView() {
-    return PageView(
-      controller: _bottomNavPageController,
-      onPageChanged: (index) {
-        if (!mounted) return;
-        if (_currentBottomNavIndex != index) {
-          setState(() {
-            _currentBottomNavIndex = index;
-          });
-        }
+  /// 构建底栏切换动画
+  Widget _buildBottomNavWithAnimation() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final bool isMovingRight = _currentBottomNavIndex > _previousBottomNavIndex;
+        final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+        return SlideTransition(
+          position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        );
       },
-      children: [
-        _buildHomeContentWithPageView(),
-        const MovieScreen(),
-        const TvScreen(),
-        const AnimeScreen(),
-        const ShowScreen(),
-        const LiveScreen(),
-      ],
+      child: _getBottomNavPage(_currentBottomNavIndex),
     );
+  }
+
+  Widget _getBottomNavPage(int index) {
+    switch (index) {
+      case 0:
+        return Container(key: const ValueKey('home'), child: _buildHomeContentWithAnimation());
+      case 1:
+        return const MovieScreen(key: ValueKey('movie'));
+      case 2:
+        return const TvScreen(key: ValueKey('tv'));
+      case 3:
+        return const AnimeScreen(key: ValueKey('anime'));
+      case 4:
+        return const ShowScreen(key: ValueKey('show'));
+      case 5:
+        return const LiveScreen(key: ValueKey('live'));
+      default:
+        return Container(key: const ValueKey('home'), child: _buildHomeContentWithAnimation());
+    }
   }
 
   /// 处理底部导航栏切换
@@ -433,17 +432,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() {
+      _previousBottomNavIndex = _currentBottomNavIndex;
       _currentBottomNavIndex = index;
     });
-
-    // 使用动画切换到对应页面
-    if (_bottomNavPageController.hasClients) {
-      _bottomNavPageController.animateToPage(
-        index,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
   }
 
   /// 处理顶部标签切换
@@ -455,11 +446,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    setState(() {
-      _selectedTopTab = tab;
-    });
-
-    // 同步 PageView 的页面切换
     int pageIndex;
     switch (tab) {
       case '首页':
@@ -475,76 +461,54 @@ class _HomeScreenState extends State<HomeScreen> {
         pageIndex = 0;
     }
 
-    // 使用动画切换到对应页面
-    if (_pageController.hasClients) {
-      _pageController.animateToPage(
-        pageIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
+    setState(() {
+      _previousTopTabIndex = _currentTopTabIndex;
+      _currentTopTabIndex = pageIndex;
+      _selectedTopTab = tab;
+    });
   }
 
   /// 处理点击搜索按钮
   void _onSearchTap() {
-    if (Platform.isIOS) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const SearchScreen(),
-        ),
-      ).then((_) {
-        // 从搜索页面返回时刷新数据
-        if (mounted) {
-          _refreshOnResume();
-        }
-      });
-    } else {
-      Navigator.push(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              const SearchScreen(),
-          transitionDuration: Duration.zero, // 无打开动画
-          reverseTransitionDuration: Duration.zero, // 无关闭动画
-        ),
-      ).then((_) {
-        // 从搜索页面返回时刷新数据
-        if (mounted) {
-          _refreshOnResume();
-        }
-      });
-    }
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const SearchScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(0.0, -1.0);
+          const end = Offset.zero;
+          const curve = Curves.easeOutCubic;
+          var tween =
+              Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    ).then((_) {
+      // 从搜索页面返回时刷新数据
+      if (mounted) {
+        _refreshOnResume();
+      }
+    });
   }
 
-  /// 处理点击 Selene 标题跳转到首页
+  /// 处理点击 SuperTV 标题跳转到首页
   void _onHomeTap() {
     if (!mounted) return;
 
     setState(() {
       // 切换到首页
+      _previousBottomNavIndex = _currentBottomNavIndex;
       _currentBottomNavIndex = 0;
       // 切换到首页标签
+      _previousTopTabIndex = _currentTopTabIndex;
+      _currentTopTabIndex = 0;
       _selectedTopTab = '首页';
     });
-
-    // 使用动画切换到首页
-    if (_bottomNavPageController.hasClients) {
-      _bottomNavPageController.animateToPage(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-
-    // 同时切换顶部标签到首页
-    if (_pageController.hasClients) {
-      _pageController.animateToPage(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
   }
 
   /// 处理视频卡片点击

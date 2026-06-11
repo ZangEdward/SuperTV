@@ -27,8 +27,8 @@
 ```
 
 构建完成后，你会在 `dist/` 目录下找到：
-- `selene-{version}-windows-x64-portable.zip` - 便携版（解压即用）
-- `selene-{version}-windows-x64-setup.exe` - 安装程序
+- `supertv-{version}-windows-x64-portable.zip` - 便携版（解压即用）
+- `supertv-{version}-windows-x64-setup.exe` - 安装程序
 
 ### 方法 2: 手动构建
 
@@ -78,7 +78,7 @@ magick convert logo.jpg -resize 256x256 logo.ico
 为了避免 Windows 安全警告，建议购买代码签名证书并签名安装程序：
 
 ```bash
-signtool sign /f certificate.pfx /p password /t http://timestamp.digicert.com dist/selene-setup.exe
+signtool sign /f certificate.pfx /p password /t http://timestamp.digicert.com dist/supertv-setup.exe
 ```
 
 ## 发布检查清单

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Selene 构建脚本
+# SuperTV 构建脚本
 # 用于构建安卓和 iOS 无签名版本，并将构建产物复制到根目录下
 
 set -e  # 遇到错误时退出
@@ -127,9 +127,9 @@ build_macos_arm64() {
     flutter build macos --release --dart-define=FLUTTER_TARGET_PLATFORM=darwin-arm64
     
     # 备份 ARM64 构建产物
-    if [ -d "build/macos/Build/Products/Release/selene.app" ]; then
+    if [ -d "build/macos/Build/Products/Release/supertv.app" ]; then
         mkdir -p ../build/macos-arm64
-        ditto build/macos/Build/Products/Release/selene.app ../build/macos-arm64/selene.app
+        ditto build/macos/Build/Products/Release/supertv.app ../build/macos-arm64/supertv.app
         log_success "macOS ARM64 构建完成"
     fi
     
@@ -158,9 +158,9 @@ build_macos_x86_64() {
     flutter build macos --release --dart-define=FLUTTER_TARGET_PLATFORM=darwin-x64
     
     # 备份 x86_64 构建产物
-    if [ -d "build/macos/Build/Products/Release/selene.app" ]; then
+    if [ -d "build/macos/Build/Products/Release/supertv.app" ]; then
         mkdir -p ../build/macos-x86_64
-        ditto build/macos/Build/Products/Release/selene.app ../build/macos-x86_64/selene.app
+        ditto build/macos/Build/Products/Release/supertv.app ../build/macos-x86_64/supertv.app
         log_success "macOS x86_64 构建完成"
     fi
     
@@ -237,39 +237,39 @@ copy_artifacts() {
     
     # 复制安卓 APK
     if [ -f "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" ]; then
-        cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/selene-${APP_VERSION}-armv8.apk"
-        log_success "安卓 arm64 APK 已复制到 dist/selene-${APP_VERSION}-armv8.apk"
+        cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/supertv-${APP_VERSION}-armv8.apk"
+        log_success "安卓 arm64 APK 已复制到 dist/supertv-${APP_VERSION}-armv8.apk"
     else
         log_warning "安卓 arm64 APK 文件未找到"
     fi
     if [ -f "build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk" ]; then
-        cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/selene-${APP_VERSION}-armv7a.apk"
-        log_success "安卓 armv7a APK 已复制到 dist/selene-${APP_VERSION}-armv7a.apk"
+        cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/supertv-${APP_VERSION}-armv7a.apk"
+        log_success "安卓 armv7a APK 已复制到 dist/supertv-${APP_VERSION}-armv7a.apk"
     else
         log_warning "安卓 armv7a APK 文件未找到"
     fi
 
     # 复制 iOS 构建产物
     if [ -f "ios-build/Runner.ipa" ]; then
-        cp ios-build/Runner.ipa "dist/selene-${APP_VERSION}.ipa"
-        log_success "iOS .ipa 文件已复制到 dist/selene-${APP_VERSION}.ipa"
+        cp ios-build/Runner.ipa "dist/supertv-${APP_VERSION}.ipa"
+        log_success "iOS .ipa 文件已复制到 dist/supertv-${APP_VERSION}.ipa"
     else
         log_warning "iOS .ipa 文件未找到"
     fi
     
     # 打包 macOS ARM64 应用为 DMG
-    if [ -d "build/macos-arm64/selene.app" ]; then
+    if [ -d "build/macos-arm64/supertv.app" ]; then
         log_info "打包 macOS ARM64 应用为 DMG..."
         
-        DMG_NAME="selene-${APP_VERSION}-macos-arm64.dmg"
+        DMG_NAME="supertv-${APP_VERSION}-macos-arm64.dmg"
         DMG_PATH="dist/${DMG_NAME}"
         
         # 创建临时目录
         TMP_DMG_DIR=$(mktemp -d)
-        cp -R build/macos-arm64/selene.app "$TMP_DMG_DIR/"
+        cp -R build/macos-arm64/supertv.app "$TMP_DMG_DIR/"
         
         # 创建 DMG
-        hdiutil create -volname "Selene" \
+        hdiutil create -volname "SuperTV" \
             -srcfolder "$TMP_DMG_DIR" \
             -ov -format UDZO \
             "$DMG_PATH"
@@ -283,18 +283,18 @@ copy_artifacts() {
     fi
     
     # 打包 macOS x86_64 应用为 DMG
-    if [ -d "build/macos-x86_64/selene.app" ]; then
+    if [ -d "build/macos-x86_64/supertv.app" ]; then
         log_info "打包 macOS x86_64 应用为 DMG..."
         
-        DMG_NAME="selene-${APP_VERSION}-macos-x86_64.dmg"
+        DMG_NAME="supertv-${APP_VERSION}-macos-x86_64.dmg"
         DMG_PATH="dist/${DMG_NAME}"
         
         # 创建临时目录
         TMP_DMG_DIR=$(mktemp -d)
-        cp -R build/macos-x86_64/selene.app "$TMP_DMG_DIR/"
+        cp -R build/macos-x86_64/supertv.app "$TMP_DMG_DIR/"
         
         # 创建 DMG
-        hdiutil create -volname "Selene" \
+        hdiutil create -volname "SuperTV" \
             -srcfolder "$TMP_DMG_DIR" \
             -ov -format UDZO \
             "$DMG_PATH"
@@ -332,7 +332,7 @@ show_results() {
 
 # 主函数
 main() {
-    echo "🚀 Selene 构建脚本启动"
+    echo "🚀 SuperTV 构建脚本启动"
     echo "=================================="
     
     # 检查参数

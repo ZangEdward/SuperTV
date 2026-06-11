@@ -1,4 +1,4 @@
-name: Build and Deploy APK
+name: Build and Deploy SuperTV
 
 on:
   push:
@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
     outputs:
       VERSION_NAME: ${{ steps.get_version.outputs.VERSION_NAME }}
@@ -38,7 +38,6 @@ jobs:
       - name: Get version from build.gradle.kts
         id: get_version
         run: |
-          # 适配 Kotlin DSL: versionName = "x.x.x.x"
           VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' android/app/build.gradle.kts)
           if [ -z "$VERSION_NAME" ]; then
             echo "❌ 无法从 android/app/build.gradle.kts 中提取 versionName"
@@ -52,24 +51,13 @@ jobs:
         id: extract_secrets
         run: |
           echo "${{ secrets.APP_SECRETS }}" > secrets.json
-          
-          # 提取签名相关
           echo "SIGNING_KEY=$(jq -r '.signing_key' secrets.json)" >> $GITHUB_ENV
           echo "KEY_ALIAS=$(jq -r '.key_alias' secrets.json)" >> $GITHUB_ENV
           echo "KEY_PASSWORD=$(jq -r '.key_password' secrets.json)" >> $GITHUB_ENV
-          
-          # 提取 API 节点并转义以便传递给 --dart-define
-          # 我们需要将 JSON 压缩成一行，并转义双引号
-          API_NODES=$(jq -c '.api_nodes_json' secrets.json | sed 's/"/\\"/g')
-          # 注意：api_nodes_json 在你的 secrets_backup.json 中本身就是一个转义的字符串，
-          # 我们需要获取它的原始值（即 JSON 数组）
           API_NODES_RAW=$(jq -r '.api_nodes_json' secrets.json | jq -c .)
           echo "API_NODES=$API_NODES_RAW" >> $GITHUB_ENV
-          
-          # 提取 OTA 相关
           echo "PAT=$(jq -r '.pat' secrets.json)" >> $GITHUB_ENV
           echo "SYNC_REPO=$(jq -r '.sync_repo' secrets.json)" >> $GITHUB_ENV
-          
           echo "✅ Secrets 已提取"
 
       - name: Decode Keystore
@@ -78,13 +66,13 @@ jobs:
           echo "${{ env.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
           echo "✅ 签名文件已写入 android/app/release-key.jks"
 
-      - name: Configure Signing in gradle.properties
+      - name: Configure Signing in key.properties
         run: |
-          echo "MYAPP_UPLOAD_STORE_FILE=release-key.jks" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ env.KEY_ALIAS }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ env.KEY_PASSWORD }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ env.KEY_PASSWORD }}" >> android/gradle.properties
-          echo "✅ android/gradle.properties 已配置签名"
+          echo "storeFile=release-key.jks" >> android/key.properties
+          echo "storePassword=${{ env.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ env.KEY_ALIAS }}" >> android/key.properties
+          echo "keyPassword=${{ env.KEY_PASSWORD }}" >> android/key.properties
+          echo "✅ android/key.properties 已配置签名"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -106,34 +94,82 @@ jobs:
       - name: Copy and Rename APK
         run: |
           mkdir -p output
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk output/SuperTV-${{ env.VERSION_NAME }}.apk
-          echo "✅ APK 已生成: output/SuperTV-${{ env.VERSION_NAME }}.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk output/SuperTV-v${{ env.VERSION_NAME }}-Android.apk
+          echo "✅ APK 已生成: output/SuperTV-v${{ env.VERSION_NAME }}-Android.apk"
 
-      - name: Upload APK artifact (for OTA)
-        if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: supertv-apk
-          path: output/SuperTV-${{ env.VERSION_NAME }}.apk
+          path: output/SuperTV-v${{ env.VERSION_NAME }}-Android.apk
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (APK)
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION_NAME }}
           name: "SuperTV v${{ env.VERSION_NAME }}"
-          body: |
-            ## SuperTV v${{ env.VERSION_NAME }}
-            
-            - 构建时间: ${{ github.event.repository.updated_at }}
-            - 提交: ${{ github.sha }}
-          files: output/SuperTV-${{ env.VERSION_NAME }}.apk
+          files: output/SuperTV-v${{ env.VERSION_NAME }}-Android.apk
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  build-windows:
+    runs-on: windows-latest
+    needs: build-apk
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.3"
+          channel: 'stable'
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Extract Secrets
+        id: extract_secrets
+        shell: pwsh
+        run: |
+          $secrets = '${{ secrets.APP_SECRETS }}' | ConvertFrom-Json
+          $api_nodes = $secrets.api_nodes_json | ConvertFrom-Json | ConvertTo-Json -Compress
+          echo "API_NODES=$api_nodes" >> $env:GITHUB_ENV
+          echo "✅ Secrets 已提取"
+
+      - name: Build Windows
+        run: |
+          flutter build windows --release --dart-define=API_NODES_JSON='${{ env.API_NODES }}'
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          $VERSION = "${{ needs.build-apk.outputs.VERSION_NAME }}"
+          $BUILD_DIR = "build/windows/x64/runner/Release"
+          $OUTPUT_DIR = "output"
+          New-Item -ItemType Directory -Force -Path $OUTPUT_DIR
+          Compress-Archive -Path "$BUILD_DIR/*" -DestinationPath "$OUTPUT_DIR/SuperTV-v$VERSION-Windows.zip"
+          echo "✅ Windows 包已生成: $OUTPUT_DIR/SuperTV-v$VERSION-Windows.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: supertv-windows
+          path: output/SuperTV-v*-Windows.zip
+
+      - name: Update GitHub Release (Windows)
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/main') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build-apk.outputs.VERSION_NAME }}
+          files: output/SuperTV-v*-Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   ota:
-    needs: build
+    needs: build-apk
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
     steps:
@@ -147,11 +183,9 @@ jobs:
 
       - name: Set version environment
         run: |
-          VERSION="${{ needs.build.outputs.VERSION_NAME }}"
+          VERSION="${{ needs.build-apk.outputs.VERSION_NAME }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          if [ ! -f "SuperTV-$VERSION.apk" ]; then
-            mv *.apk SuperTV-$VERSION.apk 2>/dev/null || true
-          fi
+          mv SuperTV-v$VERSION-Android.apk SuperTV-$VERSION.apk 2>/dev/null || true
           echo "✅ 准备推送 OTA 版本: $VERSION"
 
       - name: Extract Secrets for OTA

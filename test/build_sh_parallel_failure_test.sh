@@ -9,7 +9,7 @@ cp "$repo_root/build.sh" "$tmp_dir/build.sh"
 chmod +x "$tmp_dir/build.sh"
 
 cat > "$tmp_dir/pubspec.yaml" <<'YAML'
-name: selene_test
+name: supertv_test
 version: 1.2.3+4
 YAML
 

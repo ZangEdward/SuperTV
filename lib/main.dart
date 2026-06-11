@@ -37,7 +37,7 @@ void main() async {
   // 启动定期清理
   cacheService.startPeriodicCleanup();
 
-  runApp(const SeleneApp());
+  runApp(const SuperTVApp());
 
   // 初始化 Windows 窗口配置
   if (Platform.isWindows) {
@@ -48,14 +48,14 @@ void main() async {
       win.minSize = minSize;
       win.size = initialSize;
       win.alignment = Alignment.center;
-      win.title = "Selene";
+      win.title = "SuperTV";
       win.show();
     });
   }
 }
 
-class SeleneApp extends StatelessWidget {
-  const SeleneApp({super.key});
+class SuperTVApp extends StatelessWidget {
+  const SuperTVApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +64,7 @@ class SeleneApp extends StatelessWidget {
       child: Consumer<ThemeService>(
         builder: (context, themeService, child) {
           return MaterialApp(
-            title: 'Selene',
+            title: 'SuperTV',
             debugShowCheckedModeBanner: false,
             theme: themeService.lightTheme,
             darkTheme: themeService.darkTheme,

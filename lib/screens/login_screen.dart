@@ -250,10 +250,10 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 32),
 
         // 登录按钮
-        ElevatedButton(
+        FilledButton(
           onPressed:
               (_isLoading || !_isFormValid) ? null : _handleLocalModeLogin,
-          style: ElevatedButton.styleFrom(
+          style: FilledButton.styleFrom(
             backgroundColor: _isFormValid && !_isLoading
                 ? const Color(0xFF2c3e50)
                 : const Color(0xFFbdc3c7),
@@ -265,7 +265,6 @@ class _LoginScreenState extends State<LoginScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             elevation: 0,
-            shadowColor: Colors.transparent,
           ),
           child: _isLoading
               ? Row(
@@ -627,11 +626,11 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Selene 标题 - 可点击
+        // SuperTV 标题 - 可点击
         GestureDetector(
           onTap: _handleLogoTap,
           child: Text(
-            'Selene',
+            'SuperTV',
             style: FontUtils.sourceCodePro(
               fontSize: 42,
               fontWeight: FontWeight.w400,
@@ -881,12 +880,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 32),
 
                     // 登录按钮
-                    ElevatedButton(
+                    FilledButton(
                       onPressed:
                           (_isLoading || !_isFormValid) ? null : _handleLogin,
-                      style: ElevatedButton.styleFrom(
+                      style: FilledButton.styleFrom(
                         backgroundColor: _isFormValid && !_isLoading
-                            ? const Color(0xFF2c3e50) // 与Selene logo相同的颜色
+                            ? const Color(0xFF2c3e50) // 与SuperTV logo相同的颜色
                             : const Color(0xFFbdc3c7), // 禁用时的浅灰色
                         foregroundColor: _isFormValid && !_isLoading
                             ? Colors.white
@@ -896,7 +895,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         elevation: 0,
-                        shadowColor: Colors.transparent,
                       ),
                       child: _isLoading
                           ? Row(
@@ -947,11 +945,11 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Selene 标题 - 可点击
+          // SuperTV 标题 - 可点击
           GestureDetector(
             onTap: _handleLogoTap,
             child: Text(
-              'Selene',
+              'SuperTV',
               style: FontUtils.sourceCodePro(
                 fontSize: 42,
                 fontWeight: FontWeight.w400,
