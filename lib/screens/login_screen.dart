@@ -601,21 +601,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final isDark = themeService.isDarkMode;
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       body: Container(
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF000000) : null,
+          color: isDark ? const Color(0xFF121212) : null,
           gradient: isDark
               ? null
               : const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFFe6f3fb), // #e6f3fb 0%
-                    Color(0xFFeaf3f7), // #eaf3f7 18%
-                    Color(0xFFf7f7f3), // #f7f7f3 38%
-                    Color(0xFFe9ecef), // #e9ecef 60%
-                    Color(0xFFdbe3ea), // #dbe3ea 80%
-                    Color(0xFFd3dde6), // #d3dde6 100%
+                    Color(0xFFe6f3fb),
+                    Color(0xFFeaf3f7),
+                    Color(0xFFf7f7f3),
+                    Color(0xFFe9ecef),
+                    Color(0xFFdbe3ea),
+                    Color(0xFFd3dde6),
                   ],
                   stops: [0.0, 0.18, 0.38, 0.60, 0.80, 1.0],
                 ),
@@ -624,7 +625,10 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             // Windows 自定义标题栏
             if (Platform.isWindows)
-              const WindowsTitleBar(customBackgroundColor: Colors.transparent),
+              WindowsTitleBar(
+                customBackgroundColor: Colors.transparent,
+                isDark: isDark,
+              ),
             // 主要内容
             Expanded(
               child: SafeArea(
@@ -896,12 +900,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         backgroundColor: _isFormValid && !_isLoading
                             ? (isDark ? Colors.white : const Color(0xFF2c3e50))
                             : (isDark
-                                ? Colors.white.withOpacity(0.12)
+                            ? Colors.white.withValues(alpha: 0.12)
                                 : const Color(0xFFbdc3c7)),
                         foregroundColor: _isFormValid && !_isLoading
                             ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
                             : (isDark
-                                ? Colors.white.withOpacity(0.38)
+                                ? Colors.white.withValues(alpha: 0.38)
                                 : const Color(0xFF7f8c8d)),
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(

@@ -19,6 +19,19 @@ class DownloadManagerScreen extends StatelessWidget {
             style: FontUtils.poppins(fontWeight: FontWeight.w600),
           ),
           elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(LucideIcons.pauseCircle),
+              tooltip: '全部暂停',
+              onPressed: () => DownloadService().pauseAllTasks(),
+            ),
+            IconButton(
+              icon: const Icon(LucideIcons.playCircle),
+              tooltip: '全部恢复',
+              onPressed: () => DownloadService().resumeAllTasks(),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
         body: Consumer<DownloadService>(
           builder: (context, service, child) {
@@ -30,7 +43,7 @@ class DownloadManagerScreen extends StatelessWidget {
                     Icon(
                       LucideIcons.download,
                       size: 64,
-                      color: Colors.grey.withOpacity(0.5),
+                      color: Colors.grey.withValues(alpha: 0.5),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -45,13 +58,58 @@ class DownloadManagerScreen extends StatelessWidget {
               );
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: service.tasks.length,
-              itemBuilder: (context, index) {
-                final task = service.tasks[index];
-                return _DownloadTaskItem(task: task);
-              },
+            return Column(
+              children: [
+                // 设置区域
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        '同时下载',
+                        style: FontUtils.poppins(fontSize: 14, color: Colors.grey[700]),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: DropdownButton<int>(
+                          value: service.maxConcurrentEpisodes,
+                          underline: const SizedBox(),
+                          items: List.generate(10, (i) => i + 1).map((i) {
+                            return DropdownMenuItem(
+                              value: i,
+                              child: Text('$i 集', style: FontUtils.poppins(fontSize: 14)),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) service.setMaxConcurrentEpisodes(val);
+                          },
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '任务: ${service.tasks.length}',
+                        style: FontUtils.poppins(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: service.tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = service.tasks[index];
+                      return _DownloadTaskItem(task: task);
+                    },
+                  ),
+                ),
+              ],
             );
           },
         ),
@@ -131,10 +189,10 @@ class _DownloadTaskItem extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _getStatusText(task.status),
+                        task.progress == 0.99 ? '正在合并...' : _getStatusText(task.status),
                         style: FontUtils.poppins(
                           fontSize: 12,
-                          color: _getStatusColor(task.status),
+                          color: task.progress == 0.99 ? Colors.orange : _getStatusColor(task.status),
                         ),
                       ),
                       Text(

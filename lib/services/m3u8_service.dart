@@ -69,11 +69,55 @@ class M3U8Service {
   /// 获取M3U8流的片段URL列表
   Future<List<String>> _getSegmentUrls(String m3u8Url) async {
     try {
-      final response = await _dio.get(m3u8Url);
+      final mediaUrl = await resolveMediaPlaylist(m3u8Url);
+      final response = await _dio.get(mediaUrl);
       final content = response.data as String;
-      return parseSegmentsFromContent(content, m3u8Url);
+      return parseSegmentsFromContent(content, mediaUrl);
     } catch (e) {
       return [];
+    }
+  }
+
+  /// 解析 M3U8 链接，如果是主播放列表（Master Playlist），则选择最佳变体（Media Playlist）
+  Future<String> resolveMediaPlaylist(String url) async {
+    try {
+      final response = await _dio.get(url);
+      final content = response.data as String;
+      
+      if (!content.contains('#EXT-X-STREAM-INF')) {
+        // 这已经是一个 Media Playlist
+        return url;
+      }
+
+      // 解析 Master Playlist
+      final lines = content.split('\n').map((l) => l.trim()).toList();
+      String? bestUrl;
+      int maxBandwidth = 0;
+
+      for (int i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        if (line.startsWith('#EXT-X-STREAM-INF')) {
+          // 提取带宽信息
+          final bandwidthMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+          final bandwidth = bandwidthMatch != null ? int.parse(bandwidthMatch.group(1)!) : 0;
+          
+          // 下一行应该是 URL
+          if (i + 1 < lines.length) {
+            final nextLine = lines[i + 1];
+            if (nextLine.isNotEmpty && !nextLine.startsWith('#')) {
+              if (bandwidth > maxBandwidth || bestUrl == null) {
+                maxBandwidth = bandwidth;
+                bestUrl = _resolveUrl(nextLine, url);
+              }
+            }
+          }
+        }
+      }
+
+      return bestUrl ?? url;
+    } catch (e) {
+      debugPrint('Error resolving media playlist: $e');
+      return url;
     }
   }
 
