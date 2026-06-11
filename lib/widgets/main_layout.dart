@@ -276,6 +276,8 @@ class _MainLayoutState extends State<MainLayout> {
   Widget build(BuildContext context) {
     return Consumer<ThemeService>(
       builder: (context, themeService, child) {
+        final isTablet = DeviceUtils.isTablet(context);
+
         return Theme(
           data: themeService.isDarkMode
               ? themeService.darkTheme
@@ -285,9 +287,13 @@ class _MainLayoutState extends State<MainLayout> {
             body: Stack(
               children: [
                 // 主要内容区域
-                Column(
+                Row(
                   children: [
-                    // 主内容区域（包含header和content）
+                    // 平板模式下的侧边导航栏
+                    if (isTablet && widget.showBottomNav)
+                      _buildSideNavRail(themeService),
+
+                    // 右侧内容区
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
@@ -322,20 +328,21 @@ class _MainLayoutState extends State<MainLayout> {
                                     : null,
                               ),
                             // 固定 Header
-                            _buildHeader(context, themeService),
+                            _buildHeader(context, themeService, isTablet),
                             // 主要内容区域
                             Expanded(
                               child: widget.content,
                             ),
+                            // 底部导航栏（仅非平板模式显示）
+                            if (!isTablet && widget.showBottomNav)
+                              _buildBottomNavBar(themeService),
                           ],
                         ),
                       ),
                     ),
-                    // 底部导航栏（可选）
-                    if (widget.showBottomNav) _buildBottomNavBar(themeService),
                   ],
                 ),
-                // 用户菜单覆盖层 - 现在会覆盖整个屏幕包括navbar
+                // 用户菜单覆盖层
                 if (_showUserMenu)
                   UserMenu(
                     isDarkMode: themeService.isDarkMode,
@@ -353,7 +360,95 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, ThemeService themeService) {
+  Widget _buildSideNavRail(ThemeService themeService) {
+    final List<Map<String, dynamic>> navItems = [
+      {'icon': LucideIcons.house, 'label': '首页'},
+      {'icon': LucideIcons.video, 'label': '电影'},
+      {'icon': LucideIcons.tv, 'label': '剧集'},
+      {'icon': LucideIcons.cat, 'label': '动漫'},
+      {'icon': LucideIcons.clover, 'label': '综艺'},
+      {'icon': LucideIcons.radio, 'label': '直播'},
+    ];
+
+    // 计算顶部内边距
+    final double topPadding = Platform.isWindows
+        ? 16.0
+        : MediaQuery.of(context).padding.top + 16.0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: themeService.isDarkMode
+            ? const Color(0xFF1e1e1e).withOpacity(0.9)
+            : Colors.white.withOpacity(0.9),
+        border: Border(
+          right: BorderSide(
+            color: themeService.isDarkMode
+                ? const Color(0xFF333333).withOpacity(0.3)
+                : Colors.black.withOpacity(0.05),
+            width: 1,
+          ),
+        ),
+      ),
+      child: NavigationRail(
+        selectedIndex: widget.isSearchMode ? null : widget.currentBottomNavIndex,
+        onDestinationSelected: (index) {
+          widget.onBottomNavChanged(index);
+        },
+        backgroundColor: Colors.transparent,
+        labelType: NavigationRailLabelType.all,
+        selectedLabelTextStyle: FontUtils.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF27ae60),
+        ),
+        unselectedLabelTextStyle: FontUtils.poppins(
+          fontSize: 12,
+          color: themeService.isDarkMode
+              ? const Color(0xFFb0b0b0)
+              : const Color(0xFF7f8c8d),
+        ),
+        selectedIconTheme: const IconThemeData(
+          color: Color(0xFF27ae60),
+          size: 28,
+        ),
+        unselectedIconTheme: IconThemeData(
+          color: themeService.isDarkMode
+              ? const Color(0xFFb0b0b0)
+              : const Color(0xFF7f8c8d),
+          size: 24,
+        ),
+        useIndicator: true,
+        indicatorColor: const Color(0xFF27ae60).withOpacity(0.1),
+        destinations: navItems.map((item) {
+          return NavigationRailDestination(
+            icon: Icon(item['icon']),
+            label: Text(item['label']),
+          );
+        }).toList(),
+        leading: Column(
+          children: [
+            SizedBox(height: topPadding),
+            GestureDetector(
+              onTap: widget.onHomeTap,
+              child: Text(
+                'S',
+                style: FontUtils.sourceCodePro(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: themeService.isDarkMode
+                      ? Colors.white
+                      : const Color(0xFF2c3e50),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, ThemeService themeService, bool isTablet) {
     final isTablet = DeviceUtils.isTablet(context);
 
     // macOS 下需要额外的顶部 padding 来避免与透明标题栏重叠
@@ -382,11 +477,11 @@ class _MainLayoutState extends State<MainLayout> {
       ),
       child: widget.isSearchMode
           ? _buildSearchHeader(context, themeService, isTablet)
-          : _buildNormalHeader(context, themeService),
+          : _buildNormalHeader(context, themeService, isTablet),
     );
   }
 
-  Widget _buildNormalHeader(BuildContext context, ThemeService themeService) {
+  Widget _buildNormalHeader(BuildContext context, ThemeService themeService, bool isTablet) {
     return SizedBox(
       height: 40, // 固定高度，与搜索框高度一致
       child: Stack(
@@ -459,24 +554,25 @@ class _MainLayoutState extends State<MainLayout> {
               ),
             ),
           ),
-          // 完全居中的 Logo
-          Center(
-            child: GestureDetector(
-              onTap: widget.onHomeTap,
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                'Selene',
-                style: FontUtils.sourceCodePro(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w400,
-                  color: themeService.isDarkMode
-                      ? Colors.white
-                      : const Color(0xFF2c3e50),
-                  letterSpacing: 1.5,
+          // 完全居中的 Logo (非平板模式) 或靠左的 Logo (平板模式)
+          if (!isTablet)
+            Center(
+              child: GestureDetector(
+                onTap: widget.onHomeTap,
+                behavior: HitTestBehavior.opaque,
+                child: Text(
+                  'Selene',
+                  style: FontUtils.sourceCodePro(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w400,
+                    color: themeService.isDarkMode
+                        ? Colors.white
+                        : const Color(0xFF2c3e50),
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ),
-          ),
           // 右侧按钮组
           Positioned(
             right: 0,
