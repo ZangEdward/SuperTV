@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:pip/pip.dart';
 import 'mobile_player_controls.dart';
 import 'pc_player_controls.dart';
+import 'tv/tv_player_controls.dart';
 import 'video_player_surface.dart';
 
 class VideoPlayerWidget extends StatefulWidget {
@@ -24,10 +25,8 @@ class VideoPlayerWidget extends StatefulWidget {
   final int? currentEpisodeIndex;
   final int? totalEpisodes;
   final String? sourceName;
-  final Function(bool isWebFullscreen)? onWebFullscreenChanged;
-  final VoidCallback? onExitFullScreen;
-  final bool live;
-  final Function(bool isPipMode)? onPipModeChanged;
+  final VoidCallback? onShowEpisodes;
+  final VoidCallback? onShowSources;
 
   const VideoPlayerWidget({
     super.key,
@@ -47,9 +46,12 @@ class VideoPlayerWidget extends StatefulWidget {
     this.totalEpisodes,
     this.sourceName,
     this.onWebFullscreenChanged,
+    this.onExitWebFullscreenCallbackReady,
     this.onExitFullScreen,
     this.live = false,
     this.onPipModeChanged,
+    this.onShowEpisodes,
+    this.onShowSources,
   });
 
   @override
@@ -478,6 +480,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
           ? Video(
               controller: _videoController!,
               controls: (state) {
+                if (widget.surface == VideoPlayerSurface.tv) {
+                  return TvPlayerControls(
+                    controller: _videoController!,
+                    title: widget.videoTitle ?? '',
+                    onNext: widget.onNextEpisode ?? () {},
+                    onPrevious: () {},
+                    onShowEpisodes: widget.onShowEpisodes ?? () {},
+                    onShowSources: widget.onShowSources ?? () {},
+                  );
+                }
                 return widget.surface == VideoPlayerSurface.desktop
                     ? PCPlayerControls(
                         state: state,

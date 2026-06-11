@@ -30,6 +30,21 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
         return originalUrl;
     }
   }
+
+  if (source == 'bangumi' && originalUrl.isNotEmpty) {
+    final imageSourceKey = await UserDataService.getBangumiImageSourceKey();
+    if (imageSourceKey == 'proxy') {
+      final serverUrl = await UserDataService.getServerUrl();
+      if (serverUrl != null && serverUrl.isNotEmpty) {
+        String cleanBaseUrl = serverUrl.endsWith('/')
+            ? serverUrl.substring(0, serverUrl.length - 1)
+            : serverUrl;
+        // 使用服务器的 Bangumi 代理接口
+        return '$cleanBaseUrl/api/proxy/bangumi?path=$originalUrl';
+      }
+    }
+  }
+
   return originalUrl;
 }
 

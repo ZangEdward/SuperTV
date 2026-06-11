@@ -1074,13 +1074,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// 构建播放器组件
   Widget _buildPlayerWidget() {
     final isPC = DeviceUtils.isPC();
+    final isTV = UserDataService.getIsTVModeSync() || DeviceUtils.isTV(context);
+    
+    VideoPlayerSurface surface = VideoPlayerSurface.mobile;
+    if (isTV) {
+      surface = VideoPlayerSurface.tv;
+    } else if (isPC) {
+      surface = VideoPlayerSurface.desktop;
+    }
 
     return Stack(
       children: [
         if (!_isCasting)
           VideoPlayerWidget(
-            surface:
-                isPC ? VideoPlayerSurface.desktop : VideoPlayerSurface.mobile,
+            surface: surface,
             url: null,
             onBackPressed: _onBackPressed,
             onControllerCreated: (controller) {
@@ -1105,6 +1112,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                 _isWebFullscreen = isWebFullscreen;
               });
             },
+            onShowEpisodes: _showEpisodesPanel,
+            onShowSources: _showSourcesPanel,
           ),
         if (_isCasting && _dlnaDevice != null)
           DLNAPlayer(

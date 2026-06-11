@@ -33,6 +33,8 @@ class _UserMenuState extends State<UserMenu> {
   String _role = 'user';
   String _doubanDataSource = '直连';
   String _doubanImageSource = '直连';
+  String _bangumiDataSource = '直连';
+  String _bangumiImageSource = '直连';
   String _m3u8ProxyUrl = '';
   String _version = '';
   bool _preferSpeedTest = true;
@@ -63,6 +65,10 @@ class _UserMenuState extends State<UserMenu> {
         await UserDataService.getDoubanDataSourceDisplayName();
     final doubanImageSource =
         await UserDataService.getDoubanImageSourceDisplayName();
+    final bangumiDataSource =
+        await UserDataService.getBangumiDataSourceDisplayName();
+    final bangumiImageSource =
+        await UserDataService.getBangumiImageSourceDisplayName();
     final m3u8ProxyUrl = await UserDataService.getM3u8ProxyUrl();
     final preferSpeedTest = await UserDataService.getPreferSpeedTest();
     final localSearch = await UserDataService.getLocalSearch();
@@ -74,6 +80,8 @@ class _UserMenuState extends State<UserMenu> {
         _role = _parseRoleFromCookies(cookies);
         _doubanDataSource = doubanDataSource;
         _doubanImageSource = doubanImageSource;
+        _bangumiDataSource = bangumiDataSource;
+        _bangumiImageSource = bangumiImageSource;
         _m3u8ProxyUrl = m3u8ProxyUrl;
         _preferSpeedTest = preferSpeedTest;
         _localSearch = localSearch;
@@ -777,6 +785,54 @@ class _UserMenuState extends State<UserMenu> {
                         if (!mounted) return;
                         setState(() {
                           _doubanImageSource = value;
+                        });
+                      },
+                      icon: LucideIcons.image,
+                    ),
+                    // 分割线
+                    Container(
+                      height: 1,
+                      color: widget.isDarkMode
+                          ? const Color(0xFF374151)
+                          : const Color(0xFFe5e7eb),
+                    ),
+                    // Bangumi 数据源选项
+                    _buildOptionSelector(
+                      title: 'Bangumi 数据源',
+                      currentValue: _bangumiDataSource,
+                      options: const [
+                        '直连',
+                        '服务器代理',
+                      ],
+                      onChanged: (value) async {
+                        await UserDataService.saveBangumiDataSource(value);
+                        if (!mounted) return;
+                        setState(() {
+                          _bangumiDataSource = value;
+                        });
+                      },
+                      icon: LucideIcons.database,
+                    ),
+                    // 分割线
+                    Container(
+                      height: 1,
+                      color: widget.isDarkMode
+                          ? const Color(0xFF374151)
+                          : const Color(0xFFe5e7eb),
+                    ),
+                    // Bangumi 图片源选项
+                    _buildOptionSelector(
+                      title: 'Bangumi 图片源',
+                      currentValue: _bangumiImageSource,
+                      options: const [
+                        '直连',
+                        '服务器代理',
+                      ],
+                      onChanged: (value) async {
+                        await UserDataService.saveBangumiImageSource(value);
+                        if (!mounted) return;
+                        setState(() {
+                          _bangumiImageSource = value;
                         });
                       },
                       icon: LucideIcons.image,

@@ -166,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       _showToast(
         _isLocalMode ? '已切换到本地模式' : '已切换到服务器模式',
-        const Color(0xFF27ae60),
+        _isLocalMode ? const Color(0xFF27ae60) : const Color(0xFF3498db),
       );
     } else {
       // 设置新的计时器，2秒后重置计数
@@ -243,8 +243,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             filled: true,
             fillColor: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.white.withValues(alpha: 0.6),
+                ? Colors.white.withAlpha(25)
+                : Colors.white.withAlpha(153),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 18,
@@ -269,12 +269,12 @@ class _LoginScreenState extends State<LoginScreen> {
             backgroundColor: _isFormValid && !_isLoading
                 ? (isDark ? Colors.white : const Color(0xFF2c3e50))
                 : (isDark
-                    ? Colors.white.withValues(alpha: 0.12)
+                    ? Colors.white.withAlpha(30)
                     : const Color(0xFFbdc3c7)),
             foregroundColor: _isFormValid && !_isLoading
                 ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
                 : (isDark
-                    ? Colors.white.withValues(alpha: 0.38)
+                    ? Colors.white.withAlpha(97)
                     : const Color(0xFF7f8c8d)),
             padding: const EdgeInsets.symmetric(vertical: 18),
             shape: RoundedRectangleBorder(
@@ -625,9 +625,8 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             // Windows 自定义标题栏
             if (Platform.isWindows)
-              WindowsTitleBar(
+              const WindowsTitleBar(
                 customBackgroundColor: Colors.transparent,
-                isDark: isDark,
               ),
             // 主要内容
             Expanded(
@@ -712,8 +711,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         filled: true,
                         fillColor: isDark
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : Colors.white.withValues(alpha: 0.6),
+                            ? Colors.white.withAlpha(25)
+                            : Colors.white.withAlpha(153),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 12,
@@ -806,8 +805,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         filled: true,
                         fillColor: isDark
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : Colors.white.withValues(alpha: 0.6),
+                            ? Colors.white.withAlpha(25)
+                            : Colors.white.withAlpha(153),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 18,
@@ -875,8 +874,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         filled: true,
                         fillColor: isDark
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : Colors.white.withValues(alpha: 0.6),
+                            ? Colors.white.withAlpha(25)
+                            : Colors.white.withAlpha(153),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 18,
@@ -900,12 +899,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         backgroundColor: _isFormValid && !_isLoading
                             ? (isDark ? Colors.white : const Color(0xFF2c3e50))
                             : (isDark
-                            ? Colors.white.withValues(alpha: 0.12)
+                            ? Colors.white.withAlpha(30)
                                 : const Color(0xFFbdc3c7)),
                         foregroundColor: _isFormValid && !_isLoading
                             ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
                             : (isDark
-                                ? Colors.white.withValues(alpha: 0.38)
+                                ? Colors.white.withAlpha(97)
                                 : const Color(0xFF7f8c8d)),
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
@@ -1018,8 +1017,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           filled: true,
                           fillColor: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.white.withValues(alpha: 0.6),
+                              ? Colors.white.withAlpha(25)
+                              : Colors.white.withAlpha(153),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 12,
@@ -1112,8 +1111,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           filled: true,
                           fillColor: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.white.withValues(alpha: 0.6),
+                              ? Colors.white.withAlpha(25)
+                              : Colors.white.withAlpha(153),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 18,
@@ -1181,8 +1180,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           filled: true,
                           fillColor: isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.white.withValues(alpha: 0.6),
+                              ? Colors.white.withAlpha(25)
+                              : Colors.white.withAlpha(153),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 18,
@@ -1206,12 +1205,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           backgroundColor: _isFormValid && !_isLoading
                               ? (isDark ? Colors.white : const Color(0xFF2c3e50))
                               : (isDark
-                                  ? Colors.white.withValues(alpha: 0.12)
+                                  ? Colors.white.withAlpha(30)
                                   : const Color(0xFFbdc3c7)),
                           foregroundColor: _isFormValid && !_isLoading
                               ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
                               : (isDark
-                                  ? Colors.white.withValues(alpha: 0.38)
+                                  ? Colors.white.withAlpha(97)
                                   : const Color(0xFF7f8c8d)),
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           shape: RoundedRectangleBorder(

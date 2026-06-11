@@ -7,13 +7,17 @@ class UserDataService {
   static const String _cookiesKey = 'cookies';
   static const String _doubanDataSourceKey = 'douban_data_source';
   static const String _doubanImageSourceKey = 'douban_image_source';
+  static const String _bangumiDataSourceKey = 'bangumi_data_source';
+  static const String _bangumiImageSourceKey = 'bangumi_image_source';
   static const String _m3u8ProxyUrlKey = 'm3u8_proxy_url';
   static const String _preferSpeedTestKey = 'prefer_speed_test';
   static const String _localSearchKey = 'local_search';
   static const String _isLocalModeKey = 'is_local_mode';
+  static const String _isTVModeKey = 'is_tv_mode';
   
   // 内存缓存
   static bool? _isLocalModeCache;
+  static bool? _isTVModeCache;
 
   // 保存用户登录信息
   static Future<void> saveUserData({
@@ -202,6 +206,44 @@ class UserDataService {
     }
   }
 
+  // 保存 Bangumi 数据源设置（存储 key 值）
+  static Future<void> saveBangumiDataSource(String displayName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = displayName == '服务器代理' ? 'proxy' : 'direct';
+    await prefs.setString(_bangumiDataSourceKey, key);
+  }
+
+  // 获取 Bangumi 数据源设置（返回 key 值）
+  static Future<String> getBangumiDataSourceKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_bangumiDataSourceKey) ?? 'direct';
+  }
+
+  // 获取 Bangumi 数据源显示名称
+  static Future<String> getBangumiDataSourceDisplayName() async {
+    final key = await getBangumiDataSourceKey();
+    return key == 'proxy' ? '服务器代理' : '直连';
+  }
+
+  // 保存 Bangumi 图片源设置（存储 key 值）
+  static Future<void> saveBangumiImageSource(String displayName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = displayName == '服务器代理' ? 'proxy' : 'direct';
+    await prefs.setString(_bangumiImageSourceKey, key);
+  }
+
+  // 获取 Bangumi 图片源设置（返回 key 值）
+  static Future<String> getBangumiImageSourceKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_bangumiImageSourceKey) ?? 'direct';
+  }
+
+  // 获取 Bangumi 图片源显示名称
+  static Future<String> getBangumiImageSourceDisplayName() async {
+    final key = await getBangumiImageSourceKey();
+    return key == 'proxy' ? '服务器代理' : '直连';
+  }
+
   // 保存 M3U8 代理 URL
   static Future<void> saveM3u8ProxyUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
@@ -256,5 +298,25 @@ class UserDataService {
   // 同步获取本地模式设置（从内存缓存读取）
   static bool getIsLocalModeSync() {
     return _isLocalModeCache ?? false;
+  }
+
+  // 保存电视模式设置
+  static Future<void> saveIsTVMode(bool isTVMode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isTVModeKey, isTVMode);
+    _isTVModeCache = isTVMode;
+  }
+
+  // 获取电视模式设置
+  static Future<bool> getIsTVMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getBool(_isTVModeKey) ?? false;
+    _isTVModeCache = value;
+    return value;
+  }
+
+  // 同步获取电视模式设置
+  static bool getIsTVModeSync() {
+    return _isTVModeCache ?? false;
   }
 }

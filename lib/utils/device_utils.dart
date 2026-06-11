@@ -49,6 +49,14 @@ class DeviceUtils {
     return isWindows() || isMacOS();
   }
 
+  /// 判断当前设备是否是电视
+  static bool isTV(BuildContext context) {
+    // 1. 检查 MediaQuery 的导航模式
+    final isDirectional = MediaQuery.of(context).navigationMode == NavigationMode.directional;
+    
+    return isDirectional;
+  }
+
   /// 根据屏幕宽度动态计算平板模式下的列数（6～8列）
   ///
   /// 宽度范围：

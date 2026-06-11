@@ -25,6 +25,9 @@ import 'anime_screen.dart';
 import 'show_screen.dart';
 import 'player_screen.dart';
 import 'live_screen.dart';
+import 'tv/tv_home_screen.dart';
+import '../services/user_data_service.dart';
+import '../utils/device_utils.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -394,6 +397,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 检查是否开启电视模式
+    final isTvMode = UserDataService.getIsTVModeSync() || DeviceUtils.isTV(context);
+    
+    if (isTvMode) {
+      return const TvHomeScreen();
+    }
+
     return MainLayout(
       content: _buildBottomNavWithAnimation(),
       currentBottomNavIndex: _currentBottomNavIndex,

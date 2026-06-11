@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 
 /// M3U8 解析和测速服务

@@ -59,6 +59,39 @@ class BangumiService {
 
     // 未命中缓存，请求接口
     try {
+      final dataSource = await UserDataService.getBangumiDataSourceKey();
+      
+      if (dataSource == 'proxy') {
+        final response = await ApiService.get<List<dynamic>>(
+          '/api/proxy/bangumi?path=calendar',
+          fromJson: (data) => data as List<dynamic>,
+        );
+
+        if (response.success && response.data != null) {
+          final List<dynamic> responseData = response.data!;
+          final List<BangumiCalendarResponse> calendarData = responseData
+              .map((item) => BangumiCalendarResponse.fromJson(item as Map<String, dynamic>))
+              .toList();
+
+          BangumiCalendarResponse? targetDay;
+          for (final day in calendarData) {
+            if (day.weekday.id == weekday) {
+              targetDay = day;
+              break;
+            }
+          }
+
+          final items = targetDay?.items ?? <BangumiItem>[];
+
+          try {
+            await _cache.set(cacheKey, responseData, const Duration(days: 1));
+          } catch (_) {}
+
+          return ApiResponse.success(items, statusCode: response.statusCode);
+        }
+      }
+
+      // 降级或直连
       final response = await ApiService.getBangumiCalendar();
 
       if (response.success && response.data != null) {
@@ -139,25 +172,29 @@ class BangumiService {
     }
 
     try {
-      // 优先通过服务器代理获取详情 (使用 Bangumi v0 API)
-      final response = await ApiService.get<Map<String, dynamic>>(
-        '/api/proxy/bangumi?path=v0/subjects/$bangumiId',
-        fromJson: (data) => data as Map<String, dynamic>,
-      );
+      final dataSource = await UserDataService.getBangumiDataSourceKey();
+      
+      if (dataSource == 'proxy') {
+        // 优先通过服务器代理获取详情 (使用 Bangumi v0 API)
+        final response = await ApiService.get<Map<String, dynamic>>(
+          '/api/proxy/bangumi?path=v0/subjects/$bangumiId',
+          fromJson: (data) => data as Map<String, dynamic>,
+        );
 
-      if (response.success && response.data != null) {
-        final details = BangumiDetails.fromJson(response.data!);
-        // 缓存成功的结果
-        try {
-          await _cache.set(cacheKey, details.toJson(), const Duration(days: 3));
-        } catch (_) {}
-        return ApiResponse.success(details, statusCode: response.statusCode);
+        if (response.success && response.data != null) {
+          final details = BangumiDetails.fromJson(response.data!);
+          // 缓存成功的结果
+          try {
+            await _cache.set(cacheKey, details.toJson(), const Duration(days: 3));
+          } catch (_) {}
+          return ApiResponse.success(details, statusCode: response.statusCode);
+        }
       }
     } catch (e) {
       debugPrint('通过代理获取 Bangumi 详情异常: $e');
     }
 
-    // 降级：直连
+    // 降级：直连 (如果设置了直连或代理失败)
     try {
       final apiUrl = 'https://api.bgm.tv/v0/subjects/$bangumiId';
       final headers = {

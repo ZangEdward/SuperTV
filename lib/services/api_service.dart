@@ -869,4 +869,35 @@ class ApiService {
 
     return cookies.join('; ');
   }
+
+  /// 获取 TV 搜索建议 (拼音联想)
+  static Future<List<String>> getTvSearchSuggestions(String key) async {
+    try {
+      final url = 'https://tv.aiseet.atianqi.com/i-tvbin/qtv_video/search/get_search_smart_box?format=json&page_num=0&page_size=20&key=${Uri.encodeComponent(key)}';
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final result = json.decode(response.body);
+        final List<String> hots = [];
+        final groupDataArr = result?['data']?['search_data']?['vecGroupData']?[0]?['group_data'] ?? [];
+        for (var groupData in groupDataArr) {
+          final keywordTxt = groupData?['dtReportInfo']?['reportData']?['keyword_txt'];
+          if (keywordTxt != null) {
+            hots.add(keywordTxt.toString().trim());
+          }
+        }
+        return hots.take(15).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取 TV 搜索建议失败: $e');
+      return [];
+    }
+  }
 }
