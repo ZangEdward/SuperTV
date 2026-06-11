@@ -171,34 +171,23 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             transitionBuilder: (Widget child, Animation<double> animation) {
               final bool isNewChild = child.key == _getTopTabContent(_currentTopTabIndex).key;
+              final bool isMovingRight = _currentTopTabIndex > _previousTopTabIndex;
 
               if (isNewChild) {
-                // 新页面：卡片式缩放进入
-                return FadeTransition(
-                  opacity: CurvedAnimation(
-                    parent: animation,
-                    curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+                final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+                return SlideTransition(
+                  position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
                   ),
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 0.95, end: 1.0).animate(
-                      CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-                    ),
-                    child: child,
-                  ),
+                  child: child,
                 );
               } else {
-                // 旧页面：轻微缩放并淡出
-                return FadeTransition(
-                  opacity: CurvedAnimation(
-                    parent: animation,
-                    curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+                final end = isMovingRight ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0);
+                return SlideTransition(
+                  position: Tween<Offset>(begin: end, end: Offset.zero).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
                   ),
-                  child: ScaleTransition(
-                    scale: Tween<double>(begin: 1.0, end: 1.05).animate(
-                      CurvedAnimation(parent: animation, curve: Curves.easeInCubic),
-                    ),
-                    child: child,
-                  ),
+                  child: child,
                 );
               }
             },
@@ -419,10 +408,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// 构建底栏切换动画
   Widget _buildBottomNavWithAnimation() {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 300),
       layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
         return Stack(
-          alignment: Alignment.center,
           children: <Widget>[
             ...previousChildren,
             if (currentChild != null) currentChild,
@@ -430,35 +418,27 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
       transitionBuilder: (Widget child, Animation<double> animation) {
+        // 判断是否是当前选中的页面（即新进入的页面）
         final bool isNewChild = child.key == _getBottomNavPage(_currentBottomNavIndex).key;
+        final bool isMovingRight = _currentBottomNavIndex > _previousBottomNavIndex;
         
         if (isNewChild) {
-          // 新页面：缩放进入 + 渐显
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+          // 新页面进入
+          final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+          return SlideTransition(
+            position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
             ),
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.92, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-              ),
-              child: child,
-            ),
+            child: child,
           );
         } else {
-          // 旧页面：缩放消失 + 渐隐
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+          // 旧页面退出
+          final end = isMovingRight ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0);
+          return SlideTransition(
+            position: Tween<Offset>(begin: end, end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
             ),
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 1.08, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeInCubic),
-              ),
-              child: child,
-            ),
+            child: child,
           );
         }
       },
