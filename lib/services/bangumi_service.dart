@@ -139,9 +139,29 @@ class BangumiService {
     }
 
     try {
+      // 优先通过服务器代理获取详情 (使用 Bangumi v0 API)
+      final response = await ApiService.get<Map<String, dynamic>>(
+        '/api/proxy/bangumi?path=v0/subjects/$bangumiId',
+        fromJson: (data) => data as Map<String, dynamic>,
+      );
+
+      if (response.success && response.data != null) {
+        final details = BangumiDetails.fromJson(response.data!);
+        // 缓存成功的结果
+        try {
+          await _cache.set(cacheKey, details.toJson(), const Duration(days: 3));
+        } catch (_) {}
+        return ApiResponse.success(details, statusCode: response.statusCode);
+      }
+    } catch (e) {
+      debugPrint('通过代理获取 Bangumi 详情异常: $e');
+    }
+
+    // 降级：直连
+    try {
       final apiUrl = 'https://api.bgm.tv/v0/subjects/$bangumiId';
       final headers = {
-        'User-Agent': 'supertv/1.0.0 (Android) (http://github.com/supertv/app)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
       };
 

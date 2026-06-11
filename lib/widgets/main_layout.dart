@@ -283,8 +283,8 @@ class _MainLayoutState extends State<MainLayout> {
           data: themeService.isDarkMode
               ? themeService.darkTheme
               : themeService.lightTheme,
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeInOut,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutSine,
           child: Scaffold(
             resizeToAvoidBottomInset: !widget.isSearchMode,
             body: Stack(
@@ -512,14 +512,17 @@ class _MainLayoutState extends State<MainLayout> {
                           : const Color(0xFF7f8c8d),
                       size: 18,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '搜索电影、剧集、动漫...',
-                      style: FontUtils.poppins(
-                        color: themeService.isDarkMode
-                            ? const Color(0xFF666666)
-                            : const Color(0xFF95a5a6),
-                        fontSize: 14,
+                    Expanded(
+                      child: Text(
+                        '搜索电影、剧集、动漫...',
+                        style: FontUtils.poppins(
+                          color: themeService.isDarkMode
+                              ? const Color(0xFF666666)
+                              : const Color(0xFF95a5a6),
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],

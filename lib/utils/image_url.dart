@@ -30,6 +30,18 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
         return originalUrl;
     }
   }
+
+  if (source == 'bangumi' && originalUrl.isNotEmpty) {
+    // 优先使用服务器代理加载 Bangumi 图片，解决国内无法访问的问题
+    final baseUrl = await UserDataService.getServerUrl();
+    if (baseUrl != null) {
+      String cleanBaseUrl = baseUrl.endsWith('/')
+          ? baseUrl.substring(0, baseUrl.length - 1)
+          : baseUrl;
+      return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(originalUrl)}';
+    }
+  }
+
   return originalUrl;
 }
 

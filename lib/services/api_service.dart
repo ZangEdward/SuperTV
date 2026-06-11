@@ -784,8 +784,12 @@ class ApiService {
       if (response.success && response.data != null) {
         return response;
       }
-      
-      // 降级尝试
+    } catch (e) {
+      print('通过 /api/proxy/bangumi 获取 Bangumi 数据异常: $e');
+    }
+
+    // 降级尝试 1
+    try {
       final responseAlt = await get<List<dynamic>>(
         '/api/bangumi/calendar',
         fromJson: (data) => data as List<dynamic>,
@@ -794,14 +798,14 @@ class ApiService {
         return responseAlt;
       }
     } catch (e) {
-      print('通过代理获取 Bangumi 数据异常: $e');
+      print('通过 /api/bangumi/calendar 获取 Bangumi 数据异常: $e');
     }
 
     // 最终降级：客户端直连
     try {
       const apiUrl = 'https://api.bgm.tv/calendar';
       final headers = {
-        'User-Agent': 'supertv/1.0.0 (Android) (http://github.com/supertv/app)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json',
       };
 
