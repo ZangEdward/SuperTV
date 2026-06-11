@@ -68,8 +68,9 @@ jobs:
 
       - name: Configure Signing in key.properties
         run: |
-          # 修正 storeFile 路径，确保 Gradle 能找到
-          echo "storeFile=app/release-key.jks" > android/key.properties
+          # 修正 storeFile 路径：在 android/app/build.gradle.kts 中使用 file() 时，
+          # 路径是相对于 android/app 目录的。因此直接指定文件名即可。
+          echo "storeFile=release-key.jks" > android/key.properties
           echo "storePassword=$KEY_PASSWORD" >> android/key.properties
           echo "keyAlias=$KEY_ALIAS" >> android/key.properties
           echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
