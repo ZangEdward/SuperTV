@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -6,6 +7,7 @@ import 'dart:async';
 import '../services/user_data_service.dart';
 import '../services/local_mode_storage_service.dart';
 import '../services/subscription_service.dart';
+import '../services/theme_service.dart';
 import '../utils/device_utils.dart';
 import '../utils/font_utils.dart';
 import '../widgets/windows_title_bar.dart';
@@ -200,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Widget _buildLocalModeForm() {
+  Widget _buildLocalModeForm(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -209,22 +211,22 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: _subscriptionUrlController,
           style: FontUtils.poppins(
             fontSize: 16,
-            color: const Color(0xFF2c3e50),
+            color: isDark ? Colors.white : const Color(0xFF2c3e50),
           ),
           decoration: InputDecoration(
             labelText: '订阅链接',
             labelStyle: FontUtils.poppins(
-              color: const Color(0xFF7f8c8d),
+              color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
               fontSize: 14,
             ),
             hintText: '请输入订阅链接',
             hintStyle: FontUtils.poppins(
-              color: const Color(0xFFbdc3c7),
+              color: isDark ? const Color(0xFF666666) : const Color(0xFFbdc3c7),
               fontSize: 16,
             ),
-            prefixIcon: const Icon(
+            prefixIcon: Icon(
               Icons.link,
-              color: Color(0xFF7f8c8d),
+              color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
               size: 20,
             ),
             border: OutlineInputBorder(
@@ -240,7 +242,9 @@ class _LoginScreenState extends State<LoginScreen> {
               borderSide: BorderSide.none,
             ),
             filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.6),
+            fillColor: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.white.withValues(alpha: 0.6),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 18,
@@ -263,11 +267,15 @@ class _LoginScreenState extends State<LoginScreen> {
               (_isLoading || !_isFormValid) ? null : _handleLocalModeLogin,
           style: FilledButton.styleFrom(
             backgroundColor: _isFormValid && !_isLoading
-                ? const Color(0xFF2c3e50)
-                : const Color(0xFFbdc3c7),
+                ? (isDark ? Colors.white : const Color(0xFF2c3e50))
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : const Color(0xFFbdc3c7)),
             foregroundColor: _isFormValid && !_isLoading
-                ? Colors.white
-                : const Color(0xFF7f8c8d),
+                ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.38)
+                    : const Color(0xFF7f8c8d)),
             padding: const EdgeInsets.symmetric(vertical: 18),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -278,13 +286,13 @@ class _LoginScreenState extends State<LoginScreen> {
               ? Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       height: 18,
                       width: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white,
+                          isDark ? const Color(0xFF2c3e50) : Colors.white,
                         ),
                       ),
                     ),
@@ -294,7 +302,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: FontUtils.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white,
+                        color: isDark ? const Color(0xFF2c3e50) : Colors.white,
                       ),
                     ),
                   ],
@@ -488,46 +496,49 @@ class _LoginScreenState extends State<LoginScreen> {
 
           final shouldClear = await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
-              title: Text(
-                '提示',
-                style: FontUtils.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF2c3e50),
-                ),
-              ),
-              content: Text(
-                '检测到已有本地模式内容且订阅链接不一致，是否清空全部本地模式存储？',
-                style: FontUtils.poppins(
-                  fontSize: 14,
-                  color: const Color(0xFF2c3e50),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(
-                    '否',
-                    style: FontUtils.poppins(
-                      fontSize: 14,
-                      color: const Color(0xFF7f8c8d),
-                    ),
+            builder: (context) {
+              final isDark = Provider.of<ThemeService>(context, listen: false).isDarkMode;
+              return AlertDialog(
+                title: Text(
+                  '提示',
+                  style: FontUtils.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : const Color(0xFF2c3e50),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(
-                    '是',
-                    style: FontUtils.poppins(
-                      fontSize: 14,
-                      color: const Color(0xFFe74c3c),
-                      fontWeight: FontWeight.w600,
-                    ),
+                content: Text(
+                  '检测到已有本地模式内容且订阅链接不一致，是否清空全部本地模式存储？',
+                  style: FontUtils.poppins(
+                    fontSize: 14,
+                    color: isDark ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF2c3e50),
                   ),
                 ),
-              ],
-            ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(
+                      '否',
+                      style: FontUtils.poppins(
+                        fontSize: 14,
+                        color: isDark ? Colors.white60 : const Color(0xFF7f8c8d),
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(
+                      '是',
+                      style: FontUtils.poppins(
+                        fontSize: 14,
+                        color: const Color(0xFFe74c3c),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
           if (!mounted) return;
 
@@ -586,28 +597,34 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isTablet = DeviceUtils.isTablet(context);
+    final themeService = Provider.of<ThemeService>(context);
+    final isDark = themeService.isDarkMode;
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFe6f3fb), // #e6f3fb 0%
-              Color(0xFFeaf3f7), // #eaf3f7 18%
-              Color(0xFFf7f7f3), // #f7f7f3 38%
-              Color(0xFFe9ecef), // #e9ecef 60%
-              Color(0xFFdbe3ea), // #dbe3ea 80%
-              Color(0xFFd3dde6), // #d3dde6 100%
-            ],
-            stops: [0.0, 0.18, 0.38, 0.60, 0.80, 1.0],
-          ),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF000000) : null,
+          gradient: isDark
+              ? null
+              : const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFFe6f3fb), // #e6f3fb 0%
+                    Color(0xFFeaf3f7), // #eaf3f7 18%
+                    Color(0xFFf7f7f3), // #f7f7f3 38%
+                    Color(0xFFe9ecef), // #e9ecef 60%
+                    Color(0xFFdbe3ea), // #dbe3ea 80%
+                    Color(0xFFd3dde6), // #d3dde6 100%
+                  ],
+                  stops: [0.0, 0.18, 0.38, 0.60, 0.80, 1.0],
+                ),
         ),
         child: Column(
           children: [
-            // Windows 自定义标题栏（透明背景）
-            if (Platform.isWindows) const WindowsTitleBar(forceBlack: true),
+            // Windows 自定义标题栏
+            if (Platform.isWindows)
+              const WindowsTitleBar(customBackgroundColor: Colors.transparent),
             // 主要内容
             Expanded(
               child: SafeArea(
@@ -617,8 +634,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       horizontal: isTablet ? 0 : 32.0,
                       vertical: 24.0,
                     ),
-                    child:
-                        isTablet ? _buildTabletLayout() : _buildMobileLayout(),
+                    child: isTablet
+                        ? _buildTabletLayout(isDark)
+                        : _buildMobileLayout(isDark),
                   ),
                 ),
               ),
@@ -630,7 +648,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // 手机端布局（保持原样）
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(bool isDark) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -642,7 +660,7 @@ class _LoginScreenState extends State<LoginScreen> {
             style: FontUtils.sourceCodePro(
               fontSize: 42,
               fontWeight: FontWeight.w400,
-              color: const Color(0xFF2c3e50),
+              color: isDark ? Colors.white : const Color(0xFF2c3e50),
               letterSpacing: 1.5,
             ),
           ),
@@ -653,26 +671,27 @@ class _LoginScreenState extends State<LoginScreen> {
         Form(
           key: _formKey,
           child: _isLocalMode
-              ? _buildLocalModeForm()
+              ? _buildLocalModeForm(isDark)
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // URL 下拉选择框
                     DropdownButtonFormField<ServerNode>(
                       value: _selectedNode,
+                      dropdownColor: isDark ? const Color(0xFF1e1e1e) : Colors.white,
                       style: FontUtils.poppins(
                         fontSize: 16,
-                        color: const Color(0xFF2c3e50),
+                        color: isDark ? Colors.white : const Color(0xFF2c3e50),
                       ),
                       decoration: InputDecoration(
                         labelText: '选择服务器节点',
                         labelStyle: FontUtils.poppins(
-                          color: const Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           fontSize: 14,
                         ),
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           Icons.dns,
-                          color: Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           size: 20,
                         ),
                         border: OutlineInputBorder(
@@ -688,7 +707,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.6),
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.6),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 12,
@@ -749,22 +770,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _usernameController,
                       style: FontUtils.poppins(
                         fontSize: 16,
-                        color: const Color(0xFF2c3e50),
+                        color: isDark ? Colors.white : const Color(0xFF2c3e50),
                       ),
                       decoration: InputDecoration(
                         labelText: '用户名',
                         labelStyle: FontUtils.poppins(
-                          color: const Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           fontSize: 14,
                         ),
                         hintText: '请输入用户名',
                         hintStyle: FontUtils.poppins(
-                          color: const Color(0xFFbdc3c7),
+                          color: isDark ? const Color(0xFF666666) : const Color(0xFFbdc3c7),
                           fontSize: 16,
                         ),
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           Icons.person,
-                          color: Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           size: 20,
                         ),
                         border: OutlineInputBorder(
@@ -780,7 +801,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.white.withOpacity(0.6),
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.6),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 18,
@@ -802,22 +825,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       obscureText: !_isPasswordVisible,
                       style: FontUtils.poppins(
                         fontSize: 16,
-                        color: const Color(0xFF2c3e50),
+                        color: isDark ? Colors.white : const Color(0xFF2c3e50),
                       ),
                       decoration: InputDecoration(
                         labelText: '密码',
                         labelStyle: FontUtils.poppins(
-                          color: const Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           fontSize: 14,
                         ),
                         hintText: '请输入密码',
                         hintStyle: FontUtils.poppins(
-                          color: const Color(0xFFbdc3c7),
+                          color: isDark ? const Color(0xFF666666) : const Color(0xFFbdc3c7),
                           fontSize: 16,
                         ),
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           Icons.lock,
-                          color: Color(0xFF7f8c8d),
+                          color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                           size: 20,
                         ),
                         suffixIcon: IconButton(
@@ -825,7 +848,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             _isPasswordVisible
                                 ? Icons.visibility
                                 : Icons.visibility_off,
-                            color: const Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             size: 20,
                           ),
                           onPressed: () {
@@ -847,7 +870,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.white.withOpacity(0.6),
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : Colors.white.withValues(alpha: 0.6),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 18,
@@ -869,11 +894,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           (_isLoading || !_isFormValid) ? null : _handleLogin,
                       style: FilledButton.styleFrom(
                         backgroundColor: _isFormValid && !_isLoading
-                            ? const Color(0xFF2c3e50) // 与SuperTV logo相同的颜色
-                            : const Color(0xFFbdc3c7), // 禁用时的浅灰色
+                            ? (isDark ? Colors.white : const Color(0xFF2c3e50))
+                            : (isDark
+                                ? Colors.white.withOpacity(0.12)
+                                : const Color(0xFFbdc3c7)),
                         foregroundColor: _isFormValid && !_isLoading
-                            ? Colors.white
-                            : const Color(0xFF7f8c8d), // 禁用时的文字颜色
+                            ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
+                            : (isDark
+                                ? Colors.white.withOpacity(0.38)
+                                : const Color(0xFF7f8c8d)),
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -890,7 +919,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
+                                      isDark ? const Color(0xFF2c3e50) : Colors.white,
                                     ),
                                   ),
                                 ),
@@ -900,7 +929,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: FontUtils.poppins(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w500,
-                                    color: Colors.white,
+                                    color: isDark ? const Color(0xFF2c3e50) : Colors.white,
                                   ),
                                 ),
                               ],
@@ -922,7 +951,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // 平板端布局（与手机端风格一致，只是限制宽度）
-  Widget _buildTabletLayout() {
+  Widget _buildTabletLayout(bool isDark) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 480),
       padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -937,7 +966,7 @@ class _LoginScreenState extends State<LoginScreen> {
               style: FontUtils.sourceCodePro(
                 fontSize: 42,
                 fontWeight: FontWeight.w400,
-                color: const Color(0xFF2c3e50),
+                color: isDark ? Colors.white : const Color(0xFF2c3e50),
                 letterSpacing: 1.5,
               ),
             ),
@@ -948,26 +977,27 @@ class _LoginScreenState extends State<LoginScreen> {
           Form(
             key: _formKey,
             child: _isLocalMode
-                ? _buildLocalModeForm()
+                ? _buildLocalModeForm(isDark)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // URL 下拉选择框
                       DropdownButtonFormField<ServerNode>(
                         value: _selectedNode,
+                        dropdownColor: isDark ? const Color(0xFF1e1e1e) : Colors.white,
                         style: FontUtils.poppins(
                           fontSize: 16,
-                          color: const Color(0xFF2c3e50),
+                          color: isDark ? Colors.white : const Color(0xFF2c3e50),
                         ),
                         decoration: InputDecoration(
                           labelText: '选择服务器节点',
                           labelStyle: FontUtils.poppins(
-                            color: const Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             fontSize: 14,
                           ),
-                          prefixIcon: const Icon(
+                          prefixIcon: Icon(
                             Icons.dns,
-                            color: Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             size: 20,
                           ),
                           border: OutlineInputBorder(
@@ -983,7 +1013,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.6),
+                          fillColor: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.white.withValues(alpha: 0.6),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 12,
@@ -1044,22 +1076,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _usernameController,
                         style: FontUtils.poppins(
                           fontSize: 16,
-                          color: const Color(0xFF2c3e50),
+                          color: isDark ? Colors.white : const Color(0xFF2c3e50),
                         ),
                         decoration: InputDecoration(
                           labelText: '用户名',
                           labelStyle: FontUtils.poppins(
-                            color: const Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             fontSize: 14,
                           ),
                           hintText: '请输入用户名',
                           hintStyle: FontUtils.poppins(
-                            color: const Color(0xFFbdc3c7),
+                            color: isDark ? const Color(0xFF666666) : const Color(0xFFbdc3c7),
                             fontSize: 16,
                           ),
-                          prefixIcon: const Icon(
+                          prefixIcon: Icon(
                             Icons.person,
-                            color: Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             size: 20,
                           ),
                           border: OutlineInputBorder(
@@ -1075,7 +1107,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.6),
+                          fillColor: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.white.withValues(alpha: 0.6),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 18,
@@ -1097,22 +1131,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: !_isPasswordVisible,
                         style: FontUtils.poppins(
                           fontSize: 16,
-                          color: const Color(0xFF2c3e50),
+                          color: isDark ? Colors.white : const Color(0xFF2c3e50),
                         ),
                         decoration: InputDecoration(
                           labelText: '密码',
                           labelStyle: FontUtils.poppins(
-                            color: const Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             fontSize: 14,
                           ),
                           hintText: '请输入密码',
                           hintStyle: FontUtils.poppins(
-                            color: const Color(0xFFbdc3c7),
+                            color: isDark ? const Color(0xFF666666) : const Color(0xFFbdc3c7),
                             fontSize: 16,
                           ),
-                          prefixIcon: const Icon(
+                          prefixIcon: Icon(
                             Icons.lock,
-                            color: Color(0xFF7f8c8d),
+                            color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                             size: 20,
                           ),
                           suffixIcon: IconButton(
@@ -1120,7 +1154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               _isPasswordVisible
                                   ? Icons.visibility
                                   : Icons.visibility_off,
-                              color: const Color(0xFF7f8c8d),
+                              color: isDark ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
                               size: 20,
                             ),
                             onPressed: () {
@@ -1142,7 +1176,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: Colors.white.withOpacity(0.6),
+                          fillColor: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.white.withValues(alpha: 0.6),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 20,
                             vertical: 18,
@@ -1164,11 +1200,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             (_isLoading || !_isFormValid) ? null : _handleLogin,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isFormValid && !_isLoading
-                              ? const Color(0xFF2c3e50)
-                              : const Color(0xFFbdc3c7),
+                              ? (isDark ? Colors.white : const Color(0xFF2c3e50))
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.12)
+                                  : const Color(0xFFbdc3c7)),
                           foregroundColor: _isFormValid && !_isLoading
-                              ? Colors.white
-                              : const Color(0xFF7f8c8d),
+                              ? (isDark ? const Color(0xFF2c3e50) : Colors.white)
+                              : (isDark
+                                  ? Colors.white.withValues(alpha: 0.38)
+                                  : const Color(0xFF7f8c8d)),
                           padding: const EdgeInsets.symmetric(vertical: 18),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -1180,13 +1220,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const SizedBox(
+                                  SizedBox(
                                     height: 18,
                                     width: 18,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
+                                        isDark ? const Color(0xFF2c3e50) : Colors.white,
                                       ),
                                     ),
                                   ),
@@ -1196,7 +1236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     style: FontUtils.poppins(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
-                                      color: Colors.white,
+                                      color: isDark ? const Color(0xFF2c3e50) : Colors.white,
                                     ),
                                   ),
                                 ],
