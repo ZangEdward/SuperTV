@@ -13,7 +13,7 @@ class DownloadTask {
   final String savePath;
   final String cover;
   final String? episodeTitle;
-  final int totalSegments;
+  int totalSegments;
   int downloadedSegments;
   DownloadStatus status;
   double progress;

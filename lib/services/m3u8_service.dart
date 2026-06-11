@@ -71,7 +71,7 @@ class M3U8Service {
     try {
       final response = await _dio.get(m3u8Url);
       final content = response.data as String;
-      return _parseSegmentsFromContent(content, m3u8Url);
+      return parseSegmentsFromContent(content, m3u8Url);
     } catch (e) {
       return [];
     }
