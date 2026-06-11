@@ -20,6 +20,11 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    env:
+      API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     outputs:
       VERSION_NAME: ${{ steps.get_version.outputs.VERSION_NAME }}
     steps:
@@ -47,27 +52,13 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "✅ 版本号: $VERSION_NAME"
 
-      - name: Set Environment Variables
-        run: |
-          {
-            echo "SIGNING_KEY<<EOF"
-            echo "${{ secrets.SIGNING_KEY }}"
-            echo "EOF"
-            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}"
-            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}"
-            echo "PAT=${{ secrets.PAT }}"
-            echo "SYNC_REPO=${{ secrets.SYNC_REPO }}"
-            echo "SOURCE_REPO=${{ secrets.SOURCE_REPO }}"
-          } >> $GITHUB_ENV
-
       - name: Prepare Build Configuration
         shell: bash
         run: |
-          # 使用 Python 安全生成 JSON 配置文件，避开 Shell 字符转义问题
-          python3 -c "import os, json; nodes = os.environ.get('RAW_NODES', '').strip().replace('\n', '').replace('\r', ''); print(json.dumps({'API_NODES_JSON': nodes}))" > dart_config.json
-          echo "✅ dart_config.json 已生成 (大小: $(wc -c < dart_config.json) 字节)"
-        env:
-          RAW_NODES: ${{ secrets.API_NODES_JSON }}
+          # 压缩 JSON 为单行并移除换行符，确保注入成功
+          # 学习 build-ota.yaml 的传入方式，但针对 Flutter 的 --dart-define-from-file 进行优化
+          python3 -c "import os, json; nodes = os.environ.get('API_NODES_JSON', '').strip().replace('\n', '').replace('\r', ''); print(json.dumps({'API_NODES_JSON': nodes}))" > dart_config.json
+          echo "✅ dart_config.json 已生成"
 
       - name: Decode Keystore
         run: |
@@ -77,7 +68,8 @@ jobs:
 
       - name: Configure Signing in key.properties
         run: |
-          echo "storeFile=release-key.jks" >> android/key.properties
+          # 修正 storeFile 路径，确保 Gradle 能找到
+          echo "storeFile=app/release-key.jks" > android/key.properties
           echo "storePassword=$KEY_PASSWORD" >> android/key.properties
           echo "keyAlias=$KEY_ALIAS" >> android/key.properties
           echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
@@ -126,6 +118,8 @@ jobs:
   build-windows:
     runs-on: windows-latest
     needs: build-apk
+    env:
+      API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -133,7 +127,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.1"
+          flutter-version: "3.24.x"
           channel: 'stable'
 
       - name: Get Flutter dependencies
@@ -144,9 +138,8 @@ jobs:
       - name: Prepare Windows Build Configuration
         shell: pwsh
         run: |
-          $nodes = @"
-          ${{ secrets.API_NODES_JSON }}
-          "@ -replace "[\r\n]", ""
+          # 压缩 JSON 为单行并移除换行符
+          $nodes = $env:API_NODES_JSON -replace "[\r\n]", ""
           $nodes = $nodes.Trim()
           $config = @{ API_NODES_JSON = $nodes }
           $config | ConvertTo-Json -Compress | Out-File -FilePath dart_config.json -Encoding utf8
@@ -185,6 +178,9 @@ jobs:
     needs: build-apk
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'push' || github.event.inputs.job_type == 'ota' }}
+    env:
+      PAT: ${{ secrets.PAT }}
+      SYNC_REPO: ${{ secrets.SYNC_REPO }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -201,24 +197,24 @@ jobs:
           mv SuperTV-v$VERSION-Android.apk SuperTV-$VERSION.apk 2>/dev/null || true
           echo "✅ 准备推送 OTA 版本: $VERSION"
 
-      - name: Set Environment Variables for OTA
-        run: |
-          echo "PAT=${{ secrets.PAT }}" >> $GITHUB_ENV
-          echo "SYNC_REPO=${{ secrets.SYNC_REPO }}" >> $GITHUB_ENV
-
       - name: Clone OTA repository
         run: |
-          git clone https://x-access-token:${{ env.PAT }}@github.com/${{ env.SYNC_REPO }}.git sync-repo
+          git clone https://x-access-token:$PAT@github.com/$SYNC_REPO.git sync-repo
 
       - name: Update OTA files
         run: |
           mkdir -p sync-repo/log
           cp SuperTV-$VERSION.apk sync-repo/log/
           echo "$VERSION" > sync-repo/log/latest_version.txt
+          
+          # 模拟 build-ota.yaml 的 metadata 更新逻辑
+          mkdir -p sync-repo/log/vision
+          echo "{ \"version\": \"$VERSION\", \"apksize\": $(stat -c%s SuperTV-$VERSION.apk) }" > sync-repo/log/vision/metadata.json
+          
           cd sync-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add log/
+          git add .
           git commit -m "Update OTA to version $VERSION" || exit 0
           git push
-          echo "✅ OTA 已推送到 ${{ env.SYNC_REPO }}"
+          echo "✅ OTA 已推送到 $SYNC_REPO"
