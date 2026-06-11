@@ -1289,105 +1289,194 @@ class _PlayerScreenState extends State<PlayerScreen>
     
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
+    final downloadService = DownloadService();
+    
+    // 使用 Set 存储选中的索引
+    Set<int> selectedIndices = {};
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.7,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '缓存选集',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '缓存选集',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 5,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.2,
+                      ),
+                      itemCount: currentDetail!.episodes.length,
+                      itemBuilder: (context, index) {
+                        final id = '${currentDetail!.source}_${currentDetail!.id}_$index';
+                        final status = downloadService.getEpisodeStatus(id);
+                        final isSelected = selectedIndices.contains(index);
+                        
+                        // 颜色逻辑
+                        Color? bgColor;
+                        Color? borderColor;
+                        Color? textColor;
+                        
+                        if (status == DownloadStatus.completed) {
+                          bgColor = Colors.blue.withValues(alpha: 0.1);
+                          borderColor = Colors.blue.withValues(alpha: 0.3);
+                          textColor = Colors.blue;
+                        } else if (status != null) {
+                          bgColor = Colors.orange.withValues(alpha: 0.1);
+                          borderColor = Colors.orange.withValues(alpha: 0.3);
+                          textColor = Colors.orange;
+                        } else if (isSelected) {
+                          bgColor = const Color(0xFF27ae60).withValues(alpha: 0.1);
+                          borderColor = const Color(0xFF27ae60);
+                          textColor = const Color(0xFF27ae60);
+                        } else {
+                          bgColor = isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05);
+                          borderColor = Colors.transparent;
+                        }
+
+                        return InkWell(
+                          onTap: () {
+                            if (status != null) {
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 const SnackBar(content: Text('该剧集已在缓存队列中')),
+                               );
+                               return;
+                            }
+                            setModalState(() {
+                              if (isSelected) {
+                                selectedIndices.remove(index);
+                              } else {
+                                selectedIndices.add(index);
+                              }
+                            });
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: borderColor, width: 1.5),
+                            ),
+                            alignment: Alignment.center,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  '${index + 1}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: textColor,
+                                    fontWeight: isSelected || status != null ? FontWeight.bold : null,
+                                  ),
+                                ),
+                                if (status == DownloadStatus.completed)
+                                  const Positioned(
+                                    bottom: 2,
+                                    right: 2,
+                                    child: Icon(Icons.check_circle, size: 10, color: Colors.blue),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setModalState(() {
+                              bool allSelected = true;
+                              for (int i = 0; i < currentDetail!.episodes.length; i++) {
+                                final id = '${currentDetail!.source}_${currentDetail!.id}_$i';
+                                if (downloadService.getEpisodeStatus(id) == null && !selectedIndices.contains(i)) {
+                                  allSelected = false;
+                                  break;
+                                }
+                              }
+
+                              if (allSelected) {
+                                selectedIndices.clear();
+                              } else {
+                                for (int i = 0; i < currentDetail!.episodes.length; i++) {
+                                  final id = '${currentDetail!.source}_${currentDetail!.id}_$i';
+                                  if (downloadService.getEpisodeStatus(id) == null) {
+                                    selectedIndices.add(i);
+                                  }
+                                }
+                              }
+                            });
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('全选/反选'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: selectedIndices.isEmpty ? null : () async {
+                            int count = 0;
+                            for (var index in selectedIndices) {
+                              await downloadService.addTask(currentDetail!, index);
+                              count++;
+                            }
+                            if (!mounted) return;
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('已添加 $count 个缓存任务')),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF27ae60),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 0,
+                          ),
+                          child: Text('开始缓存 (${selectedIndices.length})'),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Flexible(
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 1.2,
-                  ),
-                  itemCount: currentDetail!.episodes.length,
-                  itemBuilder: (context, index) {
-                    return InkWell(
-                      onTap: () async {
-                        await DownloadService().addTask(currentDetail!, index);
-                        if (!mounted) return;
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('已加入缓存队列: 第${index + 1}集')),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: currentEpisodeIndex == index 
-                                ? const Color(0xFF27ae60) 
-                                : Colors.transparent,
-                            width: 1,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '${index + 1}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: currentEpisodeIndex == index ? const Color(0xFF27ae60) : null,
-                            fontWeight: currentEpisodeIndex == index ? FontWeight.bold : null,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    for (int i = 0; i < currentDetail!.episodes.length; i++) {
-                      await DownloadService().addTask(currentDetail!, i);
-                    }
-                    if (!mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已添加全集缓存任务')),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF27ae60),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  child: const Text('全部缓存'),
-                ),
-              ),
-            ],
-          ),
+            );
+          }
         );
       },
     );

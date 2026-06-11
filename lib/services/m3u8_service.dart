@@ -122,6 +122,32 @@ class M3U8Service {
     }
   }
 
+  /// 解析 M3U8 中的加密密钥信息
+  Map<String, String>? parseEncryptionKey(String content) {
+    final lines = content.split('\n');
+    for (final line in lines) {
+      if (line.startsWith('#EXT-X-KEY')) {
+        final params = <String, String>{};
+        final keyContent = line.substring('#EXT-X-KEY:'.length);
+        
+        // 正则解析 Key-Value 模式: METHOD=AES-128,URI="...",IV=...
+        final regExp = RegExp(r'([A-Z0-9-]+)=("[^"]*"|[^,]*)');
+        final matches = regExp.allMatches(keyContent);
+        
+        for (final match in matches) {
+          final key = match.group(1)!;
+          var value = match.group(2)!;
+          if (value.startsWith('"') && value.endsWith('"')) {
+            value = value.substring(1, value.length - 1);
+          }
+          params[key] = value;
+        }
+        return params;
+      }
+    }
+    return null;
+  }
+
   /// 从M3U8内容中解析片段URL
   List<String> parseSegmentsFromContent(String content, String baseUrl) {
     final lines = content.split('\n').map((line) => line.trim()).toList();

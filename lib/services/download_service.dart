@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,6 +49,15 @@ class DownloadService extends ChangeNotifier {
   }
 
   void _checkQueue() {
+    // 强制控制并发数：如果当前下载中的任务超过了最大限制，暂停多出的任务
+    final downloadingTasks = _tasks.where((t) => t.status == DownloadStatus.downloading).toList();
+    if (downloadingTasks.length > _maxConcurrentEpisodes) {
+      // 暂停最后开始的任务
+      for (int i = _maxConcurrentEpisodes; i < downloadingTasks.length; i++) {
+        downloadingTasks[i].status = DownloadStatus.pending;
+      }
+    }
+
     // 计算当前正在下载的任务数
     int downloadingCount = _tasks.where((t) => t.status == DownloadStatus.downloading).length;
     
@@ -59,6 +70,7 @@ class DownloadService extends ChangeNotifier {
         downloadingCount++;
       }
     }
+    notifyListeners();
   }
 
   Future<void> _loadTasks() async {
@@ -128,6 +140,34 @@ class DownloadService extends ChangeNotifier {
       final response = await _dio.get(mediaUrl);
       final String content = response.data.toString();
       
+      // 检查加密信息
+      final encryptionInfo = _m3u8Service.parseEncryptionKey(content);
+      encrypt.Encrypter? encrypter;
+      encrypt.IV? fixedIv;
+
+      if (encryptionInfo != null && encryptionInfo['METHOD'] == 'AES-128') {
+        final keyUri = encryptionInfo['URI']!;
+        String absoluteKeyUrl = keyUri;
+        if (!keyUri.startsWith('http')) {
+          final baseUri = Uri.parse(mediaUrl);
+          final basePath = baseUri.path.substring(0, baseUri.path.lastIndexOf('/') + 1);
+          absoluteKeyUrl = '${baseUri.scheme}://${baseUri.host}${baseUri.hasPort ? ':${baseUri.port}' : ''}$basePath$keyUri';
+        }
+        
+        try {
+          final keyResponse = await _dio.get(absoluteKeyUrl, options: Options(responseType: ResponseType.bytes));
+          final keyBytes = encrypt.Key(Uint8List.fromList(keyResponse.data));
+          encrypter = encrypt.Encrypter(encrypt.AES(keyBytes, mode: encrypt.AESMode.cbc, padding: 'PKCS7'));
+          
+          if (encryptionInfo.containsKey('IV')) {
+            final ivStr = encryptionInfo['IV']!.startsWith('0x') ? encryptionInfo['IV']!.substring(2) : encryptionInfo['IV']!;
+            fixedIv = encrypt.IV.fromIterable(_hexToUint8List(ivStr));
+          }
+        } catch (e) {
+          debugPrint('Failed to initialize decrypter: $e');
+        }
+      }
+
       // 3. 解析片段
       final segments = _m3u8Service.parseSegmentsFromContent(content, mediaUrl);
       if (segments.isEmpty) {
@@ -194,7 +234,15 @@ class DownloadService extends ChangeNotifier {
               final filePath = '${task.savePath}/segments/segment_$segmentIndex.ts';
 
               try {
-                await _dio.download(url, filePath);
+                if (encrypter != null) {
+                  final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
+                  final encryptedBytes = Uint8List.fromList(response.data);
+                  final iv = fixedIv ?? encrypt.IV(_getIVFromIndex(segmentIndex));
+                  final decryptedBytes = encrypter.decryptBytes(encrypt.Encrypted(encryptedBytes), iv: iv);
+                  await File(filePath).writeAsBytes(decryptedBytes);
+                } else {
+                  await _dio.download(url, filePath);
+                }
                 completed++;
                 _tasks[index].downloadedSegments = completed;
                 _tasks[index].progress = completed / total;
@@ -294,8 +342,59 @@ class DownloadService extends ChangeNotifier {
   }
 
   void removeTask(String id) {
-    _tasks.removeWhere((t) => t.id == id);
+    final taskIndex = _tasks.indexWhere((t) => t.id == id);
+    if (taskIndex == -1) return;
+    
+    final task = _tasks[taskIndex];
+    _tasks.removeAt(taskIndex);
     _saveTasks();
     notifyListeners();
+
+    // 异步清理真实文件
+    Future.microtask(() async {
+      try {
+        final segmentsDir = Directory('${task.savePath}/segments');
+        if (await segmentsDir.exists()) {
+          await segmentsDir.delete(recursive: true);
+        }
+        final mainDir = Directory(task.savePath);
+        if (await mainDir.exists()) {
+          await mainDir.delete(recursive: true);
+        }
+        final mergedFile = File('${task.savePath}.ts');
+        if (await mergedFile.exists()) {
+          await mergedFile.delete();
+        }
+        debugPrint('Cleaned up files for task: ${task.title} - ${task.episodeTitle}');
+      } catch (e) {
+        debugPrint('Failed to cleanup files: $e');
+      }
+    });
+  }
+
+  // 获取剧集下载状态，供播放页 UI 使用
+  DownloadStatus? getEpisodeStatus(String id) {
+    try {
+      return _tasks.firstWhere((t) => t.id == id).status;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Uint8List _getIVFromIndex(int index) {
+    final iv = Uint8List(16);
+    final data = ByteData(16);
+    // HLS AES-128 默认 IV 是 16 字节的序列号 (Big Endian)
+    data.setUint64(8, index, Endian.big);
+    return data.buffer.asUint8List();
+  }
+
+  Uint8List _hexToUint8List(String hex) {
+    if (hex.length % 2 != 0) hex = '0$hex';
+    final result = Uint8List(hex.length ~/ 2);
+    for (var i = 0; i < hex.length; i += 2) {
+      result[i ~/ 2] = int.parse(hex.substring(i, i + 2), radix: 16);
+    }
+    return result;
   }
 }

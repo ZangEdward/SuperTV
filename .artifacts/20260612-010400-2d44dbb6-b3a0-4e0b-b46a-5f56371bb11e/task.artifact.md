@@ -1,0 +1,16 @@
+- [x] Dependency Updates
+    - [x] Add `encrypt` to `pubspec.yaml`
+    - [x] Run `flutter pub get` (User action required)
+- [x] Service Enhancements
+    - [x] Update `m3u8_service.dart`: Add `parseEncryptionKey`
+    - [x] Update `download_service.dart`: Queue management (pausing excess tasks)
+    - [x] Update `download_service.dart`: HLS decryption (AES-128)
+    - [x] Update `download_service.dart`: Real file cleanup on task removal
+    - [x] Update `download_service.dart`: Add `Status API` for playback page
+- [x] UI Improvements
+    - [x] Update `download_manager_screen.dart`: Dark mode support for dropdown
+    - [x] Update `player_screen.dart`: Multi-select download panel with status
+- [x] Documentation
+    - [x] Update `README.md` with new features
+- [x] Verification
+    - [x] Manual verification plan provided in walkthrough

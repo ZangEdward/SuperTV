@@ -36,6 +36,9 @@ class DownloadManagerScreen extends StatelessWidget {
         ),
         body: Consumer<DownloadService>(
           builder: (context, service, child) {
+            final theme = Theme.of(context);
+            final isDarkMode = theme.brightness == Brightness.dark;
+
             if (service.tasks.isEmpty) {
               return Center(
                 child: Column(
@@ -68,22 +71,33 @@ class DownloadManagerScreen extends StatelessWidget {
                     children: [
                       Text(
                         '同时下载',
-                        style: FontUtils.poppins(fontSize: 14, color: Colors.grey[700]),
+                        style: FontUtils.poppins(
+                          fontSize: 14, 
+                          color: isDarkMode ? Colors.grey[400] : Colors.grey[700]
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                          color: isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.grey[200],
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: DropdownButton<int>(
                           value: service.maxConcurrentEpisodes,
                           underline: const SizedBox(),
+                          dropdownColor: isDarkMode ? const Color(0xFF2c2c2c) : Colors.white,
+                          iconEnabledColor: isDarkMode ? Colors.white70 : Colors.black54,
                           items: List.generate(10, (i) => i + 1).map((i) {
                             return DropdownMenuItem(
                               value: i,
-                              child: Text('$i 集', style: FontUtils.poppins(fontSize: 14)),
+                              child: Text(
+                                '$i 集', 
+                                style: FontUtils.poppins(
+                                  fontSize: 14,
+                                  color: isDarkMode ? Colors.white : Colors.black
+                                )
+                              ),
                             );
                           }).toList(),
                           onChanged: (val) {
