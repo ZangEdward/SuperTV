@@ -78,7 +78,7 @@ class M3U8Service {
   }
 
   /// 从M3U8内容中解析片段URL
-  List<String> _parseSegmentsFromContent(String content, String baseUrl) {
+  List<String> parseSegmentsFromContent(String content, String baseUrl) {
     final lines = content.split('\n').map((line) => line.trim()).toList();
     final segments = <String>[];
     

@@ -7,6 +7,7 @@ import '../services/theme_service.dart';
 import '../services/api_service.dart';
 import '../utils/device_utils.dart';
 import '../utils/font_utils.dart';
+import '../screens/download_manager_screen.dart';
 import 'user_menu.dart';
 import 'dart:io' show Platform;
 import 'dart:async';
@@ -278,10 +279,12 @@ class _MainLayoutState extends State<MainLayout> {
       builder: (context, themeService, child) {
         final isTablet = DeviceUtils.isTablet(context);
 
-        return Theme(
+        return AnimatedTheme(
           data: themeService.isDarkMode
               ? themeService.darkTheme
               : themeService.lightTheme,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
           child: Scaffold(
             resizeToAvoidBottomInset: !widget.isSearchMode,
             body: Stack(
@@ -483,57 +486,50 @@ class _MainLayoutState extends State<MainLayout> {
 
   Widget _buildNormalHeader(BuildContext context, ThemeService themeService, bool isTablet) {
     return SizedBox(
-      height: 40, // 固定高度，与搜索框高度一致
-      child: Stack(
+      height: 40, // 固定高度
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 左侧搜索图标
-          Positioned(
-            left: 0,
-            top: 4,
-            child: IconButton(
-              icon: Icon(
-                LucideIcons.search,
-                color: themeService.isDarkMode
-                    ? const Color(0xFFffffff)
-                    : const Color(0xFF2c3e50),
-                size: 24,
-              ),
-              onPressed: () {
-                if (_isSearchButtonPressed) return;
-                setState(() => _isSearchButtonPressed = true);
-                widget.onSearchTap?.call();
-                Future.delayed(const Duration(milliseconds: 300), () {
-                  if (mounted) setState(() => _isSearchButtonPressed = false);
-                });
-              },
-              tooltip: '搜索',
-            ),
-          ),
-          // 完全居中的 Logo (非平板模式) 或靠左的 Logo (平板模式)
-          if (!isTablet)
-            Center(
-              child: GestureDetector(
-                onTap: widget.onHomeTap,
-                behavior: HitTestBehavior.opaque,
-                child: Text(
-                  'SuperTV',
-                  style: FontUtils.sourceCodePro(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w400,
-                    color: themeService.isDarkMode
-                        ? Colors.white
-                        : const Color(0xFF2c3e50),
-                    letterSpacing: 1.5,
-                  ),
+          // 左侧搜索框（直接显示，不再是一个按钮）
+          Expanded(
+            child: GestureDetector(
+              onTap: widget.onSearchTap,
+              child: Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: themeService.isDarkMode
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.black.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      LucideIcons.search,
+                      color: themeService.isDarkMode
+                          ? const Color(0xFFb0b0b0)
+                          : const Color(0xFF7f8c8d),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '搜索电影、剧集、动漫...',
+                      style: FontUtils.poppins(
+                        color: themeService.isDarkMode
+                            ? const Color(0xFF666666)
+                            : const Color(0xFF95a5a6),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          // 右侧按钮组
-          Positioned(
-            right: 0,
-            top: 4,
-            child: _buildRightButtons(themeService),
           ),
+          const SizedBox(width: 16),
+          // 右侧按钮组
+          _buildRightButtons(themeService),
         ],
       ),
     );
@@ -727,7 +723,25 @@ class _MainLayoutState extends State<MainLayout> {
           onPressed: () => themeService.toggleTheme(context),
           tooltip: themeService.isDarkMode ? '切换到浅色模式' : '切换到深色模式',
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
+        // 缓存管理按钮
+        IconButton(
+          icon: Icon(
+            LucideIcons.download,
+            color: themeService.isDarkMode
+                ? const Color(0xFFffffff)
+                : const Color(0xFF2c3e50),
+            size: 22,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const DownloadManagerScreen()),
+            );
+          },
+          tooltip: '缓存管理',
+        ),
+        const SizedBox(width: 4),
         // 用户按钮
         IconButton(
           icon: Icon(

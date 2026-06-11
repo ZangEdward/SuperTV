@@ -10,6 +10,7 @@ import '../services/m3u8_service.dart';
 import '../services/douban_service.dart';
 import '../services/user_data_service.dart';
 import '../services/search_service.dart';
+import '../services/download_service.dart';
 import '../models/search_result.dart';
 import '../models/douban_movie.dart';
 import '../models/play_record.dart';
@@ -226,8 +227,19 @@ class _PlayerScreenState extends State<PlayerScreen>
     initParam();
 
     // 执行查询
-    allSources = await fetchSourcesData(
-        (searchTitle.isNotEmpty) ? searchTitle : videoTitle);
+    final searchTitleText = (searchTitle.isNotEmpty) ? searchTitle : videoTitle;
+    allSources = await fetchSourcesData(searchTitleText);
+    
+    // 如果没找到且标题里有空格，尝试去尾模糊匹配（仅标签页点击进入时，即 widget.source == null）
+    if (allSources.isEmpty && widget.source == null && searchTitleText.contains(' ')) {
+      final lastSpaceIndex = searchTitleText.lastIndexOf(' ');
+      final fuzzyTitle = searchTitleText.substring(0, lastSpaceIndex).trim();
+      if (fuzzyTitle.isNotEmpty) {
+        updateLoadingMessage('正在尝试模糊匹配播放源...');
+        allSources = await fetchSourcesData(fuzzyTitle, filterTitle: fuzzyTitle);
+      }
+    }
+    
     if (!_isActiveLoad(loadGeneration)) return;
 
     if (currentSource.isNotEmpty &&
@@ -1236,6 +1248,116 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
+  /// 显示下载选集面板
+  void _showDownloadPanel() {
+    if (currentDetail == null) return;
+    
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '缓存选集',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1.2,
+                  ),
+                  itemCount: currentDetail!.episodes.length,
+                  itemBuilder: (context, index) {
+                    return InkWell(
+                      onTap: () async {
+                        await DownloadService().addTask(currentDetail!, index);
+                        if (!mounted) return;
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('已加入缓存队列: 第${index + 1}集')),
+                        );
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: currentEpisodeIndex == index 
+                                ? const Color(0xFF27ae60) 
+                                : Colors.transparent,
+                            width: 1,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${index + 1}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: currentEpisodeIndex == index ? const Color(0xFF27ae60) : null,
+                            fontWeight: currentEpisodeIndex == index ? FontWeight.bold : null,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    for (int i = 0; i < currentDetail!.episodes.length; i++) {
+                      await DownloadService().addTask(currentDetail!, i);
+                    }
+                    if (!mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已添加全集缓存任务')),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF27ae60),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('全部缓存'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// 构建视频详情展示区域
   Widget _buildVideoDetailSection(ThemeData theme) {
     final isDarkMode = theme.brightness == Brightness.dark;
@@ -1273,6 +1395,16 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
+                  // 下载/缓存按钮
+                  GestureDetector(
+                    onTap: _showDownloadPanel,
+                    child: Icon(
+                      Icons.download_for_offline_outlined,
+                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
                   GestureDetector(
                     onTap: _toggleFavorite,
                     child: Icon(
@@ -2527,7 +2659,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   /// 搜索视频源数据（带过滤）
-  Future<List<SearchResult>> fetchSourcesData(String query) async {
+  Future<List<SearchResult>> fetchSourcesData(String query, {String? filterTitle}) async {
     // 检查是否启用本地搜索
     final isLocalSearch = await UserDataService.getLocalSearch();
     final isLocalMode = await UserDataService.getIsLocalMode();
@@ -2541,11 +2673,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       results = await ApiService.fetchSourcesData(query);
     }
 
+    final targetTitle = filterTitle ?? widget.title;
+
     // 直接在这里展开过滤逻辑
     return results.where((result) {
       // 标题匹配检查
       final titleMatch = result.title.replaceAll(' ', '').toLowerCase() ==
-          (widget.title.replaceAll(' ', '').toLowerCase());
+          (targetTitle.replaceAll(' ', '').toLowerCase());
 
       // 年份匹配检查
       final yearMatch = widget.year == null ||

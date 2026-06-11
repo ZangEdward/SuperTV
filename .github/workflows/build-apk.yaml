@@ -131,7 +131,9 @@ jobs:
           channel: 'stable'
 
       - name: Get Flutter dependencies
-        run: flutter pub get
+        run: |
+          flutter pub get
+          flutter pub run flutter_launcher_icons
 
       - name: Set Environment Variables
         shell: pwsh

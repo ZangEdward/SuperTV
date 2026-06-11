@@ -161,15 +161,35 @@ class _HomeScreenState extends State<HomeScreen> {
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              final bool isMovingRight = _currentTopTabIndex > _previousTopTabIndex;
-              final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
-              return SlideTransition(
-                position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-                ),
-                child: child,
+            layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+              return Stack(
+                children: <Widget>[
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
               );
+            },
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              final bool isNewChild = child.key == _getTopTabContent(_currentTopTabIndex).key;
+              final bool isMovingRight = _currentTopTabIndex > _previousTopTabIndex;
+
+              if (isNewChild) {
+                final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+                return SlideTransition(
+                  position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                  ),
+                  child: child,
+                );
+              } else {
+                final end = isMovingRight ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0);
+                return SlideTransition(
+                  position: Tween<Offset>(begin: end, end: Offset.zero).animate(
+                    CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+                  ),
+                  child: child,
+                );
+              }
             },
             child: _getTopTabContent(_currentTopTabIndex),
           ),
@@ -389,15 +409,38 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBottomNavWithAnimation() {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        final bool isMovingRight = _currentBottomNavIndex > _previousBottomNavIndex;
-        final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
-        return SlideTransition(
-          position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-          ),
-          child: child,
+      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+        return Stack(
+          children: <Widget>[
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
         );
+      },
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        // 判断是否是当前选中的页面（即新进入的页面）
+        final bool isNewChild = child.key == _getBottomNavPage(_currentBottomNavIndex).key;
+        final bool isMovingRight = _currentBottomNavIndex > _previousBottomNavIndex;
+        
+        if (isNewChild) {
+          // 新页面进入
+          final begin = isMovingRight ? const Offset(1.0, 0.0) : const Offset(-1.0, 0.0);
+          return SlideTransition(
+            position: Tween<Offset>(begin: begin, end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
+            child: child,
+          );
+        } else {
+          // 旧页面退出
+          final end = isMovingRight ? const Offset(-1.0, 0.0) : const Offset(1.0, 0.0);
+          return SlideTransition(
+            position: Tween<Offset>(begin: end, end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
+            child: child,
+          );
+        }
       },
       child: _getBottomNavPage(_currentBottomNavIndex),
     );
@@ -406,7 +449,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _getBottomNavPage(int index) {
     switch (index) {
       case 0:
-        return Container(key: const ValueKey('home'), child: _buildHomeContentWithAnimation());
+        return Container(key: const ValueKey('home_tab_container'), child: _buildHomeContentWithAnimation());
       case 1:
         return const MovieScreen(key: ValueKey('movie'));
       case 2:
@@ -418,7 +461,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 5:
         return const LiveScreen(key: ValueKey('live'));
       default:
-        return Container(key: const ValueKey('home'), child: _buildHomeContentWithAnimation());
+        return Container(key: const ValueKey('home_tab_container'), child: _buildHomeContentWithAnimation());
     }
   }
 
@@ -671,7 +714,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _navigateToPlayer(Widget playerScreen) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => playerScreen),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => playerScreen,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeOutCubic;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
     );
 
     if (!mounted) return;

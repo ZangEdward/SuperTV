@@ -773,6 +773,53 @@ class ApiService {
     }
   }
 
+  /// 获取 Bangumi 日历数据
+  static Future<ApiResponse<List<dynamic>>> getBangumiCalendar() async {
+    // 优先尝试通过服务器代理获取
+    try {
+      final response = await get<List<dynamic>>(
+        '/api/proxy/bangumi?path=calendar',
+        fromJson: (data) => data as List<dynamic>,
+      );
+      if (response.success && response.data != null) {
+        return response;
+      }
+      
+      // 降级尝试
+      final responseAlt = await get<List<dynamic>>(
+        '/api/bangumi/calendar',
+        fromJson: (data) => data as List<dynamic>,
+      );
+      if (responseAlt.success && responseAlt.data != null) {
+        return responseAlt;
+      }
+    } catch (e) {
+      print('通过代理获取 Bangumi 数据异常: $e');
+    }
+
+    // 最终降级：客户端直连
+    try {
+      const apiUrl = 'https://api.bgm.tv/calendar';
+      final headers = {
+        'User-Agent': 'supertv/1.0.0 (Android) (http://github.com/supertv/app)',
+        'Accept': 'application/json',
+      };
+
+      final response = await http
+          .get(Uri.parse(apiUrl), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return ApiResponse.success(data, statusCode: response.statusCode);
+      }
+    } catch (e) {
+      print('直连获取 Bangumi 数据异常: $e');
+    }
+
+    return ApiResponse.error('获取 Bangumi 数据失败');
+  }
+
   /// 获取搜索建议
   static Future<List<String>> getSearchSuggestions(String query) async {
     try {

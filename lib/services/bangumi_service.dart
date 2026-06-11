@@ -59,18 +59,10 @@ class BangumiService {
 
     // 未命中缓存，请求接口
     try {
-      const apiUrl = 'https://api.bgm.tv/calendar';
-      final headers = {
-        'User-Agent': 'supertv/1.0.0 (Android) (http://github.com/supertv/app)',
-        'Accept': 'application/json',
-      };
+      final response = await ApiService.getBangumiCalendar();
 
-      final response = await http
-          .get(Uri.parse(apiUrl), headers: headers)
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> responseData = json.decode(response.body);
+      if (response.success && response.data != null) {
+        final List<dynamic> responseData = response.data!;
 
         // 解析所有星期数据
         final List<BangumiCalendarResponse> calendarData = responseData
@@ -99,7 +91,7 @@ class BangumiService {
         return ApiResponse.success(items, statusCode: response.statusCode);
       } else {
         return ApiResponse.error(
-          '获取 Bangumi 日历失败: ${response.statusCode}',
+          response.message ?? '获取 Bangumi 日历失败',
           statusCode: response.statusCode,
         );
       }

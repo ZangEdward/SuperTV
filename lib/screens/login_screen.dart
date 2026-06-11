@@ -651,57 +651,70 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     // URL 输入框/下拉框
                     _serverNodes.isNotEmpty
-                        ? DropdownButtonFormField<ServerNode>(
-                            value: _selectedNode,
-                            style: FontUtils.poppins(
-                              fontSize: 16,
-                              color: const Color(0xFF2c3e50),
-                            ),
-                            decoration: InputDecoration(
-                              labelText: '服务器节点',
-                              labelStyle: FontUtils.poppins(
-                                color: const Color(0xFF7f8c8d),
-                                fontSize: 14,
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              DropdownButtonFormField<ServerNode>(
+                                value: _selectedNode,
+                                style: FontUtils.poppins(
+                                  fontSize: 16,
+                                  color: const Color(0xFF2c3e50),
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: '选择服务器节点',
+                                  labelStyle: FontUtils.poppins(
+                                    color: const Color(0xFF7f8c8d),
+                                    fontSize: 14,
+                                  ),
+                                  prefixIcon: const Icon(
+                                    Icons.dns,
+                                    color: Color(0xFF7f8c8d),
+                                    size: 20,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white.withValues(alpha: 0.6),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                items: _serverNodes.map((node) {
+                                  return DropdownMenuItem<ServerNode>(
+                                    value: node,
+                                    child: Text(node.label),
+                                  );
+                                }).toList(),
+                                onChanged: (ServerNode? newValue) {
+                                  setState(() {
+                                    _selectedNode = newValue;
+                                    if (newValue != null) {
+                                      _urlController.text = newValue.url;
+                                    }
+                                    _validateForm();
+                                  });
+                                },
                               ),
-                              prefixIcon: const Icon(
-                                Icons.dns,
-                                color: Color(0xFF7f8c8d),
-                                size: 20,
+                              // 隐藏真实的输入框但保持其功能，以便 _processUrl 正常工作
+                              const SizedBox(height: 0),
+                              Offstage(
+                                offstage: true,
+                                child: TextFormField(
+                                  controller: _urlController,
+                                ),
                               ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withOpacity(0.6),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 12,
-                              ),
-                            ),
-                            items: _serverNodes.map((node) {
-                              return DropdownMenuItem<ServerNode>(
-                                value: node,
-                                child: Text(node.label),
-                              );
-                            }).toList(),
-                            onChanged: (ServerNode? newValue) {
-                              setState(() {
-                                _selectedNode = newValue;
-                                if (newValue != null) {
-                                  _urlController.text = newValue.url;
-                                }
-                                _validateForm();
-                              });
-                            },
+                            ],
                           )
                         : TextFormField(
                             controller: _urlController,
@@ -738,7 +751,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderSide: BorderSide.none,
                               ),
                               filled: true,
-                              fillColor: Colors.white.withOpacity(0.6),
+                              fillColor: Colors.white.withValues(alpha: 0.6),
                               contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 20,
                                 vertical: 18,
