@@ -66,7 +66,15 @@ class _LoginScreenState extends State<LoginScreen> {
     const nodesJson = String.fromEnvironment('API_NODES_JSON');
     if (nodesJson.isNotEmpty) {
       try {
-        final List<dynamic> decoded = json.decode(nodesJson);
+        String processedJson = nodesJson;
+        // 容错处理：处理可能被额外包裹的引号（某些 CI 环境注入时会带引号）
+        if (processedJson.startsWith('"') && processedJson.endsWith('"')) {
+          processedJson = processedJson.substring(1, processedJson.length - 1);
+        }
+        // 处理可能存在的转义反斜杠
+        processedJson = processedJson.replaceAll('\\"', '"');
+
+        final List<dynamic> decoded = json.decode(processedJson);
         setState(() {
           _serverNodes = decoded.map((item) => ServerNode.fromJson(item)).toList();
           // 如果有节点，尝试根据当前 url 选中

@@ -48,40 +48,45 @@ jobs:
           echo "✅ 版本号: $VERSION_NAME"
 
       - name: Set Environment Variables
-        env:
-          API_NODES_SECRET: ${{ secrets.API_NODES_JSON }}
         run: |
-          echo "SIGNING_KEY=${{ secrets.SIGNING_KEY }}" >> $GITHUB_ENV
-          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
-          
-          # 压缩 JSON 为单行并移除首尾空白，避免 --dart-define 解析错误
-          API_NODES_FLATTENED=$(echo "$API_NODES_SECRET" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          echo "API_NODES=$API_NODES_FLATTENED" >> $GITHUB_ENV
+          {
+            echo "SIGNING_KEY<<EOF"
+            echo "${{ secrets.SIGNING_KEY }}"
+            echo "EOF"
+            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}"
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}"
+            echo "PAT=${{ secrets.PAT }}"
+            echo "SYNC_REPO=${{ secrets.SYNC_REPO }}"
+            echo "SOURCE_REPO=${{ secrets.SOURCE_REPO }}"
+          } >> $GITHUB_ENV
 
-          echo "PAT=${{ secrets.PAT }}" >> $GITHUB_ENV
-          echo "SYNC_REPO=${{ secrets.SYNC_REPO }}" >> $GITHUB_ENV
-          echo "SOURCE_REPO=${{ secrets.SOURCE_REPO }}" >> $GITHUB_ENV
-          echo "✅ 环境变量已设置"
+      - name: Prepare Build Configuration
+        shell: bash
+        run: |
+          # 使用 Python 安全生成 JSON 配置文件，避开 Shell 字符转义问题
+          python3 -c "import os, json; nodes = os.environ.get('RAW_NODES', '').strip().replace('\n', '').replace('\r', ''); print(json.dumps({'API_NODES_JSON': nodes}))" > dart_config.json
+          echo "✅ dart_config.json 已生成 (大小: $(wc -c < dart_config.json) 字节)"
+        env:
+          RAW_NODES: ${{ secrets.API_NODES_JSON }}
 
       - name: Decode Keystore
         run: |
           mkdir -p android/app
-          echo "${{ env.SIGNING_KEY }}" | base64 --decode > android/app/release-key.jks
+          echo "$SIGNING_KEY" | base64 --decode > android/app/release-key.jks
           echo "✅ 签名文件已写入 android/app/release-key.jks"
 
       - name: Configure Signing in key.properties
         run: |
           echo "storeFile=release-key.jks" >> android/key.properties
-          echo "storePassword=${{ env.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ env.KEY_ALIAS }}" >> android/key.properties
-          echo "keyPassword=${{ env.KEY_PASSWORD }}" >> android/key.properties
+          echo "storePassword=$KEY_PASSWORD" >> android/key.properties
+          echo "keyAlias=$KEY_ALIAS" >> android/key.properties
+          echo "keyPassword=$KEY_PASSWORD" >> android/key.properties
           echo "✅ android/key.properties 已配置签名"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.44.1"
+          flutter-version: "3.24.x"
           channel: 'stable'
 
       - name: Get Flutter dependencies
@@ -90,7 +95,7 @@ jobs:
       - name: Build Release APK
         run: |
           flutter build apk --release \
-            --dart-define=API_NODES_JSON='${{ env.API_NODES }}' \
+            --dart-define-from-file=dart_config.json \
             --split-per-abi \
             --obfuscate \
             --split-debug-info=build/app/outputs/symbols
@@ -136,20 +141,20 @@ jobs:
           flutter pub get
           flutter pub run flutter_launcher_icons
 
-      - name: Set Environment Variables
+      - name: Prepare Windows Build Configuration
         shell: pwsh
-        env:
-          API_NODES_SECRET: ${{ secrets.API_NODES_JSON }}
         run: |
-          # 压缩 JSON 为单行并移除首尾空白
-          $nodes = $env:API_NODES_SECRET -replace "`r", "" -replace "`n", ""
+          $nodes = @"
+          ${{ secrets.API_NODES_JSON }}
+          "@ -replace "[\r\n]", ""
           $nodes = $nodes.Trim()
-          echo "API_NODES=$nodes" >> $env:GITHUB_ENV
-          echo "✅ 环境变量已设置"
+          $config = @{ API_NODES_JSON = $nodes }
+          $config | ConvertTo-Json -Compress | Out-File -FilePath dart_config.json -Encoding utf8
+          Write-Host "✅ dart_config.json 已生成"
 
       - name: Build Windows
         run: |
-          flutter build windows --release --dart-define=API_NODES_JSON='${{ env.API_NODES }}'
+          flutter build windows --release --dart-define-from-file=dart_config.json
 
       - name: Package Windows
         shell: pwsh
