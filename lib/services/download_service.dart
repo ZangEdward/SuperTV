@@ -161,7 +161,7 @@ class DownloadService extends ChangeNotifier {
           
           if (encryptionInfo.containsKey('IV')) {
             final ivStr = encryptionInfo['IV']!.startsWith('0x') ? encryptionInfo['IV']!.substring(2) : encryptionInfo['IV']!;
-            fixedIv = encrypt.IV.fromIterable(_hexToUint8List(ivStr));
+            fixedIv = encrypt.IV(_hexToUint8List(ivStr));
           }
         } catch (e) {
           debugPrint('Failed to initialize decrypter: $e');

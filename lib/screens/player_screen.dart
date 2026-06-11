@@ -11,6 +11,7 @@ import '../services/douban_service.dart';
 import '../services/user_data_service.dart';
 import '../services/search_service.dart';
 import '../services/download_service.dart';
+import '../models/download_task.dart';
 import '../models/search_result.dart';
 import '../models/douban_movie.dart';
 import '../models/play_record.dart';
