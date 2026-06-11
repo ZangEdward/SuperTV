@@ -141,23 +141,32 @@ class DoubanMovieDetails {
       return int.tryParse(value?.toString() ?? '');
     }
 
+    String processUrl(dynamic url) {
+      if (url == null) return '';
+      String s = url.toString();
+      if (s.isEmpty) return '';
+      if (s.startsWith('//')) return 'https:$s';
+      if (s.startsWith('http://')) return s.replaceFirst('http://', 'https://');
+      return s;
+    }
+
     // 处理poster字段
     String poster = '';
     if (json['poster'] != null) {
-      poster = json['poster']?.toString() ?? '';
+      poster = processUrl(json['poster']);
     } else if (json['cover_url'] != null) {
-      poster = json['cover_url']?.toString() ?? '';
+      poster = processUrl(json['cover_url']);
     } else if (json['images'] != null) {
       final images = json['images'] as Map<String, dynamic>?;
-      poster = images?['large']?.toString() ?? 
-               images?['medium']?.toString() ?? 
-               images?['small']?.toString() ?? '';
+      poster = processUrl(images?['large'] ??
+               images?['medium'] ??
+               images?['small']);
     } else if (json['pic'] != null) {
       final pic = json['pic'] as Map<String, dynamic>?;
-      poster = pic?['large']?.toString() ??
-               pic?['normal']?.toString() ??
-               pic?['medium']?.toString() ??
-               pic?['small']?.toString() ?? '';
+      poster = processUrl(pic?['large'] ??
+               pic?['normal'] ??
+               pic?['medium'] ??
+               pic?['small']);
     }
     
     // 处理rating字段

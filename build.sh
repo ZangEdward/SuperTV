@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 
 # 版本信息
 APP_VERSION=""
+API_NODES_JSON=""
 
 # 读取版本号
 read_version() {
@@ -95,12 +96,15 @@ build_android() {
     # 确保安卓构建目录存在
     mkdir -p build/android
     
-    # 构建 APK，添加优化参数
-    flutter build apk --release \
-        --target-platform android-arm64,android-arm \
-        --split-per-abi \
-        --obfuscate \
-        --split-debug-info=build/app/outputs/symbols
+    # 构建参数
+    BUILD_ARGS=("--release" "--target-platform" "android-arm64,android-arm" "--split-per-abi" "--obfuscate" "--split-debug-info=build/app/outputs/symbols")
+
+    if [ -n "$API_NODES_JSON" ]; then
+        BUILD_ARGS+=("--dart-define=API_NODES_JSON=$API_NODES_JSON")
+    fi
+
+    # 构建 APK
+    flutter build apk "${BUILD_ARGS[@]}"
     
     log_success "安卓构建完成"
 }
@@ -344,6 +348,10 @@ main() {
     
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --api-nodes)
+                API_NODES_JSON="$2"
+                shift 2
+                ;;
             --android-only)
                 BUILD_IOS=false
                 BUILD_MACOS_ARM64=false
@@ -385,6 +393,7 @@ main() {
             --help)
                 echo "用法: $0 [选项]"
                 echo "选项:"
+                echo "  --api-nodes JSON     设置 API 节点 JSON"
                 echo "  --android-only       只构建 Android 版本"
                 echo "  --ios-only           只构建 iOS 版本"
                 echo "  --macos-arm64-only   只构建 macOS ARM64 版本"

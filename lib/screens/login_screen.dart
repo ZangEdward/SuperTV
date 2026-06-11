@@ -649,128 +649,91 @@ class _LoginScreenState extends State<LoginScreen> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // URL 输入框/下拉框
-                    _serverNodes.isNotEmpty
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              DropdownButtonFormField<ServerNode>(
-                                value: _selectedNode,
-                                style: FontUtils.poppins(
-                                  fontSize: 16,
-                                  color: const Color(0xFF2c3e50),
+                    // URL 下拉选择框
+                    DropdownButtonFormField<ServerNode>(
+                      value: _selectedNode,
+                      style: FontUtils.poppins(
+                        fontSize: 16,
+                        color: const Color(0xFF2c3e50),
+                      ),
+                      decoration: InputDecoration(
+                        labelText: '选择服务器节点',
+                        labelStyle: FontUtils.poppins(
+                          color: const Color(0xFF7f8c8d),
+                          fontSize: 14,
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.dns,
+                          color: Color(0xFF7f8c8d),
+                          size: 20,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.6),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                      items: _serverNodes.isEmpty
+                          ? [
+                              DropdownMenuItem<ServerNode>(
+                                value: null,
+                                enabled: false,
+                                child: Text(
+                                  '未配置服务器节点',
+                                  style: FontUtils.poppins(
+                                    color: const Color(0xFFe74c3c),
+                                  ),
                                 ),
-                                decoration: InputDecoration(
-                                  labelText: '选择服务器节点',
-                                  labelStyle: FontUtils.poppins(
-                                    color: const Color(0xFF7f8c8d),
-                                    fontSize: 14,
-                                  ),
-                                  prefixIcon: const Icon(
-                                    Icons.dns,
-                                    color: Color(0xFF7f8c8d),
-                                    size: 20,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  filled: true,
-                                  fillColor: Colors.white.withValues(alpha: 0.6),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                items: _serverNodes.map((node) {
-                                  return DropdownMenuItem<ServerNode>(
-                                    value: node,
-                                    child: Text(node.label),
-                                  );
-                                }).toList(),
-                                onChanged: (ServerNode? newValue) {
-                                  setState(() {
-                                    _selectedNode = newValue;
-                                    if (newValue != null) {
-                                      _urlController.text = newValue.url;
-                                    }
-                                    _validateForm();
-                                  });
-                                },
-                              ),
-                              // 隐藏真实的输入框但保持其功能，以便 _processUrl 正常工作
-                              const SizedBox(height: 0),
-                              Offstage(
-                                offstage: true,
-                                child: TextFormField(
-                                  controller: _urlController,
-                                ),
-                              ),
-                            ],
-                          )
-                        : TextFormField(
-                            controller: _urlController,
-                            style: FontUtils.poppins(
-                              fontSize: 16,
-                              color: const Color(0xFF2c3e50),
-                            ),
-                            decoration: InputDecoration(
-                              labelText: '服务器地址',
-                              labelStyle: FontUtils.poppins(
-                                color: const Color(0xFF7f8c8d),
-                                fontSize: 14,
-                              ),
-                              hintText: 'https://example.com',
-                              hintStyle: FontUtils.poppins(
-                                color: const Color(0xFFbdc3c7),
-                                fontSize: 16,
-                              ),
-                              prefixIcon: const Icon(
-                                Icons.link,
-                                color: Color(0xFF7f8c8d),
-                                size: 20,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.6),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 18,
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '请输入服务器地址';
-                              }
-                              final uri = Uri.tryParse(value);
-                              if (uri == null ||
-                                  uri.scheme.isEmpty ||
-                                  uri.host.isEmpty) {
-                                return '请输入有效的URL地址';
-                              }
-                              return null;
+                              )
+                            ]
+                          : _serverNodes.map((node) {
+                              return DropdownMenuItem<ServerNode>(
+                                value: node,
+                                child: Text(node.label),
+                              );
+                            }).toList(),
+                      onChanged: _serverNodes.isEmpty
+                          ? null
+                          : (ServerNode? newValue) {
+                              setState(() {
+                                _selectedNode = newValue;
+                                if (newValue != null) {
+                                  _urlController.text = newValue.url;
+                                }
+                                _validateForm();
+                              });
                             },
-                            onFieldSubmitted: (_) => _handleSubmit(),
-                          ),
+                      validator: (value) {
+                        if (_serverNodes.isEmpty) {
+                          return '请在构建时配置 API_NODES_JSON';
+                        }
+                        if (value == null) {
+                          return '请选择一个服务器节点';
+                        }
+                        return null;
+                      },
+                    ),
+                    // 隐藏真实的输入框但保持其功能，以便 _processUrl 正常工作
+                    const SizedBox(height: 0),
+                    Offstage(
+                      offstage: true,
+                      child: TextFormField(
+                        controller: _urlController,
+                      ),
+                    ),
                     const SizedBox(height: 20),
 
                     // 用户名输入框
@@ -981,51 +944,65 @@ class _LoginScreenState extends State<LoginScreen> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // URL 输入框/下拉框
-                      _serverNodes.isNotEmpty
-                          ? DropdownButtonFormField<ServerNode>(
-                              value: _selectedNode,
-                              style: FontUtils.poppins(
-                                fontSize: 16,
-                                color: const Color(0xFF2c3e50),
-                              ),
-                              decoration: InputDecoration(
-                                labelText: '服务器节点',
-                                labelStyle: FontUtils.poppins(
-                                  color: const Color(0xFF7f8c8d),
-                                  fontSize: 14,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.dns,
-                                  color: Color(0xFF7f8c8d),
-                                  size: 20,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.6),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
-                                ),
-                              ),
-                              items: _serverNodes.map((node) {
+                      // URL 下拉选择框
+                      DropdownButtonFormField<ServerNode>(
+                        value: _selectedNode,
+                        style: FontUtils.poppins(
+                          fontSize: 16,
+                          color: const Color(0xFF2c3e50),
+                        ),
+                        decoration: InputDecoration(
+                          labelText: '选择服务器节点',
+                          labelStyle: FontUtils.poppins(
+                            color: const Color(0xFF7f8c8d),
+                            fontSize: 14,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.dns,
+                            color: Color(0xFF7f8c8d),
+                            size: 20,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white.withOpacity(0.6),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        items: _serverNodes.isEmpty
+                            ? [
+                                DropdownMenuItem<ServerNode>(
+                                  value: null,
+                                  enabled: false,
+                                  child: Text(
+                                    '未配置服务器节点',
+                                    style: FontUtils.poppins(
+                                      color: const Color(0xFFe74c3c),
+                                    ),
+                                  ),
+                                )
+                              ]
+                            : _serverNodes.map((node) {
                                 return DropdownMenuItem<ServerNode>(
                                   value: node,
                                   child: Text(node.label),
                                 );
                               }).toList(),
-                              onChanged: (ServerNode? newValue) {
+                        onChanged: _serverNodes.isEmpty
+                            ? null
+                            : (ServerNode? newValue) {
                                 setState(() {
                                   _selectedNode = newValue;
                                   if (newValue != null) {
@@ -1034,62 +1011,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                   _validateForm();
                                 });
                               },
-                            )
-                          : TextFormField(
-                              controller: _urlController,
-                              style: FontUtils.poppins(
-                                fontSize: 16,
-                                color: const Color(0xFF2c3e50),
-                              ),
-                              decoration: InputDecoration(
-                                labelText: '服务器地址',
-                                labelStyle: FontUtils.poppins(
-                                  color: const Color(0xFF7f8c8d),
-                                  fontSize: 14,
-                                ),
-                                hintText: 'https://example.com',
-                                hintStyle: FontUtils.poppins(
-                                  color: const Color(0xFFbdc3c7),
-                                  fontSize: 16,
-                                ),
-                                prefixIcon: const Icon(
-                                  Icons.link,
-                                  color: Color(0xFF7f8c8d),
-                                  size: 20,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.6),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 18,
-                                ),
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return '请输入服务器地址';
-                                }
-                                final uri = Uri.tryParse(value);
-                                if (uri == null ||
-                                    uri.scheme.isEmpty ||
-                                    uri.host.isEmpty) {
-                                  return '请输入有效的URL地址';
-                                }
-                                return null;
-                              },
-                              onFieldSubmitted: (_) => _handleSubmit(),
-                            ),
+                        validator: (value) {
+                          if (_serverNodes.isEmpty) {
+                            return '请在构建时配置 API_NODES_JSON';
+                          }
+                          if (value == null) {
+                            return '请选择一个服务器节点';
+                          }
+                          return null;
+                        },
+                      ),
+                      // 隐藏真实的输入框但保持其功能，以便 _processUrl 正常工作
+                      const SizedBox(height: 0),
+                      Offstage(
+                        offstage: true,
+                        child: TextFormField(
+                          controller: _urlController,
+                        ),
+                      ),
                       const SizedBox(height: 20),
 
                       // 用户名输入框
