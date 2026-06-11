@@ -23,6 +23,14 @@ import '../widgets/filter_options_selector.dart';
 class AnimeScreen extends StatefulWidget {
   const AnimeScreen({super.key});
 
+  // 静态变量存储当前实例
+  static _AnimeScreenState? _currentInstance;
+
+  /// 静态方法：刷新数据
+  static Future<void> refreshAnimeData() async {
+    await _currentInstance?._fetchAnimeData(isRefresh: true);
+  }
+
   @override
   State<AnimeScreen> createState() => _AnimeScreenState();
 }
@@ -218,26 +226,18 @@ class _AnimeScreenState extends State<AnimeScreen> {
   bool _hasMore = true;
   String? _errorMessage;
 
-  // 静态变量存储当前实例
-  static _AnimeScreenState? _currentInstance;
-
-  /// 静态方法：刷新数据
-  static Future<void> refreshAnimeData() async {
-    await _currentInstance?._fetchAnimeData(isRefresh: true);
-  }
-
   @override
   void initState() {
     super.initState();
-    _currentInstance = this;
+    AnimeScreen._currentInstance = this;
     _fetchAnimeData(isRefresh: true);
     _scrollController.addListener(_handleScroll);
   }
 
   @override
   void dispose() {
-    if (_currentInstance == this) {
-      _currentInstance = null;
+    if (AnimeScreen._currentInstance == this) {
+      AnimeScreen._currentInstance = null;
     }
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
