@@ -78,7 +78,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.x"
           channel: 'stable'
 
       - name: Get Flutter dependencies
@@ -127,7 +126,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.x"
           channel: 'stable'
 
       - name: Get Flutter dependencies
