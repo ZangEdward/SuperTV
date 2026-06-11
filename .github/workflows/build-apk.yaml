@@ -48,13 +48,17 @@ jobs:
           echo "✅ 版本号: $VERSION_NAME"
 
       - name: Set Environment Variables
+        env:
+          API_NODES_SECRET: ${{ secrets.API_NODES_JSON }}
         run: |
           echo "SIGNING_KEY=${{ secrets.SIGNING_KEY }}" >> $GITHUB_ENV
           echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
           echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
-          echo "API_NODES<<EOF" >> $GITHUB_ENV
-          echo '${{ secrets.API_NODES_JSON }}' >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          
+          # 压缩 JSON 为单行并移除首尾空白，避免 --dart-define 解析错误
+          API_NODES_FLATTENED=$(echo "$API_NODES_SECRET" | tr -d '\n\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          echo "API_NODES=$API_NODES_FLATTENED" >> $GITHUB_ENV
+
           echo "PAT=${{ secrets.PAT }}" >> $GITHUB_ENV
           echo "SYNC_REPO=${{ secrets.SYNC_REPO }}" >> $GITHUB_ENV
           echo "✅ 环境变量已设置"
@@ -131,8 +135,13 @@ jobs:
 
       - name: Set Environment Variables
         shell: pwsh
+        env:
+          API_NODES_SECRET: ${{ secrets.API_NODES_JSON }}
         run: |
-          echo "API_NODES=${{ secrets.API_NODES_JSON }}" >> $env:GITHUB_ENV
+          # 压缩 JSON 为单行并移除首尾空白
+          $nodes = $env:API_NODES_SECRET -replace "`r", "" -replace "`n", ""
+          $nodes = $nodes.Trim()
+          echo "API_NODES=$nodes" >> $env:GITHUB_ENV
           echo "✅ 环境变量已设置"
 
       - name: Build Windows
