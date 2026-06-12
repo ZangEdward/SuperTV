@@ -89,11 +89,12 @@ Future<Map<String, String>?> getImageRequestHeaders(String imageUrl, String? sou
   Map<String, String>? headers;
 
   if (isDoubanSource) {
-    // 常见可用的 Referer 和 UA，避免 403 或 Android 解码失败
+    // 豆瓣对 Referer 校验极其严格，且不同子域名（img3, img9 等）策略不同
+    // 经测试，在 App 中直连请求时，不发送 Referer 且使用通用的桌面端 User-Agent 稳定性最高
+    // 避免使用 movie.douban.com 的 Referer，那会导致 418 (I'm a teapot) 拦截
     headers = <String, String>{
-      'Referer': 'https://movie.douban.com/',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
     };
   } else if (isBangumiSource) {
     headers = <String, String>{
