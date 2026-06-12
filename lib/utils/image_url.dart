@@ -61,10 +61,11 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
 
   if (isDoubanSource) {
     // 常见可用的 Referer 和 UA，避免 403 或 Android 解码失败
+    // 移除 image/avif 以避免部分 Android 设备因无法解码 AVIF 格式而报错
     return <String, String>{
       'Referer': 'https://movie.douban.com/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
     };
   }
   
@@ -72,7 +73,7 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
     return <String, String>{
       'Referer': 'https://bgm.tv/',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
     };
   }
   

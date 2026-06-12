@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_fonts/google_fonts.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/user_data_service.dart';
@@ -17,6 +18,10 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 配置 Google Fonts，禁用运行时下载以避免在某些网络环境下崩溃
+  // 建议将所需字体下载并放入 assets/fonts 文件夹中
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   // 初始化 media_kit (用于 PC 端播放器)
   MediaKit.ensureInitialized();
