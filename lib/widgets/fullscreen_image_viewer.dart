@@ -293,10 +293,11 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
   /// 获取缓存的图片数据
   Future<Uint8List?> _getCachedImageBytes() async {
     try {
+      final headers = await getImageRequestHeaders(widget.imageUrl, widget.source);
       // 使用 CachedNetworkImage 的缓存机制获取图片数据
       final imageProvider = CachedNetworkImageProvider(
         widget.imageUrl,
-        headers: getImageRequestHeaders(widget.imageUrl, widget.source),
+        headers: headers,
       );
       
       // 获取图片数据
@@ -355,11 +356,14 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).pop(), // 点击图片也关闭
                   onLongPress: _showSaveImageMenu, // 长按显示保存菜单
-                  child: FutureBuilder<String>(
-                    future: getImageUrl(widget.imageUrl, widget.source),
+                  child: FutureBuilder<List<dynamic>>(
+                    future: getImageUrl(widget.imageUrl, widget.source).then((url) async {
+                      final headers = await getImageRequestHeaders(url, widget.source);
+                      return [url, headers];
+                    }),
                     builder: (context, snapshot) {
-                      final String imageUrl = snapshot.data ?? widget.imageUrl;
-                      final headers = getImageRequestHeaders(imageUrl, widget.source);
+                      final String imageUrl = snapshot.hasData ? snapshot.data![0] : widget.imageUrl;
+                      final Map<String, String>? headers = snapshot.hasData ? snapshot.data![1] : null;
                       
                       return CachedNetworkImage(
                         imageUrl: imageUrl,

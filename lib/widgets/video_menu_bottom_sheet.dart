@@ -1,8 +1,9 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../utils/device_utils.dart';
 import '../models/video_info.dart';
 import '../models/douban_movie.dart';
 import '../models/bangumi.dart';
@@ -16,7 +17,11 @@ import '../utils/font_utils.dart';
 
 /// 判断是否为iOS平台
 bool get _isIOS {
-  return DeviceUtils.isIOS();
+  try {
+    return !kIsWeb && Platform.isIOS;
+  } catch (_) {
+    return false;
+  }
 }
 
 /// 自定义滚动物理，在展开状态下的顶部向下拖拽时触发收起
@@ -49,41 +54,48 @@ class CollapsibleScrollPhysics extends ScrollPhysics {
     if (isAtMaxHeight &&
         ((isIOS && position.pixels <= 1.0) || (!isIOS && position.pixels <= 0)) &&
         offset > 0) {
-      // 触发收起回调
-      if (onCollapseTriggered != null) {
-        // 使用 Future.microtask 确保回调在当前帧完成后执行
-        Future.microtask(() => onCollapseTriggered!());
-      }
-      return 0.0; // 不应用滚动物理
+      // 触发回调
+      onCollapseTriggered?.call();
     }
     return super.applyPhysicsToUserOffset(position, offset);
   }
 
   @override
-  ScrollPhysics buildParent(ScrollPhysics? ancestor) {
-    // 根据平台选择合适的父物理效果
-    final parentPhysics = isIOS ? BouncingScrollPhysics() : ClampingScrollPhysics();
-    return parent?.applyTo(ancestor ?? parentPhysics) ?? parentPhysics;
+  Simulation? createBallisticSimulation(
+      ScrollMetrics position, double velocity) {
+    // 处理过度滚动时的弹性效果
+    if (isIOS) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+
+    final isAtMaxHeight = this.isAtMaxHeight;
+    final isScrollAtTop = position.pixels <= 0;
+
+    // 如果在最大高度且在顶部且快速向下滚（过度滚动），触发收起
+    if (isAtMaxHeight && isScrollAtTop && velocity < -800) {
+      onCollapseTriggered?.call();
+    }
+
+    return super.createBallisticSimulation(position, velocity);
   }
 }
 
-/// 视频菜单选项
+/// 视频菜单操作
 enum VideoMenuAction {
-  play,
-  favorite,
-  unfavorite,
-  deleteRecord,
-  doubanDetail,
-  bangumiDetail,
+  play, // 立即播放
+  favorite, // 收藏
+  unfavorite, // 取消收藏
+  deleteRecord, // 删除记录
+  doubanDetail, // 豆瓣详情
+  bangumiDetail, // Bangumi详情
 }
 
-/// 视频菜单底部弹窗组件
 class VideoMenuBottomSheet extends StatefulWidget {
   final VideoInfo videoInfo;
-  final bool isFavorited; // 是否已收藏
+  final bool isFavorited;
   final Function(VideoMenuAction) onActionSelected;
   final VoidCallback onClose;
-  final String from; // 来源场景
+  final String from;
   final List<SearchResult>? originalResults;
   final Function(SearchResult)? onSourceSelected;
 
@@ -98,7 +110,7 @@ class VideoMenuBottomSheet extends StatefulWidget {
     this.onSourceSelected,
   });
 
-  /// 显示视频菜单底部弹窗（对外公开）
+  /// 显示视频菜单底部弹窗
   static void show(
     BuildContext context, {
     required VideoInfo videoInfo,
@@ -108,18 +120,11 @@ class VideoMenuBottomSheet extends StatefulWidget {
     List<SearchResult>? originalResults,
     Function(SearchResult)? onSourceSelected,
   }) {
-    final transitionController = AnimationController(
-      duration: const Duration(milliseconds: 200), // 缩短动画时间到200ms
-      vsync: Navigator.of(context),
-    );
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      enableDrag: false,
       backgroundColor: Colors.transparent,
-      barrierColor: Colors.black.withValues(alpha: 0.5), // 添加半透明的遮罩层
-      transitionAnimationController: transitionController,
+      useSafeArea: true,
       builder: (context) => VideoMenuBottomSheet(
         videoInfo: videoInfo,
         isFavorited: isFavorited,
@@ -129,178 +134,107 @@ class VideoMenuBottomSheet extends StatefulWidget {
         originalResults: originalResults,
         onSourceSelected: onSourceSelected,
       ),
-    ).whenComplete(() {
-      // showModalBottomSheet 返回的 Future 在弹窗“开始关闭”（pop 触发）时就完成，
-      // 而此时退出动画仍在用这个 controller 播放（约 200ms）。若在这里立即 dispose，
-      // 会打断关闭动画并让遮罩层（AnimatedModalBarrier）失效，表现为“菜单无法关闭且可穿透蒙层”。
-      // 因此等退出动画真正结束（dismissed）后再释放，避免内存泄漏的同时不破坏关闭流程。
-      if (transitionController.status == AnimationStatus.dismissed) {
-        transitionController.dispose();
-      } else {
-        void releaseWhenDismissed(AnimationStatus status) {
-          if (status == AnimationStatus.dismissed) {
-            transitionController.removeStatusListener(releaseWhenDismissed);
-            transitionController.dispose();
-          }
-        }
-        transitionController.addStatusListener(releaseWhenDismissed);
-      }
-    });
+    );
   }
 
   @override
   State<VideoMenuBottomSheet> createState() => _VideoMenuBottomSheetState();
 }
 
-class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
-    with TickerProviderStateMixin {
-  DoubanMovieDetails? _doubanDetails;
-  bool _isLoadingDoubanDetails = false;
-  BangumiDetails? _bangumiDetails;
-  bool _isLoadingBangumiDetails = false;
-  final ScrollController _scrollController = ScrollController();
-  bool _showScrollIndicator = false;
-  bool _lockInnerScroll = false;
-  bool _isDraggingDown = false; // 跟踪当前是否在向下拖拽
-  bool _isInCollapsePhase = false; // 跟踪是否处于收起阶段（从最大高度到初始高度）
-  late AnimationController _floatAnimationController;
-  late AnimationController _transitionAnimationController;
-  Animation<double>? _transitionAnimation;
+class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet> {
   final GlobalKey _sheetKey = GlobalKey();
   final GlobalKey _fullContentKey = GlobalKey();
+  final ScrollController _scrollController = ScrollController();
+
   double? _initialSheetHeight;
   double? _currentSheetHeight;
-  double _maxSheetHeight = 0.0;
   double? _contentBasedMaxHeight;
-  bool _hasInitialHeightCaptured = false;
-  // 下拉关闭相关阈值
-  final double _dismissDragThreshold = 24.0; // 超过初始高度24px继续下拉则关闭
-  double get _dismissVelocityThreshold {
-    // iOS 需要更敏感的阈值，因为 bouncing 效果会消耗一些速度
-    return _isIOS ? 400.0 : 800.0;
-  } // 快速下滑关闭的速度阈值
+  final double _maxSheetHeight =
+      800; // 默认最大高度，实际会被 MediaQuery 的 0.8 倍覆盖
+
+  // iOS 二段式滑动参数
+  final double _dismissDragThreshold = 80.0; // 从初始高度向下拖拽多少关闭
+  final double _dismissVelocityThreshold = 800.0; // 快速向下拖拽关闭的速度阈值
+
+  bool _isLoadingDoubanDetails = false;
+  bool _isLoadingBangumiDetails = false;
+  DoubanMovieDetails? _doubanDetails;
+  BangumiDetails? _bangumiDetails;
+
+  bool _showScrollIndicator = true; // 是否显示顶部的滑动指示器
+  bool _lockInnerScroll = false; // 是否锁定内部滚动（拖拽接管时）
+  bool _isDraggingDown = false; // 是否正在向下拖拽
+  bool _isInCollapsePhase = false; // 是否处于从展开态收起到初始态的阶段
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    // 初始化浮动动画控制器 - 使用更流畅的曲线
-    _floatAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1200), // 缩短浮动动画时间
-      vsync: this,
-    )..repeat(reverse: true);
-
-    // 初始化过渡动画控制器 - 使用更快的动画
-    _transitionAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 180), // 缩短到180ms
-      vsync: this,
-    );
-
-    // 延迟执行初始化操作，避免阻塞动画
+    // 使用微任务在首帧后计算初始高度
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 使用微任务确保动画优先执行
-      Future.microtask(() {
-        if (mounted) {
-          _captureInitialHeight();
-        }
-      });
-
-      // 延迟加载详情数据，避免影响初始动画
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          _loadDoubanDetailsIfNeeded();
-          _loadBangumiDetailsIfNeeded();
-        }
-      });
+      _captureInitialHeight();
     });
-  }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 在依赖变化时计算最大高度
-    _maxSheetHeight = MediaQuery.of(context).size.height * 0.8;
+    // 检查是否需要加载豆瓣或 Bangumi 详情
+    if (widget.videoInfo.doubanId != null) {
+      _loadDoubanDetails();
+    } else if (widget.videoInfo.bangumiId != null) {
+      _loadBangumiDetails();
+    }
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _floatAnimationController.dispose();
-    _transitionAnimationController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!mounted) return;
-
-    if (_showScrollIndicator && _scrollController.hasClients && _scrollController.offset > 10) {
-      setState(() {
-        _showScrollIndicator = false;
-      });
-    }
-  }
-
+  /// 捕获初始内容高度并设置初始状态
   void _captureInitialHeight() {
-    try {
-      // 捕获整个弹窗的高度作为初始高度
-      final renderBox = _sheetKey.currentContext?.findRenderObject() as RenderBox?;
-      final height = renderBox?.size.height;
-      if (height != null && mounted && !_hasInitialHeightCaptured) {
-        // 延迟设置状态，避免在动画期间重建
-        Future.microtask(() {
-          if (mounted) {
-            setState(() {
-              _initialSheetHeight = height;
-              _currentSheetHeight = height;
-              _hasInitialHeightCaptured = true;
-            });
-          }
-        });
-      }
-    } catch (e) {
-      print('捕获初始高度失败: $e');
-    }
-  }
-
-  void _calculateContentBasedMaxHeight() {
     if (!mounted) return;
-
     try {
-      // 计算包含豆瓣详情的完整内容高度
-      final renderBox = _fullContentKey.currentContext?.findRenderObject() as RenderBox?;
-      final contentHeight = renderBox?.size.height;
-      
-      if (contentHeight != null && mounted) {
-        // 加上顶部拖拽指示器和一些边距
-        final totalContentHeight = contentHeight + 20; // 8(top margin) + 4(indicator height) + 8(bottom margin)
-        
-        // 取内容高度和屏幕90%的较小值作为最大高度
-        final screenBasedMaxHeight = MediaQuery.of(context).size.height * 0.8;
-        final effectiveMaxHeight = (totalContentHeight < screenBasedMaxHeight) 
-            ? totalContentHeight 
-            : screenBasedMaxHeight;
-            
+      final RenderBox? renderBox =
+          _sheetKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null) {
+        final height = renderBox.size.height;
         setState(() {
-          _contentBasedMaxHeight = effectiveMaxHeight;
+          _initialSheetHeight = height;
+          _currentSheetHeight = height;
         });
       }
     } catch (e) {
-      print('计算内容最大高度失败: $e');
+      debugPrint('捕获初始高度失败: $e');
     }
   }
 
-  /// 处理在顶部向下拖拽触发的收起
+  /// 检查内容最大高度并决定是否需要扩展
+  void _checkContentMaxHeight() {
+    if (!mounted || _initialSheetHeight == null) return;
+    try {
+      final RenderBox? contentBox =
+          _fullContentKey.currentContext?.findRenderObject() as RenderBox?;
+      if (contentBox != null) {
+        final double screenHeight = MediaQuery.of(context).size.height;
+        final double contentHeight = contentBox.size.height;
+        // 最大高度为屏幕的 0.8，但不能超过实际内容高度
+        final double effectiveMax = contentHeight.clamp(
+          _initialSheetHeight!,
+          screenHeight * 0.8,
+        );
+
+        if (_contentBasedMaxHeight != effectiveMax) {
+          setState(() {
+            _contentBasedMaxHeight = effectiveMax;
+          });
+        }
+      }
+    } catch (e) {
+      // 静默处理
+    }
+  }
+
+  /// 处理从内部滚动触发的收起
   void _handleCollapseFromScroll() {
-    if (!mounted) return;
-
     if (_initialSheetHeight != null) {
-      // iOS 上进入二段式收起阶段
-      if (_isIOS) {
-        setState(() {
-          _isInCollapsePhase = true;
-        });
-      }
       _animateToHeight(_initialSheetHeight!);
       setState(() {
         _showScrollIndicator = true;
@@ -308,148 +242,115 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
     }
   }
 
-  /// 执行平滑过渡动画
+  /// 动画过渡到指定高度
   void _animateToHeight(double targetHeight) {
-    if (!mounted) return;
-    if (_currentSheetHeight == null || _initialSheetHeight == null) return;
+    if (_currentSheetHeight == targetHeight) return;
 
-    final startHeight = _currentSheetHeight!;
+    // 使用 Tween 动画实现更平滑的高度过渡
+    final double startHeight = _currentSheetHeight ?? _initialSheetHeight!;
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: Navigator.of(context).overlay!,
+    );
 
-    // 如果已经在目标高度，不需要动画
-    if ((startHeight - targetHeight).abs() < 1.0) return;
-
-    // 使用更高效的动画曲线
-    _transitionAnimation = Tween<double>(
+    final animation = Tween<double>(
       begin: startHeight,
       end: targetHeight,
     ).animate(CurvedAnimation(
-      parent: _transitionAnimationController,
-      curve: Curves.easeOutQuart, // 使用更平滑的曲线
+      parent: controller,
+      curve: Curves.easeOutCubic,
     ));
 
-    _transitionAnimation!.addListener(() {
+    animation.addListener(() {
       if (mounted) {
         setState(() {
-          _currentSheetHeight = _transitionAnimation!.value;
+          _currentSheetHeight = animation.value;
         });
       }
     });
 
-    _transitionAnimationController.reset();
-    _transitionAnimationController.forward();
+    controller.forward().then((_) => controller.dispose());
   }
 
-  /// 更新拖拽高度 - 用于更高效的拖拽处理
-  void _updateDragHeight(double newHeight, double effectiveMaxHeight, bool isDraggingDown) {
-    if (!mounted) return;
+  /// 高性能更新高度（非动画）
+  void _updateDragHeight(double newHeight, double maxHeight, bool isDraggingDown) {
+    // 限制高度范围
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final clampedHeight = newHeight.clamp(0.0, screenHeight * 0.8);
 
-    // 限制高度在有效范围内
-    final clampedHeight = newHeight.clamp(_initialSheetHeight!, effectiveMaxHeight);
-
-    // 只在高度有显著变化时更新UI
-    final currentHeight = _currentSheetHeight ?? _initialSheetHeight!;
-    if ((currentHeight - clampedHeight).abs() > 0.5) {
+    if (_currentSheetHeight != clampedHeight) {
       setState(() {
         _currentSheetHeight = clampedHeight;
-        _showScrollIndicator = (clampedHeight - _initialSheetHeight!) < 20.0;
+        // 如果高度显著增加，隐藏指示器；显著减少，显示指示器
+        if (clampedHeight > (_initialSheetHeight ?? 0) + 20) {
+          _showScrollIndicator = false;
+        } else {
+          _showScrollIndicator = true;
+        }
       });
     }
   }
 
-
-  /// 如果有豆瓣ID，则加载豆瓣详情
-  void _loadDoubanDetailsIfNeeded() {
-    final doubanId = widget.videoInfo.doubanId;
-    if (doubanId != null && doubanId.isNotEmpty && doubanId != "0") {
-      _loadDoubanDetails(doubanId);
-    }
-  }
-
-  /// 如果有 Bangumi ID，则加载 Bangumi 详情
-  void _loadBangumiDetailsIfNeeded() {
-    final bangumiId = widget.videoInfo.bangumiId;
-    if (bangumiId != null && bangumiId > 0) {
-      _loadBangumiDetails(bangumiId.toString());
-    }
-  }
-
   /// 加载豆瓣详情
-  Future<void> _loadDoubanDetails(String doubanId) async {
-    if (!mounted) return;
-    if (_isLoadingDoubanDetails) return;
-    
+  Future<void> _loadDoubanDetails() async {
+    final doubanId = widget.videoInfo.doubanId;
+    if (doubanId == null) return;
+
     setState(() {
       _isLoadingDoubanDetails = true;
     });
 
     try {
-      final response = await DoubanService.getDoubanDetails(
-        context,
-        doubanId: doubanId,
-      );
-      if (!mounted) return;
-
-      if (response.success && response.data != null) {
+      final response = await DoubanService.getDoubanDetails(context, doubanId: doubanId);
+      if (mounted && response.success && response.data != null) {
         setState(() {
           _doubanDetails = response.data;
-          // 只有在初始高度时才显示箭头提示
-          _showScrollIndicator = _hasInitialHeightCaptured && 
-              (_currentSheetHeight == null || _currentSheetHeight == _initialSheetHeight);
         });
-        
-        // 豆瓣详情加载完成后，重新计算基于内容的最大高度
+        // 数据加载后，等待一帧获取新的内容高度
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _calculateContentBasedMaxHeight();
+          _checkContentMaxHeight();
         });
       }
     } catch (e) {
-      // 静默处理错误
+      // 错误处理
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingDoubanDetails = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingDoubanDetails = false;
+        });
+      }
     }
   }
 
   /// 加载 Bangumi 详情
-  Future<void> _loadBangumiDetails(String bangumiId) async {
-    if (!mounted) return;
-    if (_isLoadingBangumiDetails) return;
-    
+  Future<void> _loadBangumiDetails() async {
+    final bangumiId = widget.videoInfo.bangumiId;
+    if (bangumiId == null) return;
+
     setState(() {
       _isLoadingBangumiDetails = true;
     });
 
     try {
-      final response = await BangumiService.getBangumiDetails(
-        context,
-        bangumiId: bangumiId,
-      );
-      if (!mounted) return;
-
-      if (response.success && response.data != null) {
+      final response =
+          await BangumiService.getBangumiDetails(context, bangumiId: bangumiId.toString());
+      if (mounted && response.success && response.data != null) {
         setState(() {
           _bangumiDetails = response.data;
-          // 只有在初始高度时才显示箭头提示
-          _showScrollIndicator = _hasInitialHeightCaptured && 
-              (_currentSheetHeight == null || _currentSheetHeight == _initialSheetHeight);
         });
-        
-        // Bangumi 详情加载完成后，重新计算基于内容的最大高度
+        // 数据加载后，等待一帧获取新的内容高度
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _calculateContentBasedMaxHeight();
+          _checkContentMaxHeight();
         });
       }
     } catch (e) {
-      // 静默处理错误
+      // 错误处理
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingBangumiDetails = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingBangumiDetails = false;
+        });
+      }
     }
   }
 
@@ -457,11 +358,14 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
   Widget build(BuildContext context) {
     return Consumer<ThemeService>(
       builder: (context, themeService, child) {
-        return FutureBuilder<String>(
-          future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source),
+        return FutureBuilder<List<dynamic>>(
+          future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source).then((url) async {
+            final headers = await getImageRequestHeaders(url, widget.videoInfo.source);
+            return [url, headers];
+          }),
           builder: (context, snapshot) {
-            final String thumbUrl = snapshot.data ?? widget.videoInfo.cover;
-            final headers = getImageRequestHeaders(thumbUrl, widget.videoInfo.source);
+            final String thumbUrl = snapshot.hasData ? snapshot.data![0] as String : widget.videoInfo.cover;
+            final Map<String, String>? headers = snapshot.hasData ? snapshot.data![1] as Map<String, String>? : null;
             
             return GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -581,7 +485,7 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
                     if (_lockInnerScroll) {
                       _lockInnerScroll = false;
                     }
-                    // 重置拖拽方向状态和收起阶段状态
+                    // 重置拖拽方向状态 and 收起阶段状态
                     _isDraggingDown = false;
                     _isInCollapsePhase = false;
                   });
@@ -719,7 +623,7 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
                                                     color: themeService.isDarkMode
                                                         ? const Color(0xFF666666)
                                                         : Colors.grey,
-                                                    size: 24,
+                                                    size: 30,
                                                   ),
                                                 ),
                                                 errorWidget: (context, url, error) => Container(
@@ -731,162 +635,114 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
                                                     color: themeService.isDarkMode
                                                         ? const Color(0xFF666666)
                                                         : Colors.grey,
-                                                    size: 24,
+                                                    size: 30,
                                                   ),
                                                 ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      
-                                      const SizedBox(width: 12),
-                                      
-                                      // 标题和分类信息
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            // 标题
-                                            Text(
-                                              widget.videoInfo.title,
-                                              style: FontUtils.poppins(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: themeService.isDarkMode 
-                                                    ? const Color(0xFFFFFFFF)
-                                                    : const Color(0xFF2C2C2C),
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            
-                                            const SizedBox(height: 6),
-                                            
-                            // 源名称标签或播放源数量
-                            (widget.videoInfo.source == 'douban' || widget.videoInfo.source == 'bangumi')
-                                ? // 豆瓣或Bangumi来源：纯文本，无边框
-                                  Text(
-                                    widget.videoInfo.source == 'douban' ? '来自豆瓣' : '来自 Bangumi',
-                                    style: FontUtils.poppins(
-                                      fontSize: 12,
-                                      color: themeService.isDarkMode 
-                                          ? const Color(0xFF999999)
-                                          : const Color(0xFF666666),
-                                    ),
-                                  )
-                                : // 聚合来源：显示播放源数量并可点击
-                                  widget.from == 'agg'
-                                      ? GestureDetector(
-                                          onTap: _showSourcesDialog,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                        const SizedBox(width: 16),
+                                        // 标题和副标题
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                '共 ${widget.videoInfo.sourceName.split(', ').length} 个播放源',
+                                                widget.videoInfo.title,
                                                 style: FontUtils.poppins(
-                                                  fontSize: 12,
-                                                  color: themeService.isDarkMode 
-                                                      ? const Color(0xFF999999)
-                                                      : const Color(0xFF666666),
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: themeService.isDarkMode
+                                                      ? Colors.white
+                                                      : const Color(0xFF2c3e50),
                                                 ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              const SizedBox(width: 4),
-                                              Icon(
-                                                Icons.chevron_right,
-                                                size: 16,
-                                                color: themeService.isDarkMode 
-                                                    ? const Color(0xFF999999)
-                                                    : const Color(0xFF666666),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${widget.videoInfo.sourceName} · ${widget.videoInfo.year}',
+                                                style: FontUtils.poppins(
+                                                  fontSize: 14,
+                                                  color: themeService.isDarkMode
+                                                      ? Colors.white70
+                                                      : const Color(0xFF7f8c8d),
+                                                ),
                                               ),
                                             ],
                                           ),
-                                        )
-                                      : // 其他来源：带边框的标签
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            border: Border.all(
-                                              color: themeService.isDarkMode 
-                                                  ? const Color(0xFF666666)
-                                                  : const Color(0xFFE0E0E0),
-                                              width: 1,
-                                            ),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            widget.videoInfo.sourceName,
-                                            style: FontUtils.poppins(
-                                              fontSize: 12,
-                                              color: themeService.isDarkMode 
-                                                  ? const Color(0xFF999999)
-                                                  : const Color(0xFF666666),
-                                            ),
-                                          ),
                                         ),
-                                          ],
-                                        ),
-                                      ),
-                                      
-                                      // 关闭按钮
-                                      GestureDetector(
-                                        onTap: widget.onClose,
-                                        child: Container(
-                                          width: 32,
-                                          height: 32,
-                                          child: Icon(
-                                            Icons.close,
-                                            size: 18,
-                                            color: themeService.isDarkMode 
-                                                ? const Color(0xFF999999)
-                                                : const Color(0xFF666666),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
+                                  // 分隔线
+                                  Divider(
+                                    height: 1,
+                                    color: themeService.isDarkMode
+                                        ? Colors.white12
+                                        : Colors.black12,
                                   ),
-                                  
-                                  // 菜单选项
-                                  _buildMenuOptions(context, themeService),
-                                  
-                                  // 豆瓣详情区域（仅在加载完成后展示）
-                                  if (_doubanDetails != null)
-                                    _buildDoubanDetailsSection(context, themeService),
-                                  
-                                  // Bangumi 详情区域（仅在加载完成后展示）
-                                  if (_bangumiDetails != null)
-                                    _buildBangumiDetailsSection(context, themeService),
-                                  
-                                    // 底部安全区域
-                                    SizedBox(height: MediaQuery.of(context).padding.bottom),
+                                  // 豆瓣/Bangumi 详情区域
+                                  if (widget.videoInfo.doubanId != null ||
+                                      widget.videoInfo.bangumiId != null)
+                                    _buildExtraDetails(themeService),
+                                  // 操作菜单区域
+                                  _buildActionMenu(themeService),
+                                  // 底部安全距离
+                                  SizedBox(
+                                      height: MediaQuery.of(context)
+                                          .padding
+                                          .bottom),
                                   ],
                                 ),
                               ),
-                              ),
                             ),
                           ),
-                          // 悬浮箭头提示
-                          if (_showScrollIndicator && (_doubanDetails != null || _bangumiDetails != null))
-                            Positioned(
-                              bottom: 12.0,
-                              left: 0,
-                              right: 0,
-                              child: IgnorePointer(
-                                ignoring: true,
+                        ),
+                        // 浮动悬挂的下拉提示箭头
+                        if ((_doubanDetails != null || _bangumiDetails != null) && _showScrollIndicator)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: IgnorePointer(
+                              child: Container(
+                                height: 30,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      themeService.isDarkMode 
+                                          ? const Color(0xFF2C2C2C).withValues(alpha: 0.9)
+                                          : Colors.white.withValues(alpha: 0.9),
+                                      Colors.transparent,
+                                    ],
+                                  ),
+                                ),
                                 child: Center(
-                                  child: _buildScrollIndicator(themeService),
+                                  child: Container(
+                                    width: 40,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: themeService.isDarkMode
+                                          ? Colors.white24
+                                          : Colors.black12,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
-                  ],
+                  ),
+                ],
               ),
-            ),
+              ),
             );
           },
         );
@@ -894,784 +750,132 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
     );
   }
 
-  /// 构建下滑指示器
-  Widget _buildScrollIndicator(ThemeService themeService) {
-    return AnimatedBuilder(
-      animation: _floatAnimationController,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, _floatAnimationController.value * 8), // 增大浮动幅度到8像素
-          child: Transform.scale(
-            scaleX: 1.5, // 水平拉伸1.5倍，使箭头更宽
-            scaleY: 0.8, // 垂直压缩到0.8倍，使箭头更扁
-            child: Icon(
-              Icons.keyboard_arrow_down,
-              size: 36, // 增大基础尺寸
-              color: themeService.isDarkMode 
-                  ? const Color(0xFF666666)
-                  : const Color(0xFFCCCCCC),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  /// 构建操作菜单
+  Widget _buildActionMenu(ThemeService themeService) {
+    final bool isDark = themeService.isDarkMode;
+    final Color textColor = isDark ? Colors.white : const Color(0xFF2c3e50);
 
-  /// 构建豆瓣详情区域
-  Widget _buildDoubanDetailsSection(BuildContext context, ThemeService themeService) {
-    if (_isLoadingDoubanDetails) {
-      return const SizedBox.shrink();
-    }
-
-    if (_doubanDetails == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 分割线
-          Container(
-            height: 1,
-            margin: const EdgeInsets.only(bottom: 16),
-            color: themeService.isDarkMode 
-                ? const Color(0xFF404040)
-                : const Color(0xFFE0E0E0),
-          ),
-          
-          // 豆瓣详情标题
-          Text(
-            '豆瓣简介',
-            style: FontUtils.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: themeService.isDarkMode 
-                  ? const Color(0xFFFFFFFF)
-                  : const Color(0xFF2C2C2C),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // 评分和年份
-          Row(
-            children: [
-              if (_doubanDetails!.rate != null) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFB800).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.star,
-                        size: 16,
-                        color: const Color(0xFFFFB800),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _doubanDetails!.rate!,
-                        style: FontUtils.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFFFB800),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFF666666)
-                        : const Color(0xFFE0E0E0),
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  _doubanDetails!.year,
-                  style: FontUtils.poppins(
-                    fontSize: 14,
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFF999999)
-                        : const Color(0xFF666666),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          // 类型标签
-          if (_doubanDetails!.genres.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _doubanDetails!.genres.take(5).map((genre) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: themeService.isDarkMode 
-                      ? const Color(0xFF404040)
-                      : const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  genre,
-                  style: FontUtils.poppins(
-                    fontSize: 12,
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFFCCCCCC)
-                        : const Color(0xFF666666),
-                  ),
-                ),
-              )).toList(),
-            ),
-          ],
-          
-          // 导演和演员
-          if (_doubanDetails!.directors.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildDetailRow('导演', _doubanDetails!.directors.join(', '), themeService),
-          ],
-          
-          if (_doubanDetails!.actors.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _buildDetailRow('主演', _doubanDetails!.actors.take(3).join(', '), themeService),
-          ],
-          
-          // 简介
-          if (_doubanDetails!.summary != null && _doubanDetails!.summary!.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              '简介',
-              style: FontUtils.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: themeService.isDarkMode 
-                    ? const Color(0xFFFFFFFF)
-                    : const Color(0xFF2C2C2C),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _doubanDetails!.summary!,
-              style: FontUtils.poppins(
-                fontSize: 14,
-                height: 1.5,
-                color: themeService.isDarkMode 
-                    ? const Color(0xFFCCCCCC)
-                    : const Color(0xFF666666),
-              ),
-            ),
-          ],
-          
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  /// 构建 Bangumi 详情区域
-  Widget _buildBangumiDetailsSection(BuildContext context, ThemeService themeService) {
-    if (_isLoadingBangumiDetails) {
-      return const SizedBox.shrink();
-    }
-
-    if (_bangumiDetails == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 分割线
-          Container(
-            height: 1,
-            margin: const EdgeInsets.only(bottom: 16),
-            color: themeService.isDarkMode 
-                ? const Color(0xFF404040)
-                : const Color(0xFFE0E0E0),
-          ),
-          
-          // Bangumi 详情标题
-          Text(
-            'Bangumi 简介',
-            style: FontUtils.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: themeService.isDarkMode 
-                  ? const Color(0xFFFFFFFF)
-                  : const Color(0xFF2C2C2C),
-            ),
-          ),
-          
-          const SizedBox(height: 16),
-          
-          // 评分和年份
-          Row(
-            children: [
-              if (_bangumiDetails!.rating.score > 0) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE91E63).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.star,
-                        size: 16,
-                        color: const Color(0xFFE91E63),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _bangumiDetails!.rating.score.toStringAsFixed(1),
-                        style: FontUtils.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFE91E63),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-              ],
-              if (_bangumiDetails!.date != null) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: themeService.isDarkMode 
-                          ? const Color(0xFF666666)
-                          : const Color(0xFFE0E0E0),
-                      width: 1,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _bangumiDetails!.date!.split('-').first,
-                    style: FontUtils.poppins(
-                      fontSize: 14,
-                      color: themeService.isDarkMode 
-                          ? const Color(0xFF999999)
-                          : const Color(0xFF666666),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          
-          // 标签
-          if (_bangumiDetails!.metaTags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _bangumiDetails!.metaTags.take(5).map((tag) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: themeService.isDarkMode 
-                      ? const Color(0xFF404040)
-                      : const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  tag,
-                  style: FontUtils.poppins(
-                    fontSize: 12,
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFFCCCCCC)
-                        : const Color(0xFF666666),
-                  ),
-                ),
-              )).toList(),
-            ),
-          ],
-          
-          // 从infobox中提取相关信息
-          ..._buildBangumiInfoboxDetails(themeService),
-          
-          // 简介
-          if (_bangumiDetails!.summary.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              '简介',
-              style: FontUtils.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: themeService.isDarkMode 
-                    ? const Color(0xFFFFFFFF)
-                    : const Color(0xFF2C2C2C),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _bangumiDetails!.summary,
-              style: FontUtils.poppins(
-                fontSize: 14,
-                height: 1.5,
-                color: themeService.isDarkMode 
-                    ? const Color(0xFFCCCCCC)
-                    : const Color(0xFF666666),
-              ),
-            ),
-          ],
-          
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  /// 构建详情行
-  Widget _buildDetailRow(String label, String value, ThemeService themeService) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 50,
-          child: Text(
-            label,
-            style: FontUtils.poppins(
-              fontSize: 14,
-              color: themeService.isDarkMode 
-                  ? const Color(0xFF999999)
-                  : const Color(0xFF666666),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: FontUtils.poppins(
-              fontSize: 14,
-              color: themeService.isDarkMode 
-                  ? const Color(0xFFCCCCCC)
-                  : const Color(0xFF333333),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 构建Bangumi infobox详情信息
-  List<Widget> _buildBangumiInfoboxDetails(ThemeService themeService) {
-    if (_bangumiDetails == null || _bangumiDetails!.infobox.isEmpty) {
-      return [];
-    }
-
-    List<Widget> widgets = [];
-    
-    // 定义我们感兴趣的字段映射
-    final Map<String, String> fieldMapping = {
-      '导演': '导演',
-      '监督': '导演',
-      '原作': '原作',
-      '脚本': '脚本',
-      '分镜': '分镜',
-      '演出': '演出',
-      '系列构成': '脚本', // 系列构成也算脚本相关
-      '剧本': '脚本',
-      '分镜构图': '分镜',
-      '分镜・演出': '分镜',
-    };
-
-    // 解析infobox信息
-    Map<String, String> parsedInfo = {};
-    for (String info in _bangumiDetails!.infobox) {
-      if (info.contains(':')) {
-        final parts = info.split(':');
-        if (parts.length >= 2) {
-          final key = parts[0].trim();
-          final value = parts.sublist(1).join(':').trim();
-          
-          // 检查是否是我们感兴趣的字段
-          for (final entry in fieldMapping.entries) {
-            if (key.contains(entry.key)) {
-              parsedInfo[entry.value] = value;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    // 按优先级顺序展示信息
-    final List<String> priorityOrder = [
-      '原作', '导演', '脚本', '分镜', '演出'
-    ];
-
-    bool hasAddedContent = false;
-    for (final field in priorityOrder) {
-      if (parsedInfo.containsKey(field) && parsedInfo[field]!.isNotEmpty) {
-        if (!hasAddedContent) {
-          widgets.add(const SizedBox(height: 16));
-          hasAddedContent = true;
-        } else {
-          widgets.add(const SizedBox(height: 8));
-        }
-        
-        // 限制显示长度，避免过长
-        String displayValue = parsedInfo[field]!;
-        if (displayValue.length > 100) {
-          displayValue = '${displayValue.substring(0, 100)}...';
-        }
-        
-        widgets.add(_buildDetailRow(field, displayValue, themeService));
-      }
-    }
-
-    return widgets;
-  }
-
-  /// 构建菜单选项
-  Widget _buildMenuOptions(BuildContext context, ThemeService themeService) {
-    // 如果是豆瓣来源，只显示播放和豆瓣详情
-    if (widget.videoInfo.source == 'douban') {
-      return Column(
-        children: [
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.play_circle_fill,
-            iconColor: const Color(0xFF27AE60),
-            title: '播放',
-            subtitle: _getEpisodeSubtitle(),
-            onTap: () {
-              widget.onClose();
-              widget.onActionSelected(VideoMenuAction.play);
-            },
-          ),
-          
-          _buildDivider(themeService),
-          
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.link,
-            iconColor: const Color(0xFF3498DB),
-            title: '豆瓣详情',
-            onTap: () async {
-              widget.onClose();
-              // 从videoInfo中获取doubanId，优先使用doubanId，如果为空或为0则使用id
-              final doubanId = (widget.videoInfo.doubanId != null && widget.videoInfo.doubanId!.isNotEmpty && widget.videoInfo.doubanId != "0") 
-                  ? widget.videoInfo.doubanId! 
-                  : widget.videoInfo.id;
-              await _openDoubanDetail(doubanId);
-            },
-          ),
-        ],
-      );
-    }
-    
-    // 如果是Bangumi来源，只显示播放和Bangumi详情
-    if (widget.videoInfo.source == 'bangumi') {
-      return Column(
-        children: [
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.play_circle_fill,
-            iconColor: const Color(0xFF27AE60),
-            title: '播放',
-            subtitle: _getEpisodeSubtitle(),
-            onTap: () {
-              widget.onClose();
-              widget.onActionSelected(VideoMenuAction.play);
-            },
-          ),
-          
-          _buildDivider(themeService),
-          
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.link,
-            iconColor: const Color(0xFF3498DB),
-            title: 'Bangumi 详情',
-            onTap: () async {
-              widget.onClose();
-              // 从videoInfo中获取bangumiId，优先使用bangumiId，如果为空或为0则使用id
-              final bangumiId = (widget.videoInfo.bangumiId != null && widget.videoInfo.bangumiId! > 0) 
-                  ? widget.videoInfo.bangumiId!.toString() 
-                  : widget.videoInfo.id;
-              await _openBangumiDetail(bangumiId);
-            },
-          ),
-        ],
-      );
-    }
-    
-    // 如果是收藏场景，只显示播放和取消收藏
-    if (widget.from == 'favorite') {
-      return Column(
-        children: [
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.play_circle_fill,
-            iconColor: const Color(0xFF27AE60),
-            title: '播放',
-            subtitle: _getEpisodeSubtitle(),
-            onTap: () {
-              widget.onClose();
-              widget.onActionSelected(VideoMenuAction.play);
-            },
-          ),
-          
-          _buildDivider(themeService),
-          
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.favorite,
-            iconColor: const Color(0xFFE74C3C),
-            title: '取消收藏',
-            onTap: () {
-              widget.onClose();
-              widget.onActionSelected(VideoMenuAction.unfavorite);
-            },
-          ),
-        ],
-      );
-    }
-    
-    // 如果是聚合场景，显示播放和豆瓣详情（如果有）
-    if (widget.from == 'agg') {
-      List<Widget> menuItems = [
-        // 播放按钮
-        _buildMenuItem(
-          context,
-          themeService,
-          icon: Icons.play_circle_fill,
-          iconColor: const Color(0xFF27AE60),
-          title: '播放',
-          subtitle: _getEpisodeSubtitle(),
-          onTap: () {
-            // 对于聚合卡片，关闭菜单后触发播放操作（会显示源选择对话框）
-            widget.onClose();
-            widget.onActionSelected(VideoMenuAction.play);
-          },
-        ),
-      ];
-      
-      // 如果有豆瓣ID且不为0，添加豆瓣详情选项
-      if (widget.videoInfo.doubanId != null && widget.videoInfo.doubanId!.isNotEmpty && widget.videoInfo.doubanId != "0") {
-        menuItems.addAll([
-          _buildDivider(themeService),
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.link,
-            iconColor: const Color(0xFF3498DB),
-            title: '豆瓣详情',
-            onTap: () async {
-              widget.onClose();
-              await _openDoubanDetail(widget.videoInfo.doubanId!);
-            },
-          ),
-        ]);
-      }
-      
-      return Column(children: menuItems);
-    }
-    
-    // 如果是搜索场景，显示播放、收藏/取消收藏，如果有豆瓣ID则显示豆瓣详情
-    if (widget.from == 'search') {
-      List<Widget> menuItems = [
-        _buildMenuItem(
-          context,
-          themeService,
-          icon: Icons.play_circle_fill,
-          iconColor: const Color(0xFF27AE60),
-          title: '播放',
-          subtitle: _getEpisodeSubtitle(),
-          onTap: () {
-            widget.onClose();
-            widget.onActionSelected(VideoMenuAction.play);
-          },
-        ),
-        
-        _buildDivider(themeService),
-        
-        // 根据收藏状态动态显示收藏或取消收藏
-        _buildMenuItem(
-          context,
-          themeService,
-          icon: widget.isFavorited ? Icons.favorite : Icons.favorite_border,
-          iconColor: const Color(0xFFE74C3C),
-          title: widget.isFavorited ? '取消收藏' : '收藏',
-          onTap: () {
-            widget.onClose();
-            widget.onActionSelected(widget.isFavorited ? VideoMenuAction.unfavorite : VideoMenuAction.favorite);
-          },
-        ),
-      ];
-      
-      // 如果有豆瓣ID且不为0，添加豆瓣详情选项
-      if (widget.videoInfo.doubanId != null && widget.videoInfo.doubanId!.isNotEmpty && widget.videoInfo.doubanId != "0") {
-        menuItems.addAll([
-          _buildDivider(themeService),
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.link,
-            iconColor: const Color(0xFF3498DB),
-            title: '豆瓣详情',
-            onTap: () async {
-              widget.onClose();
-              await _openDoubanDetail(widget.videoInfo.doubanId!);
-            },
-          ),
-        ]);
-      }
-      
-      // 如果有Bangumi ID且不为0，添加Bangumi详情选项
-      if (widget.videoInfo.bangumiId != null && widget.videoInfo.bangumiId! > 0) {
-        menuItems.addAll([
-          _buildDivider(themeService),
-          _buildMenuItem(
-            context,
-            themeService,
-            icon: Icons.link,
-            iconColor: const Color(0xFF3498DB),
-            title: 'Bangumi 详情',
-            onTap: () async {
-              widget.onClose();
-              await _openBangumiDetail(widget.videoInfo.bangumiId!.toString());
-            },
-          ),
-        ]);
-      }
-      
-      return Column(children: menuItems);
-    }
-    
-    // 其他来源显示完整菜单
     return Column(
       children: [
+        // 播放操作
         _buildMenuItem(
-          context,
-          themeService,
-          icon: Icons.play_circle_fill,
-          iconColor: const Color(0xFF27AE60),
-          title: '播放',
-          subtitle: _getEpisodeSubtitle(),
+          icon: Icons.play_arrow_rounded,
+          title: '立即播放',
+          color: const Color(0xFF27ae60),
           onTap: () {
             widget.onClose();
             widget.onActionSelected(VideoMenuAction.play);
           },
+          isDark: isDark,
         ),
-        
-        _buildDivider(themeService),
-        
-        // 根据收藏状态动态显示收藏或取消收藏
+        // 收藏/取消收藏
         _buildMenuItem(
-          context,
-          themeService,
           icon: widget.isFavorited ? Icons.favorite : Icons.favorite_border,
-          iconColor: const Color(0xFFE74C3C),
-          title: widget.isFavorited ? '取消收藏' : '收藏',
+          title: widget.isFavorited ? '取消收藏' : '添加收藏',
+          color: widget.isFavorited ? const Color(0xFFe74c3c) : textColor,
           onTap: () {
             widget.onClose();
-            widget.onActionSelected(widget.isFavorited ? VideoMenuAction.unfavorite : VideoMenuAction.favorite);
+            widget.onActionSelected(
+              widget.isFavorited
+                  ? VideoMenuAction.unfavorite
+                  : VideoMenuAction.favorite,
+            );
           },
+          isDark: isDark,
         ),
-        
-        _buildDivider(themeService),
-        
+        // 更多播放源（如果是聚合模式）
+        if (widget.from == 'agg' &&
+            widget.originalResults != null &&
+            widget.originalResults!.isNotEmpty)
+          _buildMenuItem(
+            icon: Icons.list_alt_rounded,
+            title: '切换播放源 (${widget.originalResults!.length})',
+            color: const Color(0xFF9b59b6),
+            onTap: () {
+              widget.onClose();
+              _showSourcesList();
+            },
+            isDark: isDark,
+          ),
+        // 豆瓣详情（如果有豆瓣ID）
+        if (widget.videoInfo.doubanId != null)
+          _buildMenuItem(
+            icon: Icons.movie_filter_rounded,
+            title: '查看豆瓣详情',
+            color: const Color(0xFF2ecc71),
+            onTap: () async {
+              widget.onClose();
+              final url =
+                  'https://movie.douban.com/subject/${widget.videoInfo.doubanId}';
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            isDark: isDark,
+          ),
+        // Bangumi 详情（如果有 Bangumi ID）
+        if (widget.videoInfo.bangumiId != null)
+          _buildMenuItem(
+            icon: Icons.animation_rounded,
+            title: '查看 Bangumi 详情',
+            color: const Color(0xFFe91e63),
+            onTap: () async {
+              widget.onClose();
+              final url = 'https://bgm.tv/subject/${widget.videoInfo.bangumiId}';
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            isDark: isDark,
+          ),
+        // 删除记录
         _buildMenuItem(
-          context,
-          themeService,
-          icon: Icons.delete,
-          iconColor: const Color(0xFFE74C3C),
-          title: '删除记录',
+          icon: Icons.delete_outline_rounded,
+          title: '删除观看记录',
+          color: const Color(0xFFe74c3c),
           onTap: () {
             widget.onClose();
             widget.onActionSelected(VideoMenuAction.deleteRecord);
           },
+          isDark: isDark,
         ),
       ],
     );
   }
 
-  /// 构建菜单项
-  Widget _buildMenuItem(
-    BuildContext context,
-    ThemeService themeService, {
+  /// 构建单个菜单项
+  Widget _buildMenuItem({
     required IconData icon,
-    required Color iconColor,
     required String title,
-    String? subtitle,
+    required Color color,
     required VoidCallback onTap,
+    required bool isDark,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           child: Row(
             children: [
-              // 图标
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 16,
-                  color: iconColor,
+              Icon(icon, color: color, size: 24),
+              const SizedBox(width: 16),
+              Text(
+                title,
+                style: FontUtils.poppins(
+                  fontSize: 16,
+                  color: isDark ? Colors.white : const Color(0xFF2c3e50),
                 ),
               ),
-              
-              const SizedBox(width: 12),
-              
-              // 标题
-              Expanded(
-                child: Text(
-                  title,
-                  style: FontUtils.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFFFFFFFF)
-                        : const Color(0xFF2C2C2C),
-                  ),
-                ),
+              const Spacer(),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark ? Colors.white24 : Colors.black12,
+                size: 20,
               ),
-              
-              // 副标题（集数信息）
-              if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: FontUtils.poppins(
-                    fontSize: 14,
-                    color: themeService.isDarkMode 
-                        ? const Color(0xFF999999)
-                        : const Color(0xFF666666),
-                  ),
-                ),
             ],
           ),
         ),
@@ -1679,84 +883,204 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
     );
   }
 
-  /// 构建分割线
-  Widget _buildDivider(ThemeService themeService) {
+  /// 构建额外的详情区域（豆瓣/Bangumi）
+  Widget _buildExtraDetails(ThemeService themeService) {
+    if (_isLoadingDoubanDetails || _isLoadingBangumiDetails) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: CircularProgressIndicator(
+            color: themeService.isDarkMode ? Colors.white70 : Colors.black45,
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+
+    if (_doubanDetails == null && _bangumiDetails == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isDark = themeService.isDarkMode;
+    final textColor = isDark ? Colors.white : const Color(0xFF2c3e50);
+    final secondaryTextColor = isDark ? Colors.white70 : const Color(0xFF7f8c8d);
+
+    // 根据是豆瓣还是 Bangumi 渲染不同的详情
+    if (_doubanDetails != null) {
+      return _buildDoubanSection(textColor, secondaryTextColor, isDark);
+    } else {
+      return _buildBangumiSection(textColor, secondaryTextColor, isDark);
+    }
+  }
+
+  /// 构建豆瓣详情区块
+  Widget _buildDoubanSection(
+      Color textColor, Color secondaryTextColor, bool isDark) {
+    final detail = _doubanDetails!;
     return Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      color: themeService.isDarkMode 
-          ? const Color(0xFF404040)
-          : const Color(0xFFE0E0E0),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 评分和标签
+          Row(
+            children: [
+              if (detail.rate != null && detail.rate!.isNotEmpty) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF9800),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '豆瓣 ${detail.rate}',
+                    style: FontUtils.poppins(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (detail.genres.isNotEmpty)
+                Expanded(
+                  child: Text(
+                    detail.genres.join(' / '),
+                    style: FontUtils.poppins(
+                      fontSize: 12,
+                      color: secondaryTextColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 演职人员
+          if (detail.directors.isNotEmpty || detail.actors.isNotEmpty)
+            Text(
+              '${detail.directors.join(', ')} / ${detail.actors.join(', ')}',
+              style: FontUtils.poppins(
+                fontSize: 13,
+                color: secondaryTextColor,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          const SizedBox(height: 12),
+          // 剧情简介
+          if (detail.summary != null) ...[
+            Text(
+              '剧情简介',
+              style: FontUtils.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              detail.summary!.trim(),
+              style: FontUtils.poppins(
+                fontSize: 14,
+                color: secondaryTextColor,
+                height: 1.5,
+              ),
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
     );
   }
 
-
-  
-
-  /// 获取集数副标题
-  String? _getEpisodeSubtitle() {
-    // 如果总集数只有1，则不显示集数信息
-    if (widget.videoInfo.totalEpisodes <= 1) {
-      return null;
-    }
-    
-    // 只有 from=playrecord 和 from=favorite 且 index 不为 0 的场景才显示集数信息
-    if (widget.from == 'playrecord') {
-      return '${widget.videoInfo.index}/${widget.videoInfo.totalEpisodes}';
-    }
-    
-    if (widget.from == 'favorite' && widget.videoInfo.index > 0) {
-      return '${widget.videoInfo.index}/${widget.videoInfo.totalEpisodes}';
-    }
-    
-    // 其他所有场景都不显示集数信息
-    return null;
+  /// 构建 Bangumi 详情区块
+  Widget _buildBangumiSection(
+      Color textColor, Color secondaryTextColor, bool isDark) {
+    final detail = _bangumiDetails!;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 评分和标签
+          Row(
+            children: [
+              if (detail.rating.score > 0) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE91E63),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'BGM ${detail.rating.score}',
+                    style: FontUtils.poppins(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                '共 ${detail.eps} 话 · ${detail.date ?? '未知'}',
+                style: FontUtils.poppins(
+                  fontSize: 12,
+                  color: secondaryTextColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 简介
+          if (detail.summary.isNotEmpty) ...[
+            Text(
+              '内容简介',
+              style: FontUtils.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              detail.summary.trim(),
+              style: FontUtils.poppins(
+                fontSize: 14,
+                color: secondaryTextColor,
+                height: 1.5,
+              ),
+              maxLines: 6,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
-  /// 打开豆瓣详情页面
-  static Future<void> _openDoubanDetail(String doubanId) async {
-    try {
-      final url = 'https://movie.douban.com/subject/$doubanId';
-      final uri = Uri.parse(url);
-      
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      // 不处理
-    }
-  }
-
-  /// 打开Bangumi详情页面
-  static Future<void> _openBangumiDetail(String bangumiId) async {
-    try {
-      final url = 'https://bgm.tv/subject/$bangumiId';
-      final uri = Uri.parse(url);
-      
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      // 不处理
-    }
-  }
-
-  /// 显示播放源列表对话框
-  void _showSourcesDialog() {
-    final themeService = Provider.of<ThemeService>(context, listen: false);
+  /// 显示播放源列表
+  void _showSourcesList() {
     final sources = widget.originalResults;
     if (sources == null || sources.isEmpty) return;
 
+    final themeService = Provider.of<ThemeService>(context, listen: false);
+
     showDialog(
       context: context,
-      barrierDismissible: true,
       builder: (BuildContext context) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          elevation: 0,
           child: Container(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
               maxWidth: 320,
             ),
             decoration: BoxDecoration(
@@ -1764,86 +1088,47 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
                   ? const Color(0xFF2C2C2C)
                   : Colors.white,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 标题
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  padding: const EdgeInsets.all(20),
                   child: Text(
                     '可用播放源',
                     style: FontUtils.poppins(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: themeService.isDarkMode
-                          ? const Color(0xFFFFFFFF)
-                          : const Color(0xFF2C2C2C),
                     ),
                   ),
                 ),
-
-                // 播放源列表
                 Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Column(
-                        children: sources.map((source) {
-                          return Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.of(context).pop(); // Close dialog
-                                widget.onClose(); // Close menu
-                                widget.onSourceSelected?.call(source);
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      source.sourceName,
-                                      style: FontUtils.poppins(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    if (source.episodes.length > 1)
-                                      Text(
-                                        '${source.episodes.length}集',
-                                        style: FontUtils.poppins(
-                                          fontSize: 14,
-                                          color: themeService.isDarkMode
-                                              ? Colors.white70
-                                              : Colors.black54,
-                                        ),
-                                      ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.chevron_right, size: 20),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: sources.length,
+                    itemBuilder: (context, index) {
+                      final source = sources[index];
+                      return ListTile(
+                        title: Text(
+                          source.sourceName,
+                          style: FontUtils.poppins(fontSize: 16),
+                        ),
+                        trailing: Text(
+                          '${source.episodes.length} 集',
+                          style: FontUtils.poppins(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          widget.onSourceSelected?.call(source);
+                        },
+                      );
+                    },
                   ),
                 ),
-
-                // 底部间距
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -1851,5 +1136,4 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
       },
     );
   }
-
 }

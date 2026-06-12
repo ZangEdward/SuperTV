@@ -454,11 +454,14 @@ class PlayerDetailsPanel extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: cover.isNotEmpty
-            ? FutureBuilder<String>(
-                future: getImageUrl(cover, source),
+            ? FutureBuilder<List<dynamic>>(
+                future: getImageUrl(cover, source).then((url) async {
+                  final headers = await getImageRequestHeaders(url, source);
+                  return [url, headers];
+                }),
                 builder: (context, snapshot) {
-                  final String imageUrl = snapshot.data ?? cover;
-                  final headers = getImageRequestHeaders(imageUrl, source);
+                  final String imageUrl = snapshot.hasData ? snapshot.data![0] : cover;
+                  final Map<String, String>? headers = snapshot.hasData ? snapshot.data![1] : null;
 
                   return CachedNetworkImage(
                     imageUrl: imageUrl,
