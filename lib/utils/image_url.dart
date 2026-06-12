@@ -85,7 +85,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
 /// 注意：只有当 [source] 为 'douban'/'bangumi' 或 URL 指向对应域名时才添加 Referer/UA。其他来源返回空头。
-Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
+Future<Map<String, String>?> getImageRequestHeaders(String imageUrl, String? source) async {
   debugPrint('[SuperTV] Getting headers for: $imageUrl (source: $source)');
 
   final bool isDoubanSource = (source == 'douban') ||
@@ -125,8 +125,27 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
     } catch (_) {}
   }
 
+  // 如果 URL 指向的是用户自己的服务器地址，需要添加身份认证 Cookie
+  final serverUrl = await UserDataService.getServerUrl();
+  if (serverUrl != null && serverUrl.isNotEmpty) {
+    try {
+      final uri = Uri.parse(imageUrl);
+      final serverUri = Uri.parse(serverUrl);
+      if (uri.host == serverUri.host) {
+        final cookies = await UserDataService.getCookies();
+        if (cookies != null && cookies.isNotEmpty) {
+          headers ??= <String, String>{};
+          headers['Cookie'] = cookies;
+          debugPrint('[SuperTV] Added auth cookies for server proxy request');
+        }
+      }
+    } catch (e) {
+      debugPrint('[SuperTV] Error parsing URLs for header check: $e');
+    }
+  }
+
   if (headers != null) {
-    debugPrint('[SuperTV] Headers: $headers');
+    debugPrint('[SuperTV] Final Headers: $headers');
   }
   
   return headers;
