@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'user_data_service.dart';
@@ -557,6 +558,11 @@ class ApiService {
 
   /// 自动登录方法
   static Future<ApiResponse<String>> autoLogin() async {
+    // Web Demo 模式：绕过后端验证
+    if (kIsWeb) {
+      return ApiResponse.success('Web Demo 自动登录成功');
+    }
+
     try {
       // 获取用户数据
       final serverUrl = await UserDataService.getServerUrl();

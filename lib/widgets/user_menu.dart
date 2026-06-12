@@ -848,11 +848,14 @@ class _UserMenuState extends State<UserMenu> {
                     // Bangumi 数据源选项
                     _buildOptionSelector(
                       title: 'Bangumi 数据代理',
-                      subtitle: '服务器无法访问 api.bgm.tv 时可切换反代',
+                      subtitle: '选择获取 Bangumi 放送表及详情的方式',
                       currentValue: _bangumiDataSource,
                       options: const [
-                        '服务端转发（默认，访问官方 api.bgm.tv）',
+                        '客户端直连',
+                        '服务端转发',
                         '反向代理',
+                        'Bangumi CDN By CMLiussss（腾讯云）',
+                        'Bangumi CDN By CMLiussss（阿里云）',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiDataSource(value);
@@ -882,6 +885,8 @@ class _UserMenuState extends State<UserMenu> {
                       options: const [
                         '直连',
                         '服务器代理',
+                        'Bangumi CDN By CMLiussss（腾讯云）',
+                        'Bangumi CDN By CMLiussss（阿里云）',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiImageSource(value);

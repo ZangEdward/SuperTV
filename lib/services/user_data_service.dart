@@ -209,26 +209,76 @@ class UserDataService {
   // 保存 Bangumi 数据源设置（存储 key 值）
   static Future<void> saveBangumiDataSource(String displayName) async {
     final prefs = await SharedPreferences.getInstance();
-    final key = displayName == '反向代理' ? 'proxy' : 'direct';
+    String key;
+    switch (displayName) {
+      case '客户端直连':
+        key = 'client';
+        break;
+      case '服务端转发':
+        key = 'forward';
+        break;
+      case '反向代理':
+        key = 'proxy';
+        break;
+      case 'Bangumi CDN By CMLiussss（腾讯云）':
+        key = 'cdn_tencent';
+        break;
+      case 'Bangumi CDN By CMLiussss（阿里云）':
+        key = 'cdn_aliyun';
+        break;
+      default:
+        key = 'forward';
+    }
     await prefs.setString(_bangumiDataSourceKey, key);
   }
 
   // 获取 Bangumi 数据源设置（返回 key 值）
   static Future<String> getBangumiDataSourceKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_bangumiDataSourceKey) ?? 'direct';
+    return prefs.getString(_bangumiDataSourceKey) ?? 'forward';
   }
 
   // 获取 Bangumi 数据源显示名称
   static Future<String> getBangumiDataSourceDisplayName() async {
     final key = await getBangumiDataSourceKey();
-    return key == 'proxy' ? '反向代理' : '服务端转发（默认，访问官方 api.bgm.tv）';
+    switch (key) {
+      case 'client':
+        return '客户端直连';
+      case 'forward':
+        return '服务端转发';
+      case 'proxy':
+        return '反向代理';
+      case 'cdn_tencent':
+        return 'Bangumi CDN By CMLiussss（腾讯云）';
+      case 'cdn_aliyun':
+        return 'Bangumi CDN By CMLiussss（阿里云）';
+      case 'direct': // 兼容旧版本
+        return '服务端转发';
+      default:
+        return '服务端转发';
+    }
   }
 
   // 保存 Bangumi 图片源设置（存储 key 值）
   static Future<void> saveBangumiImageSource(String displayName) async {
     final prefs = await SharedPreferences.getInstance();
-    final key = displayName == '服务器代理' ? 'proxy' : 'direct';
+    String key;
+    switch (displayName) {
+      case '直连':
+        key = 'direct';
+        break;
+      case '服务器代理':
+        key = 'proxy';
+        break;
+      case 'Bangumi CDN By CMLiussss（腾讯云）':
+        key = 'cdn_tencent';
+        break;
+      case 'Bangumi CDN By CMLiussss（阿里云）':
+        key = 'cdn_aliyun';
+        break;
+      default:
+        key = 'direct';
+    }
     await prefs.setString(_bangumiImageSourceKey, key);
   }
 
@@ -241,7 +291,18 @@ class UserDataService {
   // 获取 Bangumi 图片源显示名称
   static Future<String> getBangumiImageSourceDisplayName() async {
     final key = await getBangumiImageSourceKey();
-    return key == 'proxy' ? '服务器代理' : '直连';
+    switch (key) {
+      case 'direct':
+        return '直连';
+      case 'proxy':
+        return '服务器代理';
+      case 'cdn_tencent':
+        return 'Bangumi CDN By CMLiussss（腾讯云）';
+      case 'cdn_aliyun':
+        return 'Bangumi CDN By CMLiussss（阿里云）';
+      default:
+        return '直连';
+    }
   }
 
   // 保存 M3U8 代理 URL
