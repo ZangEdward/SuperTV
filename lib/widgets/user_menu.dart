@@ -850,8 +850,6 @@ class _UserMenuState extends State<UserMenu> {
                         '直连',
                         '服务端转发',
                         '反向代理',
-                        '腾讯云 CDN',
-                        '阿里云 CDN',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiDataSource(value);
@@ -880,8 +878,6 @@ class _UserMenuState extends State<UserMenu> {
                       options: const [
                         '直连',
                         '服务器代理',
-                        '腾讯云 CDN',
-                        '阿里云 CDN',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiImageSource(value);

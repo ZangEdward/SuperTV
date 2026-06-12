@@ -218,12 +218,6 @@ class UserDataService {
       case '反向代理':
         key = 'proxy';
         break;
-      case '腾讯云 CDN':
-        key = 'cdn_tencent';
-        break;
-      case '阿里云 CDN':
-        key = 'cdn_aliyun';
-        break;
       default:
         key = 'forward';
     }
@@ -246,10 +240,6 @@ class UserDataService {
         return '服务端转发';
       case 'proxy':
         return '反向代理';
-      case 'cdn_tencent':
-        return '腾讯云 CDN';
-      case 'cdn_aliyun':
-        return '阿里云 CDN';
       case 'direct': // 兼容旧版本
         return '直连';
       default:
@@ -267,12 +257,6 @@ class UserDataService {
         break;
       case '服务器代理':
         key = 'proxy';
-        break;
-      case '腾讯云 CDN':
-        key = 'cdn_tencent';
-        break;
-      case '阿里云 CDN':
-        key = 'cdn_aliyun';
         break;
       default:
         key = 'direct';
@@ -294,10 +278,6 @@ class UserDataService {
         return '直连';
       case 'proxy':
         return '服务器代理';
-      case 'cdn_tencent':
-        return '腾讯云 CDN';
-      case 'cdn_aliyun':
-        return '阿里云 CDN';
       default:
         return '直连';
     }

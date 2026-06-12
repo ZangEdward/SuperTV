@@ -22,7 +22,7 @@ class BangumiService {
   static Future<void> clearCache() async {
     await _initCache();
     // 清除所有可能的数据源日历缓存
-    final sources = ['client', 'forward', 'proxy', 'cdn_tencent', 'cdn_aliyun', 'direct'];
+    final sources = ['client', 'forward', 'proxy', 'direct'];
     for (final source in sources) {
       await _cache.delete('bangumi_calendar_${source}_v1');
     }
@@ -75,14 +75,9 @@ class BangumiService {
       // 根据数据源选择不同的接口
       ApiResponse<List<dynamic>> response;
       
-      if (dataSource == 'client' || dataSource == 'cdn_tencent' || dataSource == 'cdn_aliyun') {
-        // 客户端直连或 CDN 模式
+      if (dataSource == 'client') {
+        // 客户端直连
         String apiUrl = 'https://api.bgm.tv/calendar';
-        if (dataSource == 'cdn_tencent') {
-          apiUrl = 'https://api.bgm.tv.cmliussss.net/calendar';
-        } else if (dataSource == 'cdn_aliyun') {
-          apiUrl = 'https://api.bgm.tv.cmliussss.com/calendar';
-        }
         
         final headers = {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -176,14 +171,9 @@ class BangumiService {
     try {
       ApiResponse<Map<String, dynamic>> response;
 
-      if (dataSource == 'client' || dataSource == 'cdn_tencent' || dataSource == 'cdn_aliyun') {
-        // 客户端直连或 CDN 模式
+      if (dataSource == 'client') {
+        // 客户端直连
         String apiUrl = 'https://api.bgm.tv/v0/subjects/$bangumiId';
-        if (dataSource == 'cdn_tencent') {
-          apiUrl = 'https://api.bgm.tv.cmliussss.net/v0/subjects/$bangumiId';
-        } else if (dataSource == 'cdn_aliyun') {
-          apiUrl = 'https://api.bgm.tv.cmliussss.com/v0/subjects/$bangumiId';
-        }
         
         final headers = {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

@@ -63,16 +63,6 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
         // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
         processedUrl = '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
       }
-    } else if (imageSourceKey == 'cdn_tencent') {
-      processedUrl = url.replaceAll(
-        RegExp(r'lain\.bgm\.tv'),
-        'lain.bgm.tv.cmliussss.net',
-      );
-    } else if (imageSourceKey == 'cdn_aliyun') {
-      processedUrl = url.replaceAll(
-        RegExp(r'lain\.bgm\.tv'),
-        'lain.bgm.tv.cmliussss.com',
-      );
     }
   }
 
