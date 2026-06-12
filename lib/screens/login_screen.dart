@@ -375,29 +375,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _isLoading = true;
       });
 
-      // Web Demo 模式：绕过后端验证直接进入
-      if (kIsWeb) {
-        await Future.delayed(const Duration(milliseconds: 800));
-        if (!mounted) return;
-
-        String baseUrl = _processUrl(_urlController.text);
-        await UserDataService.saveUserData(
-          serverUrl: baseUrl,
-          username: _usernameController.text,
-          password: _passwordController.text,
-          cookies: 'demo_session=true',
-        );
-        await UserDataService.saveIsLocalMode(false);
-
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => HomeScreen()),
-            (route) => false,
-          );
-        }
-        return;
-      }
-
+      // Web Demo 模式已被移除
+      
       try {
         // 处理 URL
         String baseUrl = _processUrl(_urlController.text);
@@ -473,30 +452,6 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         _isLoading = true;
       });
-
-      // Web Demo 模式：绕过订阅内容验证直接尝试进入（如果后端不通）
-      if (kIsWeb) {
-        final newUrl = _subscriptionUrlController.text.trim();
-        try {
-          final response = await http.get(Uri.parse(newUrl)).timeout(const Duration(seconds: 5));
-          if (response.statusCode == 200) {
-            // 如果能通，走正常逻辑
-          } else {
-            throw Exception('Web Demo Bypass');
-          }
-        } catch (e) {
-          // 如果不通（跨域或网络问题），在 Web Demo 中也允许进入首页展示 UI
-          await UserDataService.saveIsLocalMode(true);
-          await LocalModeStorageService.saveSubscriptionUrl(newUrl);
-          if (mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => HomeScreen()),
-              (route) => false,
-            );
-          }
-          return;
-        }
-      }
 
       try {
         final newUrl = _subscriptionUrlController.text.trim();

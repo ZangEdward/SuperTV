@@ -6,7 +6,9 @@ import '../services/user_data_service.dart';
 /// - [source]: 数据来源（如 'douban'、'bangumi' 等）
 /// 返回可直接用于加载的图片地址。
 Future<String> getImageUrl(String originalUrl, String? source) async {
-  if (source == 'douban' && originalUrl.isNotEmpty) {
+  if (originalUrl.isEmpty) return '';
+
+  if (source == 'douban') {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
     
     switch (imageSourceKey) {
@@ -31,7 +33,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
     }
   }
 
-  if (source == 'bangumi' && originalUrl.isNotEmpty) {
+  if (source == 'bangumi') {
     final imageSourceKey = await UserDataService.getBangumiImageSourceKey();
     if (imageSourceKey == 'proxy') {
       final serverUrl = await UserDataService.getServerUrl();
@@ -66,7 +68,7 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
           .hasMatch(imageUrl);
           
   final bool isBangumiSource = (source == 'bangumi') ||
-      RegExp(r'https?://([^/]+\.)?bgm\.tv', caseSensitive: false)
+      RegExp(r'https?://([^/]+\.)?(bgm\.tv|bangumi\.tv)', caseSensitive: false)
           .hasMatch(imageUrl);
 
   if (isDoubanSource) {
@@ -74,7 +76,7 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
     // 移除 image/avif 以避免部分 Android 设备因无法解码 AVIF 格式而报错
     return <String, String>{
       'Referer': 'https://movie.douban.com/',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
     };
   }
@@ -84,6 +86,7 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
       'Referer': 'https://bgm.tv/',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+      'Host': 'lain.bgm.tv',
     };
   }
   

@@ -84,7 +84,10 @@ class DeviceUtils {
     // 1. 检查 MediaQuery 的导航模式
     final isDirectional = MediaQuery.of(context).navigationMode == NavigationMode.directional;
     
-    return isDirectional;
+    // 2. 检查平台（Android TV / Fire TV）
+    final isAndroidTV = isAndroid() && (Platform.isAndroid && (defaultTargetPlatform == TargetPlatform.android));
+    
+    return isDirectional || isAndroidTV;
   }
 
   /// 根据屏幕宽度动态计算平板模式下的列数（6～8列）

@@ -944,7 +944,7 @@ class _UserMenuState extends State<UserMenu> {
                     ),
                     // 电视模式选项
                     _buildToggleOption(
-                      title: '电视模式',
+                      title: '电视模式（当前：${_isTVMode ? "开启" : "自适应"}）',
                       value: _isTVMode,
                       onChanged: (value) async {
                         await UserDataService.saveIsTVMode(value);
@@ -957,7 +957,7 @@ class _UserMenuState extends State<UserMenu> {
                         if (context.mounted) {
                           // 强制重新构建整个 app 以应用 UI 切换（特别是从 MainLayout 切换到 TvHome）
                           Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (context) => HomeScreen()),
+                            MaterialPageRoute(builder: (context) => const HomeScreen()),
                             (route) => false,
                           );
                         }
