@@ -7,10 +7,11 @@ import '../services/user_data_service.dart';
 /// - [source]: 数据来源（如 'douban'、'bangumi' 等）
 /// 返回可直接用于加载的图片地址。
 Future<String> getImageUrl(String originalUrl, String? source) async {
-  if (originalUrl.isEmpty) return '';
+  debugPrint('[SuperTV] Processing image URL: "$originalUrl" (source: $source)');
   
-  if (kDebugMode) {
-    print('[ImageLog] Processing image URL: $originalUrl (source: $source)');
+  if (originalUrl.isEmpty) {
+    debugPrint('[SuperTV] URL is empty, returning empty string');
+    return '';
   }
 
   // 处理协议相对路径
@@ -23,9 +24,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
 
   if (source == 'douban') {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
-    if (kDebugMode) {
-      print('[ImageLog] Douban image source key: $imageSourceKey');
-    }
+    debugPrint('[SuperTV] Douban image source key: $imageSourceKey');
     
     switch (imageSourceKey) {
       case 'official_cdn':
@@ -53,9 +52,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
     }
   } else if (source == 'bangumi') {
     final imageSourceKey = await UserDataService.getBangumiImageSourceKey();
-    if (kDebugMode) {
-      print('[ImageLog] Bangumi image source key: $imageSourceKey');
-    }
+    debugPrint('[SuperTV] Bangumi image source key: $imageSourceKey');
 
     if (imageSourceKey == 'proxy') {
       final serverUrl = await UserDataService.getServerUrl();
@@ -79,8 +76,8 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
     }
   }
 
-  if (kDebugMode) {
-    print('[ImageLog] Final processed URL: $processedUrl');
+  if (processedUrl != url) {
+    debugPrint('[SuperTV] Final processed URL: $processedUrl');
   }
 
   return processedUrl;
@@ -89,9 +86,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
 /// 注意：只有当 [source] 为 'douban'/'bangumi' 或 URL 指向对应域名时才添加 Referer/UA。其他来源返回空头。
 Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
-  if (kDebugMode) {
-    print('[ImageLog] Getting headers for: $imageUrl (source: $source)');
-  }
+  debugPrint('[SuperTV] Getting headers for: $imageUrl (source: $source)');
 
   final bool isDoubanSource = (source == 'douban') ||
       RegExp(r'https?://([^/]+\.)?douban(io|)\.com', caseSensitive: false)
@@ -130,8 +125,8 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
     } catch (_) {}
   }
 
-  if (kDebugMode) {
-    print('[ImageLog] Headers: $headers');
+  if (headers != null) {
+    debugPrint('[SuperTV] Headers: $headers');
   }
   
   return headers;

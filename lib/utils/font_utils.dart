@@ -26,15 +26,28 @@ class FontUtils {
     }
 
     FontWeight? effectiveWeight = fontWeight;
-    // 如果禁用了运行时下载，且不是 Windows，则限制使用已有的字体权重以避免崩溃
-    // 目前 pubspec.yaml 中只有 Regular (400) 和 Bold (700)
+    
+    // 如果禁用了运行时下载，且不是 Windows，则直接使用本地 Poppins 字体以避免 GoogleFonts 下载失败
     if (!GoogleFonts.config.allowRuntimeFetching && !DeviceUtils.isWindows()) {
-      if (effectiveWeight == FontWeight.w500 || effectiveWeight == FontWeight.w600) {
-        if (kDebugMode) {
-          print('[FontLog] Weight $effectiveWeight not found in assets, falling back to w400');
+      // 映射权重
+      if (effectiveWeight != null) {
+        if (effectiveWeight.index < 5) { // w600 的 index 是 5
+          effectiveWeight = FontWeight.w400;
+        } else {
+          effectiveWeight = FontWeight.w700;
         }
-        effectiveWeight = FontWeight.w400;
       }
+      
+      return TextStyle(
+        fontFamily: 'Poppins',
+        fontSize: fontSize,
+        fontWeight: effectiveWeight,
+        color: color,
+        letterSpacing: letterSpacing,
+        height: height,
+        fontStyle: fontStyle,
+        fontFamilyFallback: const ['sans-serif', 'Roboto', 'Arial'],
+      );
     }
 
     return GoogleFonts.poppins(
@@ -60,9 +73,17 @@ class FontUtils {
     double? height,
     FontStyle? fontStyle,
   }) {
+    // 同样做安全映射
+    FontWeight? effectiveWeight = fontWeight;
+    if (!GoogleFonts.config.allowRuntimeFetching && !DeviceUtils.isWindows()) {
+       if (effectiveWeight != null) {
+          effectiveWeight = effectiveWeight.index < 5 ? FontWeight.w400 : FontWeight.w700;
+       }
+    }
+
     return GoogleFonts.sourceCodePro(
       fontSize: fontSize,
-      fontWeight: fontWeight,
+      fontWeight: effectiveWeight,
       color: color,
       letterSpacing: letterSpacing,
       height: height,

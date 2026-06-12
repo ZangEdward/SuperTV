@@ -17,11 +17,13 @@ import 'package:media_kit/media_kit.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 
 void main() async {
+  debugPrint('[AppLog] Application starting...');
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[AppLog] Flutter binding initialized');
 
   // 配置 Google Fonts，禁用运行时下载以避免在某些网络环境下崩溃
-  // 建议将所需字体下载并放入 assets/fonts 文件夹中
   GoogleFonts.config.allowRuntimeFetching = false;
+  debugPrint('[AppLog] GoogleFonts runtime fetching disabled');
 
   // 初始化 media_kit (用于 PC 端播放器)
   MediaKit.ensureInitialized();

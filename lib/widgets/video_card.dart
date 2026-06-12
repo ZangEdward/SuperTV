@@ -67,7 +67,12 @@ class _VideoCardState extends State<VideoCard> {
         return FutureBuilder<String>(
           future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+               // 等待时也记录一下
+            }
             final String imageUrl = snapshot.data ?? widget.videoInfo.cover;
+            debugPrint('[SuperTV] Card build for "${widget.videoInfo.title}", imageUrl: $imageUrl');
+
             final headers =
                 getImageRequestHeaders(imageUrl, widget.videoInfo.source);
 
@@ -122,10 +127,8 @@ class _VideoCardState extends State<VideoCard> {
                             ),
                             // 错误占位符
                             errorWidget: (context, url, error) {
-                              if (kDebugMode) {
-                                print('[ImageLog] Error loading image: $url');
-                                print('[ImageLog] Error details: $error');
-                              }
+                              debugPrint('[SuperTV] Error loading image: $url');
+                              debugPrint('[SuperTV] Error details: $error');
                               return Container(
                                 color: themeService.isDarkMode
                                     ? const Color(0xFF333333)
