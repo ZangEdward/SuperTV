@@ -35,11 +35,15 @@ jobs:
       - name: Build Web
         run: |
           # 获取仓库名作为 base-href，确保在 GitHub Pages 上能正确加载资源
-          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          REPO_NAME=${GITHUB_REPOSITORY#*/}
           flutter build web --release \
             --dart-define-from-file=dart_config.json \
-            --base-href "/$REPO_NAME/"
-          echo "✅ Web 构建完成"
+            --base-href "/$REPO_NAME/" \
+            --web-renderer html
+          
+          # 复制 index.html 到 404.html 以支持 SPA 路由
+          cp build/web/index.html build/web/404.html
+          echo "✅ Web 构建完成 (HTML Renderer)，已生成 404.html"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
