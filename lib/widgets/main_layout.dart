@@ -720,7 +720,7 @@ class _MainLayoutState extends State<MainLayout> {
         padding: const EdgeInsets.all(8),
         constraints: const BoxConstraints(),
         icon: Icon(
-          LucideIcons.searchCode,
+          LucideIcons.hardDrive,
           color: themeService.isDarkMode
               ? const Color(0xFFffffff)
               : const Color(0xFF2c3e50),
@@ -743,6 +743,27 @@ class _MainLayoutState extends State<MainLayout> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // 网盘搜按钮
+        IconButton(
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(),
+          icon: Icon(
+            LucideIcons.hardDrive,
+            color: themeService.isDarkMode
+                ? const Color(0xFFffffff)
+                : const Color(0xFF2c3e50),
+            size: 22,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const NetdiskSearchScreen(),
+              ),
+            );
+          },
+          tooltip: '网盘搜',
+        ),
         // 深浅模式切换按钮
         IconButton(
           padding: const EdgeInsets.all(8),

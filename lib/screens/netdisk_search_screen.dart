@@ -105,6 +105,8 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
       'xunlei': '迅雷',
       'pikpak': 'PikPak',
       'uc': 'UC',
+      'tianyi': '天翼',
+      'pan115': '115',
     };
     return map[type] ?? type.toUpperCase();
   }
@@ -113,15 +115,17 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
   Widget build(BuildContext context) {
     return Consumer<ThemeService>(
       builder: (context, themeService, child) {
+        final bool isDarkMode = themeService.isDarkMode;
         return Scaffold(
-          backgroundColor: themeService.isDarkMode ? const Color(0xFF121212) : const Color(0xFFf5f5f5),
+          backgroundColor: isDarkMode ? const Color(0xFF121212) : const Color(0xFFf5f5f5),
           appBar: AppBar(
-            backgroundColor: themeService.isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
+            backgroundColor: isDarkMode ? const Color(0xFF121212) : const Color(0xFFf5f5f5),
             elevation: 0,
+            scrolledUnderElevation: 0,
             leading: IconButton(
               icon: Icon(
                 LucideIcons.arrowLeft,
-                color: themeService.isDarkMode ? Colors.white : const Color(0xFF2c3e50),
+                color: isDarkMode ? Colors.white : const Color(0xFF2c3e50),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -130,9 +134,10 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
               style: FontUtils.poppins(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: themeService.isDarkMode ? Colors.white : const Color(0xFF2c3e50),
+                color: isDarkMode ? Colors.white : const Color(0xFF2c3e50),
               ),
             ),
+            centerTitle: true,
           ),
           body: Column(
             children: [
@@ -149,29 +154,42 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
   }
 
   Widget _buildSearchBar(ThemeService themeService) {
+    final bool isDarkMode = themeService.isDarkMode;
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       child: Row(
         children: [
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: themeService.isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
+                color: isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: themeService.isDarkMode ? const Color(0xFF333333) : const Color(0xFFe0e0e0),
-                ),
+                boxShadow: [
+                  if (!isDarkMode)
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                ],
               ),
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 style: FontUtils.poppins(
-                  color: themeService.isDarkMode ? Colors.white : const Color(0xFF2c3e50),
+                  color: isDarkMode ? Colors.white : const Color(0xFF2c3e50),
                 ),
                 decoration: InputDecoration(
                   hintText: '搜索网盘资源...',
-                  hintStyle: FontUtils.poppins(color: const Color(0xFF888888)),
+                  hintStyle: FontUtils.poppins(
+                    color: isDarkMode ? const Color(0xFF666666) : const Color(0xFF95a5a6),
+                  ),
                   border: InputBorder.none,
+                  prefixIcon: Icon(
+                    LucideIcons.search,
+                    size: 18,
+                    color: isDarkMode ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d),
+                  ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 onSubmitted: (_) => _performSearch(),
@@ -179,16 +197,29 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
             ),
           ),
           const SizedBox(width: 12),
-          ElevatedButton(
-            onPressed: _performSearch,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF27ae60),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.all(12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              minimumSize: const Size(48, 48),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF27ae60).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(LucideIcons.search, size: 24),
+            child: ElevatedButton(
+              onPressed: _performSearch,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF27ae60),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.all(12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                minimumSize: const Size(48, 48),
+                elevation: 0,
+              ),
+              child: const Icon(LucideIcons.search, size: 22),
+            ),
           ),
         ],
       ),
@@ -197,7 +228,7 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
 
   Widget _buildTabs(ThemeService themeService) {
     return Container(
-      height: 50,
+      height: 44,
       margin: const EdgeInsets.only(bottom: 8),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
@@ -209,28 +240,40 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
           final count = (_results[tab] as List).length;
 
           return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: ChoiceChip(
-              label: Text(
-                '${_getTypeName(tab)} ($count)',
-                style: FontUtils.poppins(
-                  fontSize: 13,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                  color: isActive ? Colors.white : (themeService.isDarkMode ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d)),
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _activeTab = tab;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isActive 
+                      ? const Color(0xFF27ae60) 
+                      : (themeService.isDarkMode ? const Color(0xFF1e1e1e) : Colors.white),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    if (!isActive && !themeService.isDarkMode)
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    '${_getTypeName(tab)} ($count)',
+                    style: FontUtils.poppins(
+                      fontSize: 13,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                      color: isActive ? Colors.white : (themeService.isDarkMode ? const Color(0xFFb0b0b0) : const Color(0xFF7f8c8d)),
+                    ),
+                  ),
                 ),
               ),
-              selected: isActive,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() {
-                    _activeTab = tab;
-                  });
-                }
-              },
-              selectedColor: const Color(0xFF27ae60),
-              backgroundColor: themeService.isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              side: BorderSide.none,
             ),
           );
         },
@@ -245,9 +288,16 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
 
     if (_error != null) {
       return Center(
-        child: Text(
-          _error!,
-          style: FontUtils.poppins(color: const Color(0xFF888888)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LucideIcons.searchX, size: 64, color: themeService.isDarkMode ? const Color(0xFF333333) : const Color(0xFFe0e0e0)),
+            const SizedBox(height: 16),
+            Text(
+              _error!,
+              style: FontUtils.poppins(color: const Color(0xFF888888)),
+            ),
+          ],
         ),
       );
     }
@@ -257,11 +307,14 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(LucideIcons.search, size: 64, color: themeService.isDarkMode ? const Color(0xFF333333) : const Color(0xFFe0e0e0)),
+            Icon(LucideIcons.hardDrive, size: 80, color: themeService.isDarkMode ? const Color(0xFF1e1e1e) : const Color(0xFFe0e0e0)),
             const SizedBox(height: 16),
             Text(
               '输入关键字开始搜索',
-              style: FontUtils.poppins(color: const Color(0xFF888888)),
+              style: FontUtils.poppins(
+                fontSize: 16,
+                color: themeService.isDarkMode ? const Color(0xFF666666) : const Color(0xFF95a5a6),
+              ),
             ),
           ],
         ),
@@ -276,7 +329,7 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
         crossAxisCount: DeviceUtils.isPC() ? 2 : 1,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        mainAxisExtent: 180,
+        mainAxisExtent: 160,
       ),
       itemCount: currentData.length,
       itemBuilder: (context, index) {
@@ -291,15 +344,21 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
     final source = item['source'] ?? '未知来源';
     final datetime = item['datetime'] ?? '';
     final url = item['url'] ?? '';
+    final isDarkMode = themeService.isDarkMode;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: themeService.isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
+        color: isDarkMode ? const Color(0xFF1e1e1e) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: themeService.isDarkMode ? const Color(0xFF333333) : const Color(0xFFe0e0e0),
-        ),
+        boxShadow: [
+          if (!isDarkMode)
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,29 +366,40 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                source,
-                style: FontUtils.poppins(
-                  fontSize: 12,
-                  color: const Color(0xFF27ae60),
-                  fontWeight: FontWeight.bold,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF27ae60).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  source,
+                  style: FontUtils.poppins(
+                    fontSize: 11,
+                    color: const Color(0xFF27ae60),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               Text(
                 datetime.split('T')[0],
-                style: FontUtils.poppins(fontSize: 12, color: const Color(0xFF888888)),
+                style: FontUtils.poppins(
+                  fontSize: 12, 
+                  color: isDarkMode ? const Color(0xFF666666) : const Color(0xFF95a5a6)
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Expanded(
             child: Text(
               title,
-              maxLines: 3,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: FontUtils.poppins(
                 fontSize: 14,
-                color: themeService.isDarkMode ? Colors.white : const Color(0xFF2c3e50),
+                fontWeight: FontWeight.w500,
+                color: isDarkMode ? Colors.white : const Color(0xFF2c3e50),
                 height: 1.4,
               ),
             ),
@@ -338,25 +408,44 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: url));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已复制链接')),
-                    );
-                  },
-                  icon: const Icon(LucideIcons.copy, size: 14),
-                  label: const Text('复制链接'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF27ae60),
-                    side: const BorderSide(color: Color(0xFF27ae60)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: url));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('已复制链接')),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF27ae60).withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(LucideIcons.copy, size: 14, color: Color(0xFF27ae60)),
+                          const SizedBox(width: 6),
+                          Text(
+                            '复制链接',
+                            style: FontUtils.poppins(
+                              fontSize: 13,
+                              color: const Color(0xFF27ae60),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed: () async {
                     final uri = Uri.parse(url);
                     if (await canLaunchUrl(uri)) {
@@ -369,12 +458,26 @@ class _NetdiskSearchScreenState extends State<NetdiskSearchScreen> with TickerPr
                       }
                     }
                   },
-                  icon: const Icon(LucideIcons.externalLink, size: 14),
-                  label: const Text('直接打开'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF27ae60),
                     foregroundColor: Colors.white,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(LucideIcons.externalLink, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        '直接打开',
+                        style: FontUtils.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

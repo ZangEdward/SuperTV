@@ -861,6 +861,10 @@ class ApiService {
         '/api/netdisk/search',
         queryParameters: {'q': query.trim()},
         context: context,
+        fromJson: (data) {
+          final responseData = data as Map<String, dynamic>;
+          return responseData['data'] as Map<String, dynamic>;
+        },
       );
       return response;
     } catch (e) {
