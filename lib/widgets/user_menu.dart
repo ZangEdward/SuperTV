@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/user_data_service.dart';
 import '../screens/login_screen.dart';
 import '../services/douban_cache_service.dart';
@@ -158,14 +159,40 @@ class _UserMenuState extends State<UserMenu> {
     }
   }
 
-  Future<void> _handleClearDoubanCache() async {
+  Future<void> _handleClearBufferedData() async {
     try {
+      // 1. 清除豆瓣缓存 (文件级 + 内存级)
       await DoubanCacheService().clearAll();
-      // 同时清空 Bangumi 的函数级与内存级缓存
+
+      // 2. 清除 Bangumi 服务端代理缓存及相关页面缓存
+      await BangumiService.clearCache();
       PageCacheService().clearCache('bangumi_calendar');
+
+      // 3. 清除页面通用的内存缓存
+      PageCacheService().clearAllCache();
+
+      // 4. 清除本地搜索缓存
+      LocalSearchCacheService().clearCache();
+
+      // 5. 清除直播相关缓存
+      LiveService.clearAllCache();
+
+      // 6. 清除系统临时目录 (播放器观看留下的缓存、图片缓存等)
+      final tempDir = await getTemporaryDirectory();
+      if (await tempDir.exists()) {
+        final List<FileSystemEntity> entities = await tempDir.list().toList();
+        for (var entity in entities) {
+          try {
+            await entity.delete(recursive: true);
+          } catch (e) {
+            // 忽略个别文件删除失败
+          }
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已清除豆瓣缓存')),
+          const SnackBar(content: Text('已清除缓冲数据')),
         );
         // 清除后关闭菜单
         widget.onClose?.call();
@@ -173,7 +200,7 @@ class _UserMenuState extends State<UserMenu> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('清除豆瓣缓存失败')),
+          const SnackBar(content: Text('清除缓冲数据失败')),
         );
         // 即便失败也关闭菜单，避免停留
         widget.onClose?.call();
@@ -911,11 +938,11 @@ class _UserMenuState extends State<UserMenu> {
                           ? const Color(0xFF374151)
                           : const Color(0xFFe5e7eb),
                     ),
-                    // 清除豆瓣缓存按钮
+                    // 清除缓冲数据按钮
                     Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: _handleClearDoubanCache,
+                        onTap: _handleClearBufferedData,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -930,7 +957,7 @@ class _UserMenuState extends State<UserMenu> {
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                '清除豆瓣缓存',
+                                '清除缓冲数据',
                                 style: FontUtils.poppins(
                                   fontSize: 16,
                                   color: widget.isDarkMode

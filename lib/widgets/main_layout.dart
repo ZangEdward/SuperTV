@@ -8,6 +8,7 @@ import '../services/api_service.dart';
 import '../utils/device_utils.dart';
 import '../utils/font_utils.dart';
 import '../screens/download_manager_screen.dart';
+import '../screens/netdisk_search_screen.dart';
 import 'user_menu.dart';
 import 'dart:io' show Platform;
 import 'dart:async';
@@ -463,8 +464,6 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Widget _buildHeader(BuildContext context, ThemeService themeService, bool isTablet) {
-    final isTablet = DeviceUtils.isTablet(context);
-
     // macOS 下需要额外的顶部 padding 来避免与透明标题栏重叠
     // Windows 下不需要额外 padding，因为自定义标题栏已经占据了空间
     final topPadding = DeviceUtils.isMacOS()
@@ -543,7 +542,7 @@ class _MainLayoutState extends State<MainLayout> {
           ),
           const SizedBox(width: 8),
           // 右侧按钮组
-          _buildRightButtons(themeService),
+          _buildRightButtons(themeService, isSearchMode: false),
         ],
       ),
     );
@@ -693,7 +692,7 @@ class _MainLayoutState extends State<MainLayout> {
             // 右侧按钮 - 垂直居中
             Positioned(
               right: 0,
-              child: _buildRightButtons(themeService),
+              child: _buildRightButtons(themeService, isSearchMode: true),
             ),
           ],
         ),
@@ -708,13 +707,39 @@ class _MainLayoutState extends State<MainLayout> {
         children: [
           Expanded(child: searchBoxWidget),
           const SizedBox(width: 8),
-          _buildRightButtons(themeService),
+          _buildRightButtons(themeService, isSearchMode: true),
         ],
       ),
     );
   }
 
-  Widget _buildRightButtons(ThemeService themeService) {
+  Widget _buildRightButtons(ThemeService themeService, {required bool isSearchMode}) {
+    if (isSearchMode) {
+      // 搜索界面只显示网盘搜按钮
+      return IconButton(
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(),
+        icon: Icon(
+          LucideIcons.searchCode,
+          color: themeService.isDarkMode
+              ? const Color(0xFFffffff)
+              : const Color(0xFF2c3e50),
+          size: 22,
+        ),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => NetdiskSearchScreen(
+                initialKeyword: widget.searchQuery,
+              ),
+            ),
+          );
+        },
+        tooltip: '网盘搜',
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

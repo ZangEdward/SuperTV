@@ -853,6 +853,21 @@ class ApiService {
     }
   }
 
+  /// 搜索网盘资源
+  static Future<ApiResponse<Map<String, dynamic>>> searchNetDisk(
+      String query, BuildContext context) async {
+    try {
+      final response = await get<Map<String, dynamic>>(
+        '/api/netdisk/search',
+        queryParameters: {'q': query.trim()},
+        context: context,
+      );
+      return response;
+    } catch (e) {
+      return ApiResponse.error('网盘搜索异常: ${e.toString()}');
+    }
+  }
+
   /// 解析 Set-Cookie 头部
   static String _parseCookies(http.Response response) {
     List<String> cookies = [];
