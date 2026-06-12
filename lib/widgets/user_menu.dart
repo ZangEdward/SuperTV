@@ -15,6 +15,7 @@ import '../services/version_service.dart';
 import '../services/bangumi_service.dart';
 import 'bangumi_section.dart';
 import '../screens/anime_screen.dart';
+import '../screens/home_screen.dart';
 import '../utils/device_utils.dart';
 import '../utils/font_utils.dart';
 import 'update_dialog.dart';
