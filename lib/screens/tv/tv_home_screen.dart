@@ -71,7 +71,7 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
                 await UserDataService.saveIsTVMode(false);
                 if (mounted) {
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const HomeScreen()),
+                    MaterialPageRoute(builder: (context) => HomeScreen()),
                     (route) => false,
                   );
                 }
