@@ -696,7 +696,7 @@ class _UserMenuState extends State<UserMenu> {
       child: GestureDetector(
         onTap: widget.onClose,
         child: Container(
-          color: Colors.black.withOpacity(0.3),
+          color: Colors.black.withValues(alpha: 0.3),
           child: Center(
             child: GestureDetector(
               onTap: () {}, // 阻止点击菜单内容时关闭
@@ -710,7 +710,7 @@ class _UserMenuState extends State<UserMenu> {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -935,7 +935,7 @@ class _UserMenuState extends State<UserMenu> {
                         if (context.mounted) {
                           // 强制重新构建整个 app 以应用 UI 切换（特别是从 MainLayout 切换到 TvHome）
                           Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (context) => const HomeScreen()),
+                            MaterialPageRoute(builder: (context) => HomeScreen()),
                             (route) => false,
                           );
                         }
