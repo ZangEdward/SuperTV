@@ -1,6 +1,6 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 
 /// 设备类型工具类
 class DeviceUtils {
@@ -36,12 +36,22 @@ class DeviceUtils {
 
   /// 判断当前平台是否是 Windows
   static bool isWindows() {
-    return Platform.isWindows;
+    if (kIsWeb) return false;
+    try {
+      return Platform.isWindows;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// 判断当前平台是否是 macOS
   static bool isMacOS() {
-    return Platform.isMacOS;
+    if (kIsWeb) return false;
+    try {
+      return Platform.isMacOS;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// 判断当前平台是否是 PC（Windows 或 macOS）

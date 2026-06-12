@@ -45,6 +45,7 @@ class _UserMenuState extends State<UserMenu> {
   bool _preferSpeedTest = true;
   bool _localSearch = false;
   bool _isLocalMode = false;
+  bool _isTVMode = false;
 
   @override
   void initState() {
@@ -77,6 +78,7 @@ class _UserMenuState extends State<UserMenu> {
     final m3u8ProxyUrl = await UserDataService.getM3u8ProxyUrl();
     final preferSpeedTest = await UserDataService.getPreferSpeedTest();
     final localSearch = await UserDataService.getLocalSearch();
+    final isTVMode = await UserDataService.getIsTVMode();
 
     if (mounted) {
       setState(() {
@@ -90,6 +92,7 @@ class _UserMenuState extends State<UserMenu> {
         _m3u8ProxyUrl = m3u8ProxyUrl;
         _preferSpeedTest = preferSpeedTest;
         _localSearch = localSearch;
+        _isTVMode = isTVMode;
       });
     }
   }
@@ -909,6 +912,35 @@ class _UserMenuState extends State<UserMenu> {
                         });
                       },
                       icon: LucideIcons.zap,
+                    ),
+                    // 分割线
+                    Container(
+                      height: 1,
+                      color: widget.isDarkMode
+                          ? const Color(0xFF374151)
+                          : const Color(0xFFe5e7eb),
+                    ),
+                    // 电视模式选项
+                    _buildToggleOption(
+                      title: '电视模式',
+                      value: _isTVMode,
+                      onChanged: (value) async {
+                        await UserDataService.saveIsTVMode(value);
+                        if (!mounted) return;
+                        setState(() {
+                          _isTVMode = value;
+                        });
+                        // 电视模式切换后，关闭菜单并刷新首页以应用 UI 变化
+                        widget.onClose?.call();
+                        if (context.mounted) {
+                          // 强制重新构建整个 app 以应用 UI 切换（特别是从 MainLayout 切换到 TvHome）
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (context) => const HomeScreen()),
+                            (route) => false,
+                          );
+                        }
+                      },
+                      icon: LucideIcons.tv,
                     ),
                     // 本地搜索选项（本地模式下不显示）
                     if (!_isLocalMode) ...[
