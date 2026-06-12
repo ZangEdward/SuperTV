@@ -38,12 +38,11 @@ jobs:
           REPO_NAME=${GITHUB_REPOSITORY#*/}
           flutter build web --release \
             --dart-define-from-file=dart_config.json \
-            --base-href "/$REPO_NAME/" \
-            --web-renderer html
+            --base-href "/$REPO_NAME/"
           
           # 复制 index.html 到 404.html 以支持 SPA 路由
           cp build/web/index.html build/web/404.html
-          echo "✅ Web 构建完成 (HTML Renderer)，已生成 404.html"
+          echo "✅ Web 构建完成，已生成 404.html"
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
