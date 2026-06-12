@@ -1,4 +1,5 @@
 // 通用图片地址处理工具
+import 'package:flutter/foundation.dart';
 import '../services/user_data_service.dart';
 
 /// 根据来源处理图片 URL（例如豆瓣域名替换）。
@@ -8,39 +9,54 @@ import '../services/user_data_service.dart';
 Future<String> getImageUrl(String originalUrl, String? source) async {
   if (originalUrl.isEmpty) return '';
   
+  if (kDebugMode) {
+    print('[ImageLog] Processing image URL: $originalUrl (source: $source)');
+  }
+
   // 处理协议相对路径
   String url = originalUrl;
   if (url.startsWith('//')) {
     url = 'https:$url';
   }
 
+  String processedUrl = url;
+
   if (source == 'douban') {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
+    if (kDebugMode) {
+      print('[ImageLog] Douban image source key: $imageSourceKey');
+    }
     
     switch (imageSourceKey) {
       case 'official_cdn':
-        return url.replaceAll(
+        processedUrl = url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img3.doubanio.com',
         );
+        break;
       case 'cdn_tencent':
-        return url.replaceAll(
+        processedUrl = url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img.doubanio.cmliussss.net',
         );
+        break;
       case 'cdn_aliyun':
-        return url.replaceAll(
+        processedUrl = url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img.doubanio.cmliussss.com',
         );
+        break;
       case 'direct':
       default:
-        return url;
+        processedUrl = url;
+        break;
     }
-  }
-
-  if (source == 'bangumi') {
+  } else if (source == 'bangumi') {
     final imageSourceKey = await UserDataService.getBangumiImageSourceKey();
+    if (kDebugMode) {
+      print('[ImageLog] Bangumi image source key: $imageSourceKey');
+    }
+
     if (imageSourceKey == 'proxy') {
       final serverUrl = await UserDataService.getServerUrl();
       if (serverUrl != null && serverUrl.isNotEmpty) {
@@ -48,27 +64,35 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
             ? serverUrl.substring(0, serverUrl.length - 1)
             : serverUrl;
         // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
-        return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
+        processedUrl = '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
       }
     } else if (imageSourceKey == 'cdn_tencent') {
-      return url.replaceAll(
+      processedUrl = url.replaceAll(
         RegExp(r'lain\.bgm\.tv'),
         'lain.bgm.tv.cmliussss.net',
       );
     } else if (imageSourceKey == 'cdn_aliyun') {
-      return url.replaceAll(
+      processedUrl = url.replaceAll(
         RegExp(r'lain\.bgm\.tv'),
         'lain.bgm.tv.cmliussss.com',
       );
     }
   }
 
-  return url;
+  if (kDebugMode) {
+    print('[ImageLog] Final processed URL: $processedUrl');
+  }
+
+  return processedUrl;
 }
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
 /// 注意：只有当 [source] 为 'douban'/'bangumi' 或 URL 指向对应域名时才添加 Referer/UA。其他来源返回空头。
 Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
+  if (kDebugMode) {
+    print('[ImageLog] Getting headers for: $imageUrl (source: $source)');
+  }
+
   final bool isDoubanSource = (source == 'douban') ||
       RegExp(r'https?://([^/]+\.)?douban(io|)\.com', caseSensitive: false)
           .hasMatch(imageUrl);
@@ -77,18 +101,18 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
       RegExp(r'https?://([^/]+\.)?(bgm\.tv|bangumi\.tv)', caseSensitive: false)
           .hasMatch(imageUrl);
 
+  Map<String, String>? headers;
+
   if (isDoubanSource) {
     // 常见可用的 Referer 和 UA，避免 403 或 Android 解码失败
     // 移除 image/avif 以避免部分 Android 设备因无法解码 AVIF 格式而报错
-    return <String, String>{
+    headers = <String, String>{
       'Referer': 'https://movie.douban.com/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
     };
-  }
-  
-  if (isBangumiSource) {
-    final headers = <String, String>{
+  } else if (isBangumiSource) {
+    headers = <String, String>{
       'Referer': 'https://bgm.tv/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
@@ -104,11 +128,13 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
         headers['Host'] = 'lain.bangumi.tv';
       }
     } catch (_) {}
-    
-    return headers;
+  }
+
+  if (kDebugMode) {
+    print('[ImageLog] Headers: $headers');
   }
   
-  return null;
+  return headers;
 }
 
 

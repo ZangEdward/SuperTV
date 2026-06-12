@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'device_utils.dart';
@@ -24,9 +25,21 @@ class FontUtils {
       );
     }
 
+    FontWeight? effectiveWeight = fontWeight;
+    // 如果禁用了运行时下载，且不是 Windows，则限制使用已有的字体权重以避免崩溃
+    // 目前 pubspec.yaml 中只有 Regular (400) 和 Bold (700)
+    if (!GoogleFonts.config.allowRuntimeFetching && !DeviceUtils.isWindows()) {
+      if (effectiveWeight == FontWeight.w500 || effectiveWeight == FontWeight.w600) {
+        if (kDebugMode) {
+          print('[FontLog] Weight $effectiveWeight not found in assets, falling back to w400');
+        }
+        effectiveWeight = FontWeight.w400;
+      }
+    }
+
     return GoogleFonts.poppins(
       fontSize: fontSize,
-      fontWeight: fontWeight,
+      fontWeight: effectiveWeight,
       color: color,
       letterSpacing: letterSpacing,
       height: height,

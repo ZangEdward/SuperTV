@@ -120,18 +120,24 @@ class _VideoCardState extends State<VideoCard> {
                               ),
                             ),
                             // 错误占位符
-                            errorWidget: (context, url, error) => Container(
-                              color: themeService.isDarkMode
-                                  ? const Color(0xFF333333)
-                                  : Colors.grey[300],
-                              child: Icon(
-                                Icons.movie,
+                            errorWidget: (context, url, error) {
+                              if (kDebugMode) {
+                                print('[ImageLog] Error loading image: $url');
+                                print('[ImageLog] Error details: $error');
+                              }
+                              return Container(
                                 color: themeService.isDarkMode
-                                    ? const Color(0xFF666666)
-                                    : Colors.grey,
-                                size: 40,
-                              ),
-                            ),
+                                    ? const Color(0xFF333333)
+                                    : Colors.grey[300],
+                                child: Icon(
+                                  Icons.movie,
+                                  color: themeService.isDarkMode
+                                      ? const Color(0xFF666666)
+                                      : Colors.grey,
+                                  size: 40,
+                                ),
+                              );
+                            },
                             // 图片淡入动画
                             fadeInDuration: const Duration(milliseconds: 200),
                             fadeOutDuration: const Duration(milliseconds: 100),
