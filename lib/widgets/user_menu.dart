@@ -848,7 +848,6 @@ class _UserMenuState extends State<UserMenu> {
                     // Bangumi 数据源选项
                     _buildOptionSelector(
                       title: 'Bangumi 数据代理',
-                      subtitle: '选择获取 Bangumi 放送表及详情的方式',
                       currentValue: _bangumiDataSource,
                       options: const [
                         '客户端直连',
@@ -880,7 +879,6 @@ class _UserMenuState extends State<UserMenu> {
                     // Bangumi 图片源选项
                     _buildOptionSelector(
                       title: 'Bangumi 图片代理',
-                      subtitle: '选择获取 Bangumi 封面图片的方式',
                       currentValue: _bangumiImageSource,
                       options: const [
                         '直连',
