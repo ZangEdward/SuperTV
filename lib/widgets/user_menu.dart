@@ -822,6 +822,7 @@ class _UserMenuState extends State<UserMenu> {
                       currentValue: _doubanImageSource,
                       options: const [
                         '直连',
+                        '服务器代理',
                         '豆瓣官方精品 CDN',
                         '豆瓣 CDN By CMLiussss（腾讯云）',
                         '豆瓣 CDN By CMLiussss（阿里云）',

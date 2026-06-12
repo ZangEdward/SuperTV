@@ -161,6 +161,8 @@ class UserDataService {
     switch (imageSource) {
       case '直连':
         return 'direct';
+      case '服务器代理':
+        return 'proxy';
       case '豆瓣官方精品 CDN':
         return 'official_cdn';
       case '豆瓣 CDN By CMLiussss（腾讯云）':
@@ -193,6 +195,8 @@ class UserDataService {
     switch (key) {
       case 'direct':
         return '直连';
+      case 'proxy':
+        return '服务器代理';
       case 'official_cdn':
         return '豆瓣官方精品 CDN';
       case 'cdn_tencent':
