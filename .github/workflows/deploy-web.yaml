@@ -34,11 +34,11 @@ jobs:
 
       - name: Build Web
         run: |
-          # 获取仓库名作为 base-href，确保在 GitHub Pages 上能正确加载资源
-          REPO_NAME=${GITHUB_REPOSITORY#*/}
+          # 默认使用 / 作为 base-href，以支持自定义域名。
+          # 如果您是在 username.github.io/repo-name/ 下访问，请确保 base-href 包含仓库名。
           flutter build web --release \
             --dart-define-from-file=dart_config.json \
-            --base-href "/$REPO_NAME/"
+            --base-href "/"
           
           # 复制 index.html 到 404.html 以支持 SPA 路由
           cp build/web/index.html build/web/404.html

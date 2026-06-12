@@ -70,16 +70,61 @@ class BangumiService {
 
     // 未命中缓存，请求接口
     try {
-      if (dataSource == 'proxy') {
-        final response = await ApiService.get<List<dynamic>>(
-          '/api/proxy/bangumi?path=calendar',
-          fromJson: (data) => data as List<dynamic>,
-        );
+      // 根据数据源选择不同的服务端接口
+      // 'proxy' (反向代理) 模式通常使用服务器特定的反代接口，如 /api/bangumi/calendar
+      // 'direct' (服务端转发) 模式使用通用的代理接口，如 /api/proxy/bangumi?path=calendar
+      final endpoint = dataSource == 'proxy'
+          ? '/api/bangumi/calendar'
+          : '/api/proxy/bangumi?path=calendar';
 
-        if (response.success && response.data != null) {
-          final List<dynamic> responseData = response.data!;
+      final response = await ApiService.get<List<dynamic>>(
+        endpoint,
+        fromJson: (data) => data as List<dynamic>,
+      );
+
+      if (response.success && response.data != null) {
+        final List<dynamic> responseData = response.data!;
+        final List<BangumiCalendarResponse> calendarData = responseData
+            .map((item) =>
+                BangumiCalendarResponse.fromJson(item as Map<String, dynamic>))
+            .toList();
+
+        BangumiCalendarResponse? targetDay;
+        for (final day in calendarData) {
+          if (day.weekday.id == weekday) {
+            targetDay = day;
+            break;
+          }
+        }
+
+        final items = targetDay?.items ?? <BangumiItem>[];
+
+        try {
+          await _cache.set(cacheKey, responseData, const Duration(days: 1));
+        } catch (_) {}
+
+        return ApiResponse.success(items, statusCode: response.statusCode);
+      }
+
+      // 如果服务器请求失败且设置是 direct (服务端转发)，则尝试客户端直连官方 API
+      if (dataSource == 'direct') {
+        const apiUrl = 'https://api.bgm.tv/calendar';
+        final headers = {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        };
+
+        final httpResponse = await http
+            .get(Uri.parse(apiUrl), headers: headers)
+            .timeout(const Duration(seconds: 30));
+
+        if (httpResponse.statusCode == 200) {
+          final List<dynamic> responseData = json.decode(httpResponse.body);
+
           final List<BangumiCalendarResponse> calendarData = responseData
-              .map((item) => BangumiCalendarResponse.fromJson(item as Map<String, dynamic>))
+              .map((item) => BangumiCalendarResponse.fromJson(
+                  item as Map<String, dynamic>))
               .toList();
 
           BangumiCalendarResponse? targetDay;
@@ -96,52 +141,11 @@ class BangumiService {
             await _cache.set(cacheKey, responseData, const Duration(days: 1));
           } catch (_) {}
 
-          return ApiResponse.success(items, statusCode: response.statusCode);
+          return ApiResponse.success(items, statusCode: httpResponse.statusCode);
         }
       }
 
-      // 降级或直连逻辑
-      // 如果设置的是直连，或者代理获取失败，尝试直连
-      const apiUrl = 'https://api.bgm.tv/calendar';
-      final headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-      };
-
-      final httpResponse = await http
-          .get(Uri.parse(apiUrl), headers: headers)
-          .timeout(const Duration(seconds: 30));
-
-      if (httpResponse.statusCode == 200) {
-        final List<dynamic> responseData = json.decode(httpResponse.body);
-
-        // 解析所有星期数据
-        final List<BangumiCalendarResponse> calendarData = responseData
-            .map((item) => BangumiCalendarResponse.fromJson(item as Map<String, dynamic>))
-            .toList();
-
-        BangumiCalendarResponse? targetDay;
-        for (final day in calendarData) {
-          if (day.weekday.id == weekday) {
-            targetDay = day;
-            break;
-          }
-        }
-
-        final items = targetDay?.items ?? <BangumiItem>[];
-
-        // 写入接口级缓存
-        try {
-          await _cache.set(cacheKey, responseData, const Duration(days: 1));
-        } catch (_) {}
-
-        return ApiResponse.success(items, statusCode: httpResponse.statusCode);
-      } else {
-        return ApiResponse.error(
-          '获取 Bangumi 日历失败: ${httpResponse.statusCode}',
-          statusCode: httpResponse.statusCode,
-        );
-      }
+      return ApiResponse.error('获取 Bangumi 日历失败');
     } catch (e) {
       return ApiResponse.error('Bangumi 数据请求异常: ${e.toString()}');
     }
@@ -185,67 +189,61 @@ class BangumiService {
     }
 
     try {
-      if (dataSource == 'proxy') {
-        // 优先通过服务器代理获取详情 (使用 Bangumi v0 API)
-        final response = await ApiService.get<Map<String, dynamic>>(
-          '/api/proxy/bangumi?path=v0/subjects/$bangumiId',
-          fromJson: (data) => data as Map<String, dynamic>,
-        );
+      // 根据数据源选择不同的服务端接口
+      final endpoint = dataSource == 'proxy'
+          ? '/api/bangumi/subject/$bangumiId'
+          : '/api/proxy/bangumi?path=v0/subjects/$bangumiId';
 
-        if (response.success && response.data != null) {
-          final details = BangumiDetails.fromJson(response.data!);
+      final response = await ApiService.get<Map<String, dynamic>>(
+        endpoint,
+        fromJson: (data) => data as Map<String, dynamic>,
+      );
+
+      if (response.success && response.data != null) {
+        final details = BangumiDetails.fromJson(response.data!);
+        // 缓存成功的结果
+        try {
+          await _cache.set(cacheKey, details.toJson(), const Duration(days: 3));
+        } catch (_) {}
+        return ApiResponse.success(details, statusCode: response.statusCode);
+      }
+    } catch (e) {
+      debugPrint('通过服务器获取 Bangumi 详情异常: $e');
+    }
+
+    // 降级：如果服务器请求失败且设置是 direct (服务端转发)，则尝试客户端直连官方 API
+    if (dataSource == 'direct') {
+      try {
+        final apiUrl = 'https://api.bgm.tv/v0/subjects/$bangumiId';
+        final headers = {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        };
+
+        final response = await http
+            .get(
+              Uri.parse(apiUrl),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = json.decode(response.body);
+          final details = BangumiDetails.fromJson(data);
+
           // 缓存成功的结果
           try {
             await _cache.set(cacheKey, details.toJson(), const Duration(days: 3));
           } catch (_) {}
+
           return ApiResponse.success(details, statusCode: response.statusCode);
         }
+      } catch (e) {
+        return ApiResponse.error('Bangumi 详情数据请求异常: ${e.toString()}');
       }
-    } catch (e) {
-      debugPrint('通过代理获取 Bangumi 详情异常: $e');
     }
 
-    // 降级：直连 (如果设置了直连或代理失败)
-    try {
-      final apiUrl = 'https://api.bgm.tv/v0/subjects/$bangumiId';
-      final headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-      };
-
-      final response = await http.get(
-        Uri.parse(apiUrl),
-        headers: headers,
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        try {
-          final Map<String, dynamic> data = json.decode(response.body);
-          final details = BangumiDetails.fromJson(data);
-          
-          // 缓存成功的结果，缓存时间为 3 天
-          try {
-            await _cache.set(
-              cacheKey,
-              details.toJson(),
-              const Duration(days: 3),
-            );
-          } catch (cacheError) {
-            // 静默处理缓存错误
-          }
-          
-          return ApiResponse.success(details, statusCode: response.statusCode);
-        } catch (parseError) {
-          return ApiResponse.error('Bangumi 详情数据解析失败: ${parseError.toString()}');
-        }
-      } else {
-        return ApiResponse.error(
-          '获取 Bangumi 详情数据失败: ${response.statusCode}',
-          statusCode: response.statusCode,
-        );
-      }
-    } catch (e) {
-      return ApiResponse.error('Bangumi 详情数据请求异常: ${e.toString()}');
-    }
+    return ApiResponse.error('获取 Bangumi 详情数据失败');
   }
 }

@@ -114,7 +114,7 @@ class _TvMainLayoutState extends State<TvMainLayout> {
             child: Container(
               height: 80,
               width: 100,
-              color: hasFocus ? (themeService.isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05)) : Colors.transparent,
+              color: hasFocus ? (themeService.isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.black.withOpacity(0.05)) : Colors.transparent,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -156,7 +156,7 @@ class _TvMainLayoutState extends State<TvMainLayout> {
               width: 60,
               height: 60,
               decoration: BoxDecoration(
-                color: hasFocus ? (themeService.isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05)) : Colors.transparent,
+                color: hasFocus ? (themeService.isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.black.withOpacity(0.05)) : Colors.transparent,
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Icon(

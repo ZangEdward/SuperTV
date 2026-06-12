@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:media_kit/media_kit.dart';
@@ -7,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'dlna_device_dialog.dart';
+import '../utils/device_utils.dart';
 
 class MobilePlayerControls extends StatefulWidget {
   final Player player;
@@ -890,7 +890,7 @@ class _MobilePlayerControlsState extends State<MobilePlayerControls> {
                       ),
                     ),
                   ),
-                if (Platform.isAndroid)
+                if (DeviceUtils.isAndroid())
                   GestureDetector(
                     onTap: () async {
                       print('PIP button clicked!');
@@ -1279,7 +1279,7 @@ class _MobileVideoProgressBarState extends State<_MobileVideoProgressBar> {
                       height: 6,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(3),
-                        color: Colors.white.withOpacity(0.3),
+                        color: Colors.white.withValues(alpha: 0.3),
                       ),
                     ),
                   ),
@@ -1310,7 +1310,7 @@ class _MobileVideoProgressBarState extends State<_MobileVideoProgressBar> {
                             color: Colors.red,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
+                                color: Colors.black.withValues(alpha: 0.3),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),

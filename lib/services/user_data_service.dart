@@ -209,7 +209,7 @@ class UserDataService {
   // 保存 Bangumi 数据源设置（存储 key 值）
   static Future<void> saveBangumiDataSource(String displayName) async {
     final prefs = await SharedPreferences.getInstance();
-    final key = displayName == '服务器代理' ? 'proxy' : 'direct';
+    final key = displayName == '反向代理' ? 'proxy' : 'direct';
     await prefs.setString(_bangumiDataSourceKey, key);
   }
 
@@ -222,7 +222,7 @@ class UserDataService {
   // 获取 Bangumi 数据源显示名称
   static Future<String> getBangumiDataSourceDisplayName() async {
     final key = await getBangumiDataSourceKey();
-    return key == 'proxy' ? '服务器代理' : '直连';
+    return key == 'proxy' ? '反向代理' : '服务端转发（默认，访问官方 api.bgm.tv）';
   }
 
   // 保存 Bangumi 图片源设置（存储 key 值）

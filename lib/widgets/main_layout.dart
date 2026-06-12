@@ -323,7 +323,7 @@ class _MainLayoutState extends State<MainLayout> {
                         child: Column(
                           children: [
                             // Windows 自定义标题栏
-                            if (Platform.isWindows)
+                            if (DeviceUtils.isWindows())
                               WindowsTitleBar(
                                 customBackgroundColor: widget.isSearchMode
                                     ? (themeService.isDarkMode
@@ -386,20 +386,20 @@ class _MainLayoutState extends State<MainLayout> {
     ];
 
     // 计算顶部内边距
-    final double topPadding = Platform.isWindows
+    final double topPadding = DeviceUtils.isWindows()
         ? 16.0
         : MediaQuery.of(context).padding.top + 16.0;
 
     return Container(
       decoration: BoxDecoration(
         color: themeService.isDarkMode
-            ? const Color(0xFF1e1e1e).withOpacity(0.9)
-            : Colors.white.withOpacity(0.9),
+            ? const Color(0xFF1e1e1e).withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9),
         border: Border(
           right: BorderSide(
             color: themeService.isDarkMode
-                ? const Color(0xFF333333).withOpacity(0.3)
-                : Colors.black.withOpacity(0.05),
+                ? const Color(0xFF333333).withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.05),
             width: 1,
           ),
         ),
@@ -433,7 +433,7 @@ class _MainLayoutState extends State<MainLayout> {
           size: 24,
         ),
         useIndicator: true,
-        indicatorColor: const Color(0xFF27ae60).withOpacity(0.1),
+        indicatorColor: const Color(0xFF27ae60).withValues(alpha: 0.1),
         destinations: navItems.map((item) {
           return NavigationRailDestination(
             icon: Icon(item['icon']),
@@ -468,7 +468,7 @@ class _MainLayoutState extends State<MainLayout> {
     // Windows 下不需要额外 padding，因为自定义标题栏已经占据了空间
     final topPadding = DeviceUtils.isMacOS()
         ? MediaQuery.of(context).padding.top + 32
-        : Platform.isWindows
+        : DeviceUtils.isWindows()
             ? 8.0
             : MediaQuery.of(context).padding.top + 8;
 
@@ -485,8 +485,8 @@ class _MainLayoutState extends State<MainLayout> {
                 ? const Color(0xFF121212)
                 : const Color(0xFFf5f5f5)
             : themeService.isDarkMode
-                ? const Color(0xFF1e1e1e).withOpacity(0.9)
-                : Colors.white.withOpacity(0.8),
+                ? const Color(0xFF1e1e1e).withValues(alpha: 0.9)
+                : Colors.white.withValues(alpha: 0.8),
       ),
       child: widget.isSearchMode
           ? _buildSearchHeader(context, themeService, isTablet)
@@ -509,8 +509,8 @@ class _MainLayoutState extends State<MainLayout> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   color: themeService.isDarkMode
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
@@ -841,13 +841,13 @@ class _MainLayoutState extends State<MainLayout> {
     return Container(
       decoration: BoxDecoration(
         color: themeService.isDarkMode
-            ? const Color(0xFF1e1e1e).withOpacity(0.9)
-            : Colors.white.withOpacity(0.9),
+            ? const Color(0xFF1e1e1e).withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.9),
         border: Border(
           top: BorderSide(
             color: themeService.isDarkMode
-                ? const Color(0xFF333333).withOpacity(0.3)
-                : Colors.white.withOpacity(0.2),
+                ? const Color(0xFF333333).withValues(alpha: 0.3)
+                : Colors.white.withValues(alpha: 0.2),
             width: 1,
           ),
         ),

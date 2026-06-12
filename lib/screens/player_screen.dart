@@ -697,7 +697,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       String finalUrl = newUrl;
       final bool isLocalFile = newUrl.startsWith('/') || 
                              newUrl.startsWith('file://') || 
-                             (Platform.isWindows && newUrl.contains(':\\'));
+                             (DeviceUtils.isWindows() && newUrl.contains(':\\'));
                              
       if (m3u8ProxyUrl.isNotEmpty && !isLocalFile) {
         final encodedUrl = Uri.encodeComponent(newUrl);
@@ -2920,7 +2920,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           child: Column(
             children: [
               // Windows 自定义标题栏（播放页使用纯黑背景）
-              if (Platform.isWindows)
+              if (DeviceUtils.isWindows())
                 const WindowsTitleBar(
                   customBackgroundColor: Color(0xFF000000),
                 ),

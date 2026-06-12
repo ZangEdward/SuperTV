@@ -11,7 +11,7 @@ import 'services/douban_cache_service.dart';
 import 'services/local_mode_storage_service.dart';
 import 'services/subscription_service.dart';
 import 'services/download_service.dart';
-import 'dart:io' show Platform;
+import 'utils/device_utils.dart';
 import 'package:macos_window_utils/macos_window_utils.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -27,7 +27,7 @@ void main() async {
   MediaKit.ensureInitialized();
 
   // 初始化 macOS 窗口配置
-  if (Platform.isMacOS) {
+  if (DeviceUtils.isMacOS()) {
     await WindowManipulator.initialize(enableWindowDelegate: true);
     // 设置标题栏为透明，让菜单栏颜色跟随主题
     await WindowManipulator.makeTitlebarTransparent();
@@ -49,7 +49,7 @@ void main() async {
   runApp(const SuperTVApp());
 
   // 初始化 Windows 窗口配置
-  if (Platform.isWindows) {
+  if (DeviceUtils.isWindows()) {
     doWhenWindowReady(() {
       final win = appWindow;
       const initialSize = Size(1024, 600);
@@ -81,7 +81,7 @@ class SuperTVApp extends StatelessWidget {
             home: const AppWrapper(),
             builder: (context, child) {
               // 为 Windows 平台改善字体渲染
-              if (Platform.isWindows) {
+              if (DeviceUtils.isWindows()) {
                 return MediaQuery(
                   data: MediaQuery.of(context).copyWith(
                     textScaler: const TextScaler.linear(1.0),

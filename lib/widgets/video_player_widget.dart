@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -8,6 +7,7 @@ import 'mobile_player_controls.dart';
 import 'pc_player_controls.dart';
 import 'tv/tv_player_controls.dart';
 import 'video_player_surface.dart';
+import '../utils/device_utils.dart';
 
 class VideoPlayerWidget extends StatefulWidget {
   final VideoPlayerSurface surface;
@@ -360,7 +360,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
   }
 
   void _setupPip() {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!DeviceUtils.isAndroid() && !DeviceUtils.isIOS()) {
       return;
     }
     _pip.setup(const PipOptions(
@@ -374,7 +374,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
   }
 
   void _registerPipObserver() {
-    if (!Platform.isAndroid && !Platform.isIOS) {
+    if (!DeviceUtils.isAndroid() && !DeviceUtils.isIOS()) {
       return;
     }
     _pip.registerStateChangedObserver(PipStateChangedObserver(
@@ -468,7 +468,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (DeviceUtils.isAndroid() || DeviceUtils.isIOS()) {
       _pip.unregisterStateChangedObserver();
       _pip.dispose();
     }

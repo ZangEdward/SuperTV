@@ -39,8 +39,8 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
         String cleanBaseUrl = serverUrl.endsWith('/')
             ? serverUrl.substring(0, serverUrl.length - 1)
             : serverUrl;
-        // 使用服务器的 Bangumi 代理接口，并对原始 URL 进行编码
-        return '$cleanBaseUrl/api/proxy/bangumi?path=${Uri.encodeComponent(originalUrl)}';
+        // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
+        return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(originalUrl)}';
       }
     }
   }

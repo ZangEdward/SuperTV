@@ -305,6 +305,7 @@ class _UserMenuState extends State<UserMenu> {
 
   Widget _buildOptionSelector({
     required String title,
+    String? subtitle,
     required String currentValue,
     required List<String> options,
     required Future<void> Function(String) onChanged,
@@ -343,6 +344,19 @@ class _UserMenuState extends State<UserMenu> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: FontUtils.poppins(
+                          fontSize: 11,
+                          color: widget.isDarkMode
+                              ? const Color(0xFF666666)
+                              : const Color(0xFF9ca3af),
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Text(
                       currentValue,
@@ -833,11 +847,12 @@ class _UserMenuState extends State<UserMenu> {
                     ),
                     // Bangumi 数据源选项
                     _buildOptionSelector(
-                      title: 'Bangumi 数据源',
+                      title: 'Bangumi 数据代理',
+                      subtitle: '服务器无法访问 api.bgm.tv 时可切换反代',
                       currentValue: _bangumiDataSource,
                       options: const [
-                        '直连',
-                        '服务器代理',
+                        '服务端转发（默认，访问官方 api.bgm.tv）',
+                        '反向代理',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiDataSource(value);
@@ -861,7 +876,8 @@ class _UserMenuState extends State<UserMenu> {
                     ),
                     // Bangumi 图片源选项
                     _buildOptionSelector(
-                      title: 'Bangumi 图片源',
+                      title: 'Bangumi 图片代理',
+                      subtitle: '选择获取 Bangumi 封面图片的方式',
                       currentValue: _bangumiImageSource,
                       options: const [
                         '直连',

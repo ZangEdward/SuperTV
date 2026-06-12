@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:io' show Platform;
+import 'device_utils.dart';
 
 class FontUtils {
   /// 获取 Poppins 字体样式，Windows 下使用微软雅黑
@@ -12,7 +12,7 @@ class FontUtils {
     double? height,
     FontStyle? fontStyle,
   }) {
-    if (Platform.isWindows) {
+    if (DeviceUtils.isWindows()) {
       return TextStyle(
         fontFamily: 'Microsoft YaHei',
         fontSize: fontSize,

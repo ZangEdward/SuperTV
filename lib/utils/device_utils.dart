@@ -54,6 +54,26 @@ class DeviceUtils {
     }
   }
 
+  /// 判断当前平台是否是 Android
+  static bool isAndroid() {
+    if (kIsWeb) return false;
+    try {
+      return Platform.isAndroid;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 判断当前平台是否是 iOS
+  static bool isIOS() {
+    if (kIsWeb) return false;
+    try {
+      return Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// 判断当前平台是否是 PC（Windows 或 macOS）
   static bool isPC() {
     return isWindows() || isMacOS();

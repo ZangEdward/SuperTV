@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/device_utils.dart';
 import '../models/video_info.dart';
 import '../models/douban_movie.dart';
 import '../models/bangumi.dart';
@@ -17,12 +16,7 @@ import '../utils/font_utils.dart';
 
 /// 判断是否为iOS平台
 bool get _isIOS {
-  if (kIsWeb) return false;
-  try {
-    return Platform.isIOS;
-  } catch (e) {
-    return false;
-  }
+  return DeviceUtils.isIOS();
 }
 
 /// 自定义滚动物理，在展开状态下的顶部向下拖拽时触发收起
