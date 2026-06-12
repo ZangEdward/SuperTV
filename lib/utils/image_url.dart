@@ -85,7 +85,7 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
 /// 注意：只有当 [source] 为 'douban'/'bangumi' 或 URL 指向对应域名时才添加 Referer/UA。其他来源返回空头。
-/// 改回同步方法，完全对齐 Selene 原项目逻辑。
+/// 同步方法，以兼容 CachedNetworkImage 等组件。
 Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
   final bool isDoubanSource = (source == 'douban') ||
       RegExp(r'https?://([^/]+\.)?douban(io|)\.com', caseSensitive: false)
@@ -95,15 +95,17 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
       RegExp(r'https?://([^/]+\.)?(bgm\.tv|bangumi\.tv)', caseSensitive: false)
           .hasMatch(imageUrl);
 
+  Map<String, String>? headers;
+
   if (isDoubanSource) {
     // 采用 Selene 项目验证过的移动端 Header 组合
-    return <String, String>{
+    headers = <String, String>{
       'Referer': 'https://movie.douban.com/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     };
   } else if (isBangumiSource) {
-    return <String, String>{
+    headers = <String, String>{
       'Referer': 'https://bgm.tv/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
@@ -111,5 +113,17 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
     };
   }
 
-  return null;
+  // 特殊处理：如果 URL 包含 api/image-proxy，说明是经过服务器代理的
+  // 这种情况下必须添加身份认证 Cookie，否则服务器会拦截请求。
+  if (imageUrl.contains('/api/image-proxy')) {
+    final cookies = UserDataService.getCookiesSync();
+    if (cookies != null && cookies.isNotEmpty) {
+      headers ??= <String, String>{};
+      headers['Cookie'] = cookies;
+      // 对于发往自己服务器的代理请求，通常不需要 Referer 伪装，
+      // 如果有则保留，没有也不强制添加。
+    }
+  }
+
+  return headers;
 }

@@ -16,6 +16,7 @@ class UserDataService {
   
   // 内存缓存
   static bool? _isLocalModeCache;
+  static String? _cookiesCache;
 
   // 保存用户登录信息
   static Future<void> saveUserData({
@@ -29,6 +30,7 @@ class UserDataService {
     await prefs.setString(_usernameKey, username);
     await prefs.setString(_passwordKey, password);
     await prefs.setString(_cookiesKey, cookies);
+    _cookiesCache = cookies; // 更新内存缓存
   }
 
   // 获取服务器地址
@@ -52,9 +54,16 @@ class UserDataService {
   // 获取cookies
   static Future<String?> getCookies() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_cookiesKey);
+    final cookies = prefs.getString(_cookiesKey);
+    _cookiesCache = cookies; // 同步到内存缓存
+    return cookies;
   }
 
+  // 同步获取 cookies（从内存缓存读取）
+  static String? getCookiesSync() {
+    return _cookiesCache;
+  }
+  
   // 检查是否已登录
   static Future<bool> isLoggedIn() async {
     final cookies = await getCookies();
@@ -68,6 +77,7 @@ class UserDataService {
     await prefs.remove(_usernameKey);
     await prefs.remove(_passwordKey);
     await prefs.remove(_cookiesKey);
+    _cookiesCache = null;
   }
 
   // 只清除密码和cookies，保留服务器地址和用户名
@@ -75,6 +85,7 @@ class UserDataService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_passwordKey);
     await prefs.remove(_cookiesKey);
+    _cookiesCache = null;
   }
 
   // 获取所有用户数据
