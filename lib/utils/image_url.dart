@@ -89,16 +89,16 @@ Future<Map<String, String>?> getImageRequestHeaders(String imageUrl, String? sou
   Map<String, String>? headers;
 
   if (isDoubanSource) {
-    // 豆瓣 CDN 对 Referer 校验比较严格，部分节点（如 img3）发送 movie.douban.com 可能导致 418
-    // 经测试，在移动端直连时，不发送 Referer 或发送空 Referer 兼容性更好
+    // 常见可用的 Referer 和 UA，避免 403 或 Android 解码失败
     headers = <String, String>{
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+      'Referer': 'https://movie.douban.com/',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     };
   } else if (isBangumiSource) {
     headers = <String, String>{
       'Referer': 'https://bgm.tv/',
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
       'Connection': 'keep-alive',
     };
