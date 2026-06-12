@@ -397,10 +397,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 检查是否开启电视模式
-    final isTvMode = UserDataService.getIsTVModeSync() || DeviceUtils.isTV(context);
-    
-    if (isTvMode) {
+    // 自动识别电视模式
+    if (DeviceUtils.isTV(context)) {
       return const TvHomeScreen();
     }
 

@@ -7,29 +7,35 @@ import '../services/user_data_service.dart';
 /// 返回可直接用于加载的图片地址。
 Future<String> getImageUrl(String originalUrl, String? source) async {
   if (originalUrl.isEmpty) return '';
+  
+  // 处理协议相对路径
+  String url = originalUrl;
+  if (url.startsWith('//')) {
+    url = 'https:$url';
+  }
 
   if (source == 'douban') {
     final imageSourceKey = await UserDataService.getDoubanImageSourceKey();
     
     switch (imageSourceKey) {
       case 'official_cdn':
-        return originalUrl.replaceAll(
+        return url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img3.doubanio.com',
         );
       case 'cdn_tencent':
-        return originalUrl.replaceAll(
+        return url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img.doubanio.cmliussss.net',
         );
       case 'cdn_aliyun':
-        return originalUrl.replaceAll(
+        return url.replaceAll(
           RegExp(r'img\d+\.doubanio\.com'),
           'img.doubanio.cmliussss.com',
         );
       case 'direct':
       default:
-        return originalUrl;
+        return url;
     }
   }
 
@@ -42,22 +48,22 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
             ? serverUrl.substring(0, serverUrl.length - 1)
             : serverUrl;
         // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
-        return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(originalUrl)}';
+        return '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
       }
     } else if (imageSourceKey == 'cdn_tencent') {
-      return originalUrl.replaceAll(
+      return url.replaceAll(
         RegExp(r'lain\.bgm\.tv'),
         'lain.bgm.tv.cmliussss.net',
       );
     } else if (imageSourceKey == 'cdn_aliyun') {
-      return originalUrl.replaceAll(
+      return url.replaceAll(
         RegExp(r'lain\.bgm\.tv'),
         'lain.bgm.tv.cmliussss.com',
       );
     }
   }
 
-  return originalUrl;
+  return url;
 }
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
@@ -82,12 +88,24 @@ Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
   }
   
   if (isBangumiSource) {
-    return <String, String>{
+    final headers = <String, String>{
       'Referer': 'https://bgm.tv/',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-      'Host': 'lain.bgm.tv',
+      'Connection': 'keep-alive',
     };
+    
+    // 只有在直接访问官方域名时才添加 Host 头，避免干扰 CDN 或代理节点
+    try {
+      final uri = Uri.parse(imageUrl);
+      if (uri.host == 'lain.bgm.tv') {
+        headers['Host'] = 'lain.bgm.tv';
+      } else if (uri.host == 'lain.bangumi.tv') {
+        headers['Host'] = 'lain.bangumi.tv';
+      }
+    } catch (_) {}
+    
+    return headers;
   }
   
   return null;

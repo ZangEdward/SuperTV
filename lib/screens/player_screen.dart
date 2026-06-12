@@ -1101,7 +1101,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// 构建播放器组件
   Widget _buildPlayerWidget() {
     final isPC = DeviceUtils.isPC();
-    final isTV = UserDataService.getIsTVModeSync() || DeviceUtils.isTV(context);
+    final isTV = DeviceUtils.isTV(context);
     
     VideoPlayerSurface surface = VideoPlayerSurface.mobile;
     if (isTV) {

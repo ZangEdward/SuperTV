@@ -66,18 +66,6 @@ class _TvHomeScreenState extends State<TvHomeScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title: const Text('退出电视模式'),
-              onTap: () async {
-                await UserDataService.saveIsTVMode(false);
-                if (mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => HomeScreen()),
-                    (route) => false,
-                  );
-                }
-              },
-            ),
-            ListTile(
               title: const Text('退出登录'),
               onTap: () async {
                 await UserDataService.clearUserData();

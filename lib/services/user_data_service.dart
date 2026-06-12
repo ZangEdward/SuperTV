@@ -13,11 +13,9 @@ class UserDataService {
   static const String _preferSpeedTestKey = 'prefer_speed_test';
   static const String _localSearchKey = 'local_search';
   static const String _isLocalModeKey = 'is_local_mode';
-  static const String _isTVModeKey = 'is_tv_mode';
   
   // 内存缓存
   static bool? _isLocalModeCache;
-  static bool? _isTVModeCache;
 
   // 保存用户登录信息
   static Future<void> saveUserData({
@@ -211,7 +209,7 @@ class UserDataService {
     final prefs = await SharedPreferences.getInstance();
     String key;
     switch (displayName) {
-      case '客户端直连':
+      case '直连':
         key = 'client';
         break;
       case '服务端转发':
@@ -220,10 +218,10 @@ class UserDataService {
       case '反向代理':
         key = 'proxy';
         break;
-      case 'Bangumi CDN By CMLiussss（腾讯云）':
+      case '腾讯云 CDN':
         key = 'cdn_tencent';
         break;
-      case 'Bangumi CDN By CMLiussss（阿里云）':
+      case '阿里云 CDN':
         key = 'cdn_aliyun';
         break;
       default:
@@ -243,17 +241,17 @@ class UserDataService {
     final key = await getBangumiDataSourceKey();
     switch (key) {
       case 'client':
-        return '客户端直连';
+        return '直连';
       case 'forward':
         return '服务端转发';
       case 'proxy':
         return '反向代理';
       case 'cdn_tencent':
-        return 'Bangumi CDN By CMLiussss（腾讯云）';
+        return '腾讯云 CDN';
       case 'cdn_aliyun':
-        return 'Bangumi CDN By CMLiussss（阿里云）';
+        return '阿里云 CDN';
       case 'direct': // 兼容旧版本
-        return '服务端转发';
+        return '直连';
       default:
         return '服务端转发';
     }
@@ -270,10 +268,10 @@ class UserDataService {
       case '服务器代理':
         key = 'proxy';
         break;
-      case 'Bangumi CDN By CMLiussss（腾讯云）':
+      case '腾讯云 CDN':
         key = 'cdn_tencent';
         break;
-      case 'Bangumi CDN By CMLiussss（阿里云）':
+      case '阿里云 CDN':
         key = 'cdn_aliyun';
         break;
       default:
@@ -297,9 +295,9 @@ class UserDataService {
       case 'proxy':
         return '服务器代理';
       case 'cdn_tencent':
-        return 'Bangumi CDN By CMLiussss（腾讯云）';
+        return '腾讯云 CDN';
       case 'cdn_aliyun':
-        return 'Bangumi CDN By CMLiussss（阿里云）';
+        return '阿里云 CDN';
       default:
         return '直连';
     }
@@ -359,25 +357,5 @@ class UserDataService {
   // 同步获取本地模式设置（从内存缓存读取）
   static bool getIsLocalModeSync() {
     return _isLocalModeCache ?? false;
-  }
-
-  // 保存电视模式设置
-  static Future<void> saveIsTVMode(bool isTVMode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_isTVModeKey, isTVMode);
-    _isTVModeCache = isTVMode;
-  }
-
-  // 获取电视模式设置
-  static Future<bool> getIsTVMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getBool(_isTVModeKey) ?? false;
-    _isTVModeCache = value;
-    return value;
-  }
-
-  // 同步获取电视模式设置
-  static bool getIsTVModeSync() {
-    return _isTVModeCache ?? false;
   }
 }

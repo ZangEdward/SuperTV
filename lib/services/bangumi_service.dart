@@ -21,9 +21,11 @@ class BangumiService {
   /// 清除 Bangumi 相关缓存
   static Future<void> clearCache() async {
     await _initCache();
-    // 清除不同数据源下的日历缓存
-    await _cache.delete('bangumi_calendar_direct_v1');
-    await _cache.delete('bangumi_calendar_proxy_v1');
+    // 清除所有可能的数据源日历缓存
+    final sources = ['client', 'forward', 'proxy', 'cdn_tencent', 'cdn_aliyun', 'direct'];
+    for (final source in sources) {
+      await _cache.delete('bangumi_calendar_${source}_v1');
+    }
     // 注意：bangumi_details 缓存由于 key 包含 ID，暂时不批量清理
   }
 
