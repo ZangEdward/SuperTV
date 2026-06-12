@@ -64,20 +64,11 @@ class _VideoCardState extends State<VideoCard> {
         final String episodeText =
             shouldShowEpisodeInfo ? _getEpisodeText() : '';
 
-        return FutureBuilder<List<dynamic>>(
-          future: Future.wait([
-            getImageUrl(widget.videoInfo.cover, widget.videoInfo.source),
-          ]).then((results) async {
-            final url = results[0] as String;
-            final headers = await getImageRequestHeaders(url, widget.videoInfo.source);
-            return [url, headers];
-          }),
+        return FutureBuilder<String>(
+          future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-               // 等待时也可以显示占位符
-            }
-            final String imageUrl = snapshot.hasData ? snapshot.data![0] : widget.videoInfo.cover;
-            final Map<String, String>? headers = snapshot.hasData ? snapshot.data![1] : null;
+            final String imageUrl = snapshot.data ?? widget.videoInfo.cover;
+            final headers = getImageRequestHeaders(imageUrl, widget.videoInfo.source);
 
             if (snapshot.hasData) {
               debugPrint('[SuperTV] Card build for "${widget.videoInfo.title}", imageUrl: $imageUrl');

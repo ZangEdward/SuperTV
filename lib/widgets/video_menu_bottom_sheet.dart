@@ -459,14 +459,11 @@ class _VideoMenuBottomSheetState extends State<VideoMenuBottomSheet>
   Widget build(BuildContext context) {
     return Consumer<ThemeService>(
       builder: (context, themeService, child) {
-        return FutureBuilder<List<dynamic>>(
-          future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source).then((url) async {
-            final headers = await getImageRequestHeaders(url, widget.videoInfo.source);
-            return [url, headers];
-          }),
+        return FutureBuilder<String>(
+          future: getImageUrl(widget.videoInfo.cover, widget.videoInfo.source),
           builder: (context, snapshot) {
-            final String thumbUrl = snapshot.hasData ? snapshot.data![0] as String : widget.videoInfo.cover;
-            final Map<String, String>? headers = snapshot.hasData ? snapshot.data![1] as Map<String, String>? : null;
+            final String thumbUrl = snapshot.data ?? widget.videoInfo.cover;
+            final headers = getImageRequestHeaders(thumbUrl, widget.videoInfo.source);
             
             return GestureDetector(
               behavior: HitTestBehavior.translucent,

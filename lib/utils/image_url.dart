@@ -85,9 +85,8 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
 
 /// 返回加载网络图片所需的 HTTP 头（主要用于绕过特定站点的反盗链）。
 /// 注意：只有当 [source] 为 'douban'/'bangumi' 或 URL 指向对应域名时才添加 Referer/UA。其他来源返回空头。
-Future<Map<String, String>?> getImageRequestHeaders(String imageUrl, String? source) async {
-  debugPrint('[SuperTV] Getting headers for: $imageUrl (source: $source)');
-
+/// 改回同步方法，完全对齐 Selene 原项目逻辑。
+Map<String, String>? getImageRequestHeaders(String imageUrl, String? source) {
   final bool isDoubanSource = (source == 'douban') ||
       RegExp(r'https?://([^/]+\.)?douban(io|)\.com', caseSensitive: false)
           .hasMatch(imageUrl);
@@ -96,59 +95,21 @@ Future<Map<String, String>?> getImageRequestHeaders(String imageUrl, String? sou
       RegExp(r'https?://([^/]+\.)?(bgm\.tv|bangumi\.tv)', caseSensitive: false)
           .hasMatch(imageUrl);
 
-  Map<String, String>? headers;
-
   if (isDoubanSource) {
-    // 豆瓣对 Referer 校验极其严格，且不同子域名（img3, img9 等）策略不同
-    // 经测试，在 App 中直连请求时，不发送 Referer 且使用通用的桌面端 User-Agent 稳定性最高
-    // 避免使用 movie.douban.com 的 Referer，那会导致 418 (I'm a teapot) 拦截
-    headers = <String, String>{
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+    // 采用 Selene 项目验证过的移动端 Header 组合
+    return <String, String>{
+      'Referer': 'https://movie.douban.com/',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
     };
   } else if (isBangumiSource) {
-    headers = <String, String>{
+    return <String, String>{
       'Referer': 'https://bgm.tv/',
       'User-Agent': 'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
       'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
       'Connection': 'keep-alive',
     };
-    
-    // 只有在直接访问官方域名时才添加 Host 头，避免干扰 CDN 或代理节点
-    try {
-      final uri = Uri.parse(imageUrl);
-      if (uri.host == 'lain.bgm.tv') {
-        headers['Host'] = 'lain.bgm.tv';
-      } else if (uri.host == 'lain.bangumi.tv') {
-        headers['Host'] = 'lain.bangumi.tv';
-      }
-    } catch (_) {}
   }
 
-  // 如果 URL 指向的是用户自己的服务器地址，需要添加身份认证 Cookie
-  final serverUrl = await UserDataService.getServerUrl();
-  if (serverUrl != null && serverUrl.isNotEmpty) {
-    try {
-      final uri = Uri.parse(imageUrl);
-      final serverUri = Uri.parse(serverUrl);
-      if (uri.host == serverUri.host) {
-        final cookies = await UserDataService.getCookies();
-        if (cookies != null && cookies.isNotEmpty) {
-          headers ??= <String, String>{};
-          headers['Cookie'] = cookies;
-          debugPrint('[SuperTV] Added auth cookies for server proxy request');
-        }
-      }
-    } catch (e) {
-      debugPrint('[SuperTV] Error parsing URLs for header check: $e');
-    }
-  }
-
-  if (headers != null) {
-    debugPrint('[SuperTV] Final Headers: $headers');
-  }
-  
-  return headers;
+  return null;
 }
-
-
