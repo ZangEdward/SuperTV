@@ -130,7 +130,7 @@ flutter build apk --release --dart-define=API_NODES_JSON='[{"key":"local","label
 ## 📌 版本发布说明 (v6.0.0.523)
 
 版本号更新涉及以下文件：
-- **pubspec.yaml**: 定义项目全局版本号 (`version: 6.0.0.523+523`)。
+- **pubspec.yaml**: 定义项目全局版本号 (`version: 6.0.0+523`)。注：由于 Flutter 限制，此文件采用标准 SemVer 格式。
 - **android/app/build.gradle.kts**: 硬编码的 Android `versionCode` (523) 和 `versionName` ("6.0.0.523")。
 - **lib/widgets/user_menu.dart**: 侧边栏菜单中显示的备用版本号 (v6.0.0.523)。
 - **windows/README.md**: Windows 安装程序打包命令中的版本参数。
