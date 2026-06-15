@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +23,7 @@ class DownloadService extends ChangeNotifier {
   
   // 下载设置
   int _maxConcurrentEpisodes = 5;
-  int _segmentConcurrency = 6;
+  int _segmentConcurrency = 10;
   
   List<DownloadTask> get tasks => _tasks;
   int get maxConcurrentEpisodes => _maxConcurrentEpisodes;
@@ -37,7 +38,13 @@ class DownloadService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _maxConcurrentEpisodes = prefs.getInt('max_concurrent_episodes') ?? 5;
-    _segmentConcurrency = prefs.getInt('segment_concurrency') ?? 6;
+    
+    // 动态计算默认并发数：核心数的 1.5 倍，最小 6，最大 16
+    int defaultConcurrency = (Platform.numberOfProcessors * 1.5).round();
+    if (defaultConcurrency > 16) defaultConcurrency = 16;
+    if (defaultConcurrency < 6) defaultConcurrency = 6;
+    
+    _segmentConcurrency = prefs.getInt('segment_concurrency') ?? defaultConcurrency;
   }
 
   Future<void> setMaxConcurrentEpisodes(int count) async {
@@ -144,6 +151,7 @@ class DownloadService extends ChangeNotifier {
       final encryptionInfo = _m3u8Service.parseEncryptionKey(content);
       encrypt.Encrypter? encrypter;
       encrypt.IV? fixedIv;
+      Uint8List? keyBytes;
 
       if (encryptionInfo != null && encryptionInfo['METHOD'] == 'AES-128') {
         final keyUri = encryptionInfo['URI']!;
@@ -156,8 +164,9 @@ class DownloadService extends ChangeNotifier {
         
         try {
           final keyResponse = await _dio.get(absoluteKeyUrl, options: Options(responseType: ResponseType.bytes));
-          final keyBytes = encrypt.Key(Uint8List.fromList(keyResponse.data));
-          encrypter = encrypt.Encrypter(encrypt.AES(keyBytes, mode: encrypt.AESMode.cbc, padding: 'PKCS7'));
+          keyBytes = Uint8List.fromList(keyResponse.data);
+          final encryptKey = encrypt.Key(keyBytes);
+          encrypter = encrypt.Encrypter(encrypt.AES(encryptKey, mode: encrypt.AESMode.cbc, padding: 'PKCS7'));
           
           if (encryptionInfo.containsKey('IV')) {
             final ivStr = encryptionInfo['IV']!.startsWith('0x') ? encryptionInfo['IV']!.substring(2) : encryptionInfo['IV']!;
@@ -238,7 +247,14 @@ class DownloadService extends ChangeNotifier {
                   final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
                   final encryptedBytes = Uint8List.fromList(response.data);
                   final iv = fixedIv ?? encrypt.IV(_getIVFromIndex(segmentIndex));
-                  final decryptedBytes = encrypter.decryptBytes(encrypt.Encrypted(encryptedBytes), iv: iv);
+                  
+                  // 使用 compute 在后台线程解密，避免阻塞主线程并利用多核 CPU
+                  final decryptedBytes = await compute(_decryptData, _DecryptParams(
+                    encryptedBytes,
+                    keyBytes!, // 使用原始字节
+                    iv.bytes,
+                  ));
+                  
                   await File(filePath).writeAsBytes(decryptedBytes);
                 } else {
                   await _dio.download(url, filePath);
@@ -397,4 +413,22 @@ class DownloadService extends ChangeNotifier {
     }
     return result;
   }
+}
+
+/// 解密参数包装类，用于 compute 传递
+class _DecryptParams {
+  final Uint8List data;
+  final Uint8List key;
+  final Uint8List iv;
+
+  _DecryptParams(this.data, this.key, this.iv);
+}
+
+/// 顶层解密函数，运行在独立 Isolate 中
+Uint8List _decryptData(_DecryptParams params) {
+  final key = encrypt.Key(params.key);
+  final iv = encrypt.IV(params.iv);
+  // HLS 常用 AES-128-CBC 模式
+  final encrypter = encrypt.Encrypter(encrypt.AES(key, mode: encrypt.AESMode.cbc, padding: 'PKCS7'));
+  return Uint8List.fromList(encrypter.decryptBytes(encrypt.Encrypted(params.data), iv: iv));
 }
