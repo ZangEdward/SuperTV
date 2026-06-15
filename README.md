@@ -127,5 +127,13 @@ flutter build apk --release --dart-define=API_NODES_JSON='[{"key":"local","label
 
 本项目采用 MIT 许可证。
 
+## 📌 版本发布说明 (v6.0.0.523)
+
+版本号更新涉及以下文件：
+- **pubspec.yaml**: 定义项目全局版本号 (`version: 6.0.0.523+523`)。
+- **android/app/build.gradle.kts**: 硬编码的 Android `versionCode` (523) 和 `versionName` ("6.0.0.523")。
+- **lib/widgets/user_menu.dart**: 侧边栏菜单中显示的备用版本号 (v6.0.0.523)。
+- **windows/README.md**: Windows 安装程序打包命令中的版本参数。
+
 ---
 *声明：本项目仅供学习交流使用，请勿用于商业用途。*
