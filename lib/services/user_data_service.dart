@@ -291,7 +291,7 @@ class UserDataService {
   // 获取 Bangumi 图片源设置（返回 key 值）
   static Future<String> getBangumiImageSourceKey() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_bangumiImageSourceKey) ?? 'direct';
+    return prefs.getString(_bangumiImageSourceKey) ?? 'proxy';
   }
 
   // 获取 Bangumi 图片源显示名称

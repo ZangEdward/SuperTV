@@ -129,11 +129,22 @@ flutter build apk --release --dart-define=API_NODES_JSON='[{"key":"local","label
 
 ## 📌 版本发布说明 (v6.0.0.523)
 
-版本号更新涉及以下文件：
-- **pubspec.yaml**: 定义项目全局版本号 (`version: 6.0.0+523`)。注：由于 Flutter 限制，此文件采用标准 SemVer 格式。
+### 📥 下载地址
+- **Android APK**: [点击下载 v6.0.0.523](https://github.com/SzeMeng76/ota-sync-repo/releases/download/v6.0.0.523/SuperTV-v6.0.0.523-Android.apk) (或前往 Release 页面)
+- **Windows 版本**: [点击下载 v6.0.0.523](https://github.com/SzeMeng76/ota-sync-repo/releases/download/v6.0.0.523/SuperTV-v6.0.0.523-Windows.zip)
+
+### 🛠️ 关键更新
+- **版本号统一**: 全面更新 Android (versionCode 523, versionName 6.0.0.523) 和 Windows 版本信息。
+- **更新系统修复**: 修正了自动更新检测中的下载链接生成逻辑。
+- **Bangumi 加速**: 默认开启服务器代理/转发模式，显著提升动漫图片和数据加载速度。
+- **CDN 引入**: 引入 CMLiussss CDN 节点支持。
+
+### 涉及文件：
+- **pubspec.yaml**: 定义项目全局版本号 (`version: 6.0.0+523`)。
 - **android/app/build.gradle.kts**: 硬编码的 Android `versionCode` (523) 和 `versionName` ("6.0.0.523")。
-- **lib/widgets/user_menu.dart**: 侧边栏菜单中显示的备用版本号 (v6.0.0.523)。
-- **windows/README.md**: Windows 安装程序打包命令中的版本参数。
+- **windows/runner/Runner.rc**: 硬编码 Windows 应用版本信息 (6.0.0.523)。
+- **lib/services/version_service.dart**: 更新下载链接模板和版本拼接逻辑。
+- **lib/services/user_data_service.dart**: 调整 Bangumi 图片/数据代理默认值为 `proxy`/`forward`。
 
 ---
 *声明：本项目仅供学习交流使用，请勿用于商业用途。*

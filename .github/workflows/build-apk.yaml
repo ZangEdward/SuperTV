@@ -109,12 +109,12 @@ jobs:
         if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ secrets.SYNC_REPO }}
+          token: ${{ secrets.PAT }}
           tag_name: v${{ env.VERSION_NAME }}
           name: "SuperTV v${{ env.VERSION_NAME }}"
           files: output/SuperTV-v${{ env.VERSION_NAME }}-Android.apk
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     runs-on: windows-latest
@@ -171,10 +171,10 @@ jobs:
         if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ secrets.SYNC_REPO }}
+          token: ${{ secrets.PAT }}
           tag_name: v${{ needs.build-apk.outputs.VERSION_NAME }}
           files: output/SuperTV-v*-Windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ota:
     needs: build-apk

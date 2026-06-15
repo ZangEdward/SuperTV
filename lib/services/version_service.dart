@@ -11,13 +11,16 @@ class VersionService {
   /// 获取元数据 URL (包含版本和 APK 大小)
   static String _getMetadataUrl() {
     if (_syncRepo.isEmpty) return '';
+    // 目标仓库：$_syncRepo
     return 'https://ghfast.top/https://raw.githubusercontent.com/$_syncRepo/main/log/vision/metadata.json?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
   /// 获取下载 URL
   static String getDownloadUrl(String version) {
     if (_syncRepo.isEmpty) return '';
-    return 'https://ghfast.top/https://github.com/$_syncRepo/releases/download/v$version/SuperTV-$version.apk';
+    // 使用 ghfast.top 代理加速 GitHub Release 下载
+    // 链接指向目标仓库：$_syncRepo
+    return 'https://ghfast.top/https://github.com/$_syncRepo/releases/download/v$version/SuperTV-v$version-Android.apk';
   }
 
   /// 获取 Release 页面 URL
@@ -39,7 +42,19 @@ class VersionService {
 
       // 获取当前版本
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
+      // 在 Android 平台，我们设置了 versionName 为 6.0.0.523，
+      // 在 Windows 平台，我们也硬编码了 6.0.0.523。
+      // packageInfo.version 在这些平台通常会返回完整版本号。
+      String currentVersion = packageInfo.version;
+      
+      // 如果版本号不包含构建号且构建号存在，尝试拼接 (适配部分平台的默认行为)
+      if (!currentVersion.contains(packageInfo.buildNumber) && packageInfo.buildNumber.isNotEmpty) {
+        if (currentVersion == '6.0.0') {
+           currentVersion = '6.0.0.523'; // 强制匹配目标版本格式
+        } else {
+           currentVersion = '$currentVersion.${packageInfo.buildNumber}';
+        }
+      }
       
       // 1. 获取最新元数据 (包含版本、大小、日志等)
       final response = await http.get(Uri.parse(metadataUrl)).timeout(const Duration(seconds: 10));
