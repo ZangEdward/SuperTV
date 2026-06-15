@@ -2919,11 +2919,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           ),
           child: Column(
             children: [
-              // Windows 自定义标题栏（播放页使用纯黑背景）
+              // Windows 自定义标题栏
               if (DeviceUtils.isWindows())
-                const WindowsTitleBar(
-                  customBackgroundColor: Color(0xFF000000),
-                ),
+                const WindowsTitleBar(),
               // 主要内容
               Expanded(
                 child: Stack(

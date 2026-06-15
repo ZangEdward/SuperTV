@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedTopTab = '首页';
   int _currentTopTabIndex = 0;
   int _previousTopTabIndex = 0;
+  DateTime? _lastPressedAt;
 
   @override
   void initState() {
@@ -402,14 +403,44 @@ class _HomeScreenState extends State<HomeScreen> {
       return const TvHomeScreen();
     }
 
-    return MainLayout(
-      content: _buildBottomNavWithAnimation(),
-      currentBottomNavIndex: _currentBottomNavIndex,
-      onBottomNavChanged: _onBottomNavChanged,
-      selectedTopTab: _selectedTopTab,
-      onTopTabChanged: _onTopTabChanged,
-      onHomeTap: _onHomeTap,
-      onSearchTap: _onSearchTap,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        final now = DateTime.now();
+        if (_lastPressedAt == null ||
+            now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
+          _lastPressedAt = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '再按一次退出应用',
+                style: FontUtils.poppins(color: Colors.white),
+              ),
+              backgroundColor: const Color(0xFF2c3e50),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              width: 200,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+          return;
+        }
+        // 退出应用
+        exit(0);
+      },
+      child: MainLayout(
+        content: _buildBottomNavWithAnimation(),
+        currentBottomNavIndex: _currentBottomNavIndex,
+        onBottomNavChanged: _onBottomNavChanged,
+        selectedTopTab: _selectedTopTab,
+        onTopTabChanged: _onTopTabChanged,
+        onHomeTap: _onHomeTap,
+        onSearchTap: _onSearchTap,
+      ),
     );
   }
 

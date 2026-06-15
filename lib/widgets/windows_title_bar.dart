@@ -35,9 +35,17 @@ class _WindowsTitleBarState extends State<WindowsTitleBar> {
                     : Colors.white.withValues(alpha: 0.8)));
         
         // Windows 11 风格的文字和图标颜色
-        final foregroundColor = widget.forceBlack 
-            ? Colors.white
-            : (isDark ? Colors.white : const Color(0xFF202020));
+        Color foregroundColor;
+        if (widget.forceBlack) {
+          foregroundColor = Colors.white;
+        } else if (widget.customBackgroundColor != null && widget.customBackgroundColor != Colors.transparent) {
+          // 如果提供了非透明的自定义背景色，根据其亮度自动选择前景色
+          foregroundColor = widget.customBackgroundColor!.computeLuminance() < 0.5 
+              ? Colors.white 
+              : const Color(0xFF202020);
+        } else {
+          foregroundColor = isDark ? Colors.white : const Color(0xFF202020);
+        }
         
         return Container(
           height: 40,
