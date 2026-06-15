@@ -851,6 +851,7 @@ class _UserMenuState extends State<UserMenu> {
                         '直连',
                         '服务端转发',
                         '反向代理',
+                        'Bangumi 反代 By CMLiussss',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiDataSource(value);
@@ -879,6 +880,7 @@ class _UserMenuState extends State<UserMenu> {
                       options: const [
                         '直连',
                         '服务器代理',
+                        'Bangumi 图片 CDN By CMLiussss',
                       ],
                       onChanged: (value) async {
                         await UserDataService.saveBangumiImageSource(value);
@@ -1095,7 +1097,7 @@ class _UserMenuState extends State<UserMenu> {
                           ),
                           child: Center(
                             child: Text(
-                              _version.isEmpty ? 'v1.4.3' : 'v$_version',
+                              _version.isEmpty ? 'v6.0.0.523' : 'v$_version',
                               style: FontUtils.poppins(
                                 fontSize: 14,
                                 color: widget.isDarkMode

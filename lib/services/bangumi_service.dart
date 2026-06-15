@@ -22,7 +22,7 @@ class BangumiService {
   static Future<void> clearCache() async {
     await _initCache();
     // 清除所有可能的数据源日历缓存
-    final sources = ['client', 'forward', 'proxy', 'direct'];
+    final sources = ['client', 'forward', 'proxy', 'direct', 'cmliussss'];
     for (final source in sources) {
       await _cache.delete('bangumi_calendar_${source}_v1');
     }
@@ -88,6 +88,20 @@ class BangumiService {
           response = ApiResponse.success(json.decode(httpResponse.body) as List<dynamic>, statusCode: 200);
         } else {
           response = ApiResponse.error('请求 Bangumi 失败: ${httpResponse.statusCode}');
+        }
+      } else if (dataSource == 'cmliussss') {
+        // 使用 CMLiussss CDN 反代
+        String apiUrl = 'https://img.doubanio.cmliussss.net/calendar';
+        
+        final headers = {
+          'User-Agent': 'LunaTV/1.0',
+          'Accept': 'application/json',
+        };
+        final httpResponse = await http.get(Uri.parse(apiUrl), headers: headers).timeout(const Duration(seconds: 30));
+        if (httpResponse.statusCode == 200) {
+          response = ApiResponse.success(json.decode(httpResponse.body) as List<dynamic>, statusCode: 200);
+        } else {
+          response = ApiResponse.error('请求 Bangumi CDN 失败: ${httpResponse.statusCode}');
         }
       } else {
         // 服务端转发或反向代理模式
@@ -184,6 +198,20 @@ class BangumiService {
           response = ApiResponse.success(json.decode(httpResponse.body) as Map<String, dynamic>, statusCode: 200);
         } else {
           response = ApiResponse.error('请求 Bangumi 详情失败: ${httpResponse.statusCode}');
+        }
+      } else if (dataSource == 'cmliussss') {
+        // 使用 CMLiussss CDN 反代
+        String apiUrl = 'https://img.doubanio.cmliussss.net/v0/subjects/$bangumiId';
+        
+        final headers = {
+          'User-Agent': 'LunaTV/1.0',
+          'Accept': 'application/json',
+        };
+        final httpResponse = await http.get(Uri.parse(apiUrl), headers: headers).timeout(const Duration(seconds: 30));
+        if (httpResponse.statusCode == 200) {
+          response = ApiResponse.success(json.decode(httpResponse.body) as Map<String, dynamic>, statusCode: 200);
+        } else {
+          response = ApiResponse.error('请求 Bangumi CDN 详情失败: ${httpResponse.statusCode}');
         }
       } else {
         // 根据数据源选择不同的服务端接口

@@ -185,6 +185,36 @@ class UserDataService {
     }
   }
 
+  // 根据显示名称获取 Bangumi 数据源的 key 值
+  static String _getBangumiDataSourceKeyFromDisplayName(String displayName) {
+    switch (displayName) {
+      case '直连':
+        return 'client';
+      case '服务端转发':
+        return 'forward';
+      case '反向代理':
+        return 'proxy';
+      case 'Bangumi 反代 By CMLiussss':
+        return 'cmliussss';
+      default:
+        return 'forward';
+    }
+  }
+
+  // 根据显示名称获取 Bangumi 图片源的 key 值
+  static String _getBangumiImageSourceKeyFromDisplayName(String displayName) {
+    switch (displayName) {
+      case '直连':
+        return 'direct';
+      case '服务器代理':
+        return 'proxy';
+      case 'Bangumi 图片 CDN By CMLiussss':
+        return 'cmliussss';
+      default:
+        return 'direct';
+    }
+  }
+
   // 根据key值获取豆瓣数据源显示名称（私有方法）
   static String _getDoubanDataSourceDisplayNameFromKey(String key) {
     switch (key) {
@@ -222,20 +252,7 @@ class UserDataService {
   // 保存 Bangumi 数据源设置（存储 key 值）
   static Future<void> saveBangumiDataSource(String displayName) async {
     final prefs = await SharedPreferences.getInstance();
-    String key;
-    switch (displayName) {
-      case '直连':
-        key = 'client';
-        break;
-      case '服务端转发':
-        key = 'forward';
-        break;
-      case '反向代理':
-        key = 'proxy';
-        break;
-      default:
-        key = 'forward';
-    }
+    final key = _getBangumiDataSourceKeyFromDisplayName(displayName);
     await prefs.setString(_bangumiDataSourceKey, key);
   }
 
@@ -255,6 +272,8 @@ class UserDataService {
         return '服务端转发';
       case 'proxy':
         return '反向代理';
+      case 'cmliussss':
+        return 'Bangumi 反代 By CMLiussss';
       case 'direct': // 兼容旧版本
         return '直连';
       default:
@@ -265,17 +284,7 @@ class UserDataService {
   // 保存 Bangumi 图片源设置（存储 key 值）
   static Future<void> saveBangumiImageSource(String displayName) async {
     final prefs = await SharedPreferences.getInstance();
-    String key;
-    switch (displayName) {
-      case '直连':
-        key = 'direct';
-        break;
-      case '服务器代理':
-        key = 'proxy';
-        break;
-      default:
-        key = 'direct';
-    }
+    final key = _getBangumiImageSourceKeyFromDisplayName(displayName);
     await prefs.setString(_bangumiImageSourceKey, key);
   }
 
@@ -293,6 +302,8 @@ class UserDataService {
         return '直连';
       case 'proxy':
         return '服务器代理';
+      case 'cmliussss':
+        return 'Bangumi 图片 CDN By CMLiussss';
       default:
         return '直连';
     }

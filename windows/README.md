@@ -37,7 +37,7 @@
 flutter build windows --release
 
 # 2. 编译安装程序
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=1.4.3 windows\installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=6.0.0.523 windows\installer.iss
 ```
 
 ## 自定义安装程序

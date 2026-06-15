@@ -64,15 +64,25 @@ Future<String> getImageUrl(String originalUrl, String? source) async {
     final imageSourceKey = await UserDataService.getBangumiImageSourceKey();
     debugPrint('[SuperTV] Bangumi image source key: $imageSourceKey');
 
-    if (imageSourceKey == 'proxy') {
-      final serverUrl = await UserDataService.getServerUrl();
-      if (serverUrl != null && serverUrl.isNotEmpty) {
-        String cleanBaseUrl = serverUrl.endsWith('/')
-            ? serverUrl.substring(0, serverUrl.length - 1)
-            : serverUrl;
-        // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
-        processedUrl = '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
-      }
+    switch (imageSourceKey) {
+      case 'proxy':
+        final serverUrl = await UserDataService.getServerUrl();
+        if (serverUrl != null && serverUrl.isNotEmpty) {
+          String cleanBaseUrl = serverUrl.endsWith('/')
+              ? serverUrl.substring(0, serverUrl.length - 1)
+              : serverUrl;
+          // 使用服务器的通用图片代理接口，并对原始 URL 进行编码
+          processedUrl = '$cleanBaseUrl/api/image-proxy?url=${Uri.encodeComponent(url)}';
+        }
+        break;
+      case 'cmliussss':
+        processedUrl = url.replaceAll(
+          RegExp(r'lain\.bgm\.tv'),
+          'img.doubanio.cmliussss.net',
+        );
+        break;
+      default:
+        processedUrl = url;
     }
   }
 
