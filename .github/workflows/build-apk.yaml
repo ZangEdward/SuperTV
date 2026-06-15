@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
+      SYNC_REPO: ${{ secrets.SYNC_REPO }}
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -57,7 +58,7 @@ jobs:
         run: |
           # 压缩 JSON 为单行并移除换行符，确保注入成功
           # 学习 build-ota.yaml 的传入方式，但针对 Flutter 的 --dart-define-from-file 进行优化
-          python3 -c "import os, json; nodes = os.environ.get('API_NODES_JSON', '').strip().replace('\n', '').replace('\r', ''); print(json.dumps({'API_NODES_JSON': nodes}))" > dart_config.json
+          python3 -c "import os, json; nodes = os.environ.get('API_NODES_JSON', '').strip().replace('\n', '').replace('\r', ''); sync_repo = os.environ.get('SYNC_REPO', '').strip(); print(json.dumps({'API_NODES_JSON': nodes, 'SYNC_REPO': sync_repo}))" > dart_config.json
           echo "✅ dart_config.json 已生成"
 
       - name: Decode Keystore
@@ -120,6 +121,7 @@ jobs:
     needs: build-apk
     env:
       API_NODES_JSON: ${{ secrets.API_NODES_JSON }}
+      SYNC_REPO: ${{ secrets.SYNC_REPO }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -140,7 +142,8 @@ jobs:
           # 压缩 JSON 为单行并移除换行符
           $nodes = $env:API_NODES_JSON -replace "[\r\n]", ""
           $nodes = $nodes.Trim()
-          $config = @{ API_NODES_JSON = $nodes }
+          $sync_repo = $env:SYNC_REPO.Trim()
+          $config = @{ API_NODES_JSON = $nodes; SYNC_REPO = $sync_repo }
           $config | ConvertTo-Json -Compress | Out-File -FilePath dart_config.json -Encoding utf8
           Write-Host "✅ dart_config.json 已生成"
 
@@ -206,9 +209,12 @@ jobs:
           cp SuperTV-$VERSION.apk sync-repo/log/
           echo "$VERSION" > sync-repo/log/latest_version.txt
           
-          # 模拟 build-ota.yaml 的 metadata 更新逻辑
+          # 更新 log/vision/metadata.json，包含所有必要的更新元数据
           mkdir -p sync-repo/log/vision
-          echo "{ \"version\": \"$VERSION\", \"apksize\": $(stat -c%s SuperTV-$VERSION.apk) }" > sync-repo/log/vision/metadata.json
+          APK_SIZE=$(stat -c%s SuperTV-$VERSION.apk)
+          # 获取 commit message 作为默认的 releaseNotes
+          COMMIT_MSG=$(git log -1 --pretty=%B | tr -d '"' | tr '\n' ' ')
+          echo "{ \"version\": \"$VERSION\", \"apksize\": $APK_SIZE, \"releaseNotes\": \"$COMMIT_MSG\" }" > sync-repo/log/vision/metadata.json
           
           cd sync-repo
           git config user.name "github-actions[bot]"

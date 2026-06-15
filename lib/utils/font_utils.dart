@@ -12,6 +12,7 @@ class FontUtils {
     double? letterSpacing,
     double? height,
     FontStyle? fontStyle,
+    TextDecoration? decoration,
   }) {
     if (DeviceUtils.isWindows()) {
       return TextStyle(
@@ -22,6 +23,7 @@ class FontUtils {
         letterSpacing: letterSpacing,
         height: height,
         fontStyle: fontStyle,
+        decoration: decoration,
       );
     }
 
@@ -46,6 +48,7 @@ class FontUtils {
         letterSpacing: letterSpacing,
         height: height,
         fontStyle: fontStyle,
+        decoration: decoration,
         fontFamilyFallback: const ['sans-serif', 'Roboto', 'Arial'],
       );
     }
@@ -57,6 +60,7 @@ class FontUtils {
       letterSpacing: letterSpacing,
       height: height,
       fontStyle: fontStyle,
+      decoration: decoration,
       // 添加备用字体防止下载失败时显示异常
       textStyle: const TextStyle(
         fontFamilyFallback: ['sans-serif', 'Roboto', 'Arial'],
@@ -72,6 +76,7 @@ class FontUtils {
     double? letterSpacing,
     double? height,
     FontStyle? fontStyle,
+    TextDecoration? decoration,
   }) {
     // 同样做安全映射
     FontWeight? effectiveWeight = fontWeight;
@@ -88,6 +93,7 @@ class FontUtils {
       letterSpacing: letterSpacing,
       height: height,
       fontStyle: fontStyle,
+      decoration: decoration,
       // 添加备用字体
       textStyle: const TextStyle(
         fontFamilyFallback: ['monospace', 'Courier New'],

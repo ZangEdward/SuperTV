@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/download_task.dart';
@@ -194,45 +192,52 @@ class DownloadService extends ChangeNotifier {
       notifyListeners();
 
       // 4. 创建保存目录
-      final directory = Directory(task.savePath);
       final segmentsDir = Directory('${task.savePath}/segments');
       if (!await segmentsDir.exists()) {
         await segmentsDir.create(recursive: true);
       }
 
       // 5. 并发下载片段
-      int existingFilesCount = 0;
       final downloadQueue = <int>[];
       for (int i = 0; i < segments.length; i++) {
         final filePath = '${task.savePath}/segments/segment_$i.ts';
-        if (await File(filePath).exists()) {
-          existingFilesCount++;
-        } else {
+        if (!(await File(filePath).exists())) {
           downloadQueue.add(i);
         }
       }
 
-      // 更新已下载片段数以支持断点续传显示
+      // 获取当前实际已下载的片段数（排除不完整文件，仅以存在的 ts 片段为准）
       final total = segments.length;
-      _tasks[index].downloadedSegments = existingFilesCount;
-      _tasks[index].progress = existingFilesCount / total;
-      int completed = existingFilesCount;
+      int completed = total - downloadQueue.length;
+      
+      _tasks[index].totalSegments = total;
+      _tasks[index].downloadedSegments = completed;
+      _tasks[index].progress = total > 0 ? completed / total : 0.0;
       notifyListeners();
 
-      if (downloadQueue.isEmpty && existingFilesCount >= total) {
+      if (downloadQueue.isEmpty && completed >= total) {
         // 所有片段已存在，直接进入合并阶段
-        _tasks[index].downloadedSegments = total;
       } else {
         // 使用控制并发的 worker
         final workers = <Future<void>>[];
         final concurrentCount = _segmentConcurrency;
         
+        // 使用锁或者更安全的方式更新计数
+        void updateProgress() {
+          if (index < _tasks.length && _tasks[index].id == task.id) {
+            _tasks[index].downloadedSegments = completed;
+            _tasks[index].progress = completed / total;
+            notifyListeners();
+          }
+        }
+        
         for (int i = 0; i < concurrentCount; i++) {
           workers.add(Future.microtask(() async {
             while (true) {
-              if (_tasks[index].status != DownloadStatus.downloading) return;
+              if (index >= _tasks.length || _tasks[index].id != task.id || _tasks[index].status != DownloadStatus.downloading) return;
               
               int? segmentIndex;
+              // 使用同步块保护队列操作
               if (downloadQueue.isNotEmpty) {
                 segmentIndex = downloadQueue.removeAt(0);
               }
@@ -248,10 +253,10 @@ class DownloadService extends ChangeNotifier {
                   final encryptedBytes = Uint8List.fromList(response.data);
                   final iv = fixedIv ?? encrypt.IV(_getIVFromIndex(segmentIndex));
                   
-                  // 使用 compute 在后台线程解密，避免阻塞主线程并利用多核 CPU
+                  // 使用 compute 在后台线程解密
                   final decryptedBytes = await compute(_decryptData, _DecryptParams(
                     encryptedBytes,
-                    keyBytes!, // 使用原始字节
+                    keyBytes!, 
                     iv.bytes,
                   ));
                   
@@ -259,14 +264,16 @@ class DownloadService extends ChangeNotifier {
                 } else {
                   await _dio.download(url, filePath);
                 }
+                
+                // 成功后才增加计数并刷新进度
                 completed++;
-                _tasks[index].downloadedSegments = completed;
-                _tasks[index].progress = completed / total;
-                notifyListeners();
+                updateProgress();
               } catch (e) {
                 debugPrint('Failed to download segment $segmentIndex: $e');
-                // 失败的重新放回队列末尾
-                downloadQueue.add(segmentIndex);
+                // 失败的重新放回队列
+                if (index < _tasks.length && _tasks[index].id == task.id && _tasks[index].status == DownloadStatus.downloading) {
+                   downloadQueue.add(segmentIndex);
+                }
                 await Future.delayed(const Duration(seconds: 2));
               }
             }
@@ -276,9 +283,10 @@ class DownloadService extends ChangeNotifier {
         await Future.wait(workers);
       }
 
-      if (_tasks[index].status != DownloadStatus.downloading) return;
+      // 再次确认状态，防止在下载过程中被取消
+      if (index >= _tasks.length || _tasks[index].id != task.id || _tasks[index].status != DownloadStatus.downloading) return;
 
-      if (_tasks[index].downloadedSegments >= total) {
+      if (completed >= total) {
         // 6. 合并片段
         _tasks[index].progress = 0.99; // 标记正在合并
         notifyListeners();
@@ -398,7 +406,6 @@ class DownloadService extends ChangeNotifier {
   }
 
   Uint8List _getIVFromIndex(int index) {
-    final iv = Uint8List(16);
     final data = ByteData(16);
     // HLS AES-128 默认 IV 是 16 字节的序列号 (Big Endian)
     data.setUint64(8, index, Endian.big);

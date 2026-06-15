@@ -126,6 +126,7 @@ class UpdateDialog extends StatelessWidget {
                               versionInfo.latestVersion,
                               Icons.new_releases_rounded,
                               const Color(0xFF27AE60),
+                              subValue: versionInfo.apkSize != null ? versionInfo.formattedApkSize : null,
                             ),
                           ],
                         ),
@@ -190,29 +191,36 @@ class UpdateDialog extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: Column(
                     children: [
-                      // 主要操作按钮
+                      // 主要操作按钮：立即下载
                       SizedBox(
                         width: double.infinity,
-                        height: 44,
+                        height: 48,
                         child: ElevatedButton.icon(
                           onPressed: () async {
-                            final url = VersionService.getReleaseUrl(
-                                versionInfo.latestVersion);
-                            final uri = Uri.parse(url);
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri,
-                                  mode: LaunchMode.externalApplication);
+                            final url = VersionService.getDownloadUrl(versionInfo.latestVersion);
+                            if (url.isEmpty) {
+                              // 如果下载地址为空，跳转到 release 页面
+                              final releaseUrl = VersionService.getReleaseUrl(versionInfo.latestVersion);
+                              final uri = Uri.parse(releaseUrl);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            } else {
+                              final uri = Uri.parse(url);
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
                             }
                             if (context.mounted) {
                               Navigator.of(context).pop();
                             }
                           },
-                          icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                          icon: const Icon(Icons.download_rounded, size: 20),
                           label: Text(
-                            '查看新版本',
+                            '立即更新',
                             style: FontUtils.poppins(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -220,13 +228,31 @@ class UpdateDialog extends StatelessWidget {
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      // 次要操作按钮
+                      const SizedBox(height: 12),
+                      // 次要操作：查看详情
+                      InkWell(
+                        onTap: () async {
+                          final url = VersionService.getReleaseUrl(versionInfo.latestVersion);
+                          final uri = Uri.parse(url);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        child: Text(
+                          '查看更新日志 >',
+                          style: FontUtils.poppins(
+                            fontSize: 13,
+                            color: const Color(0xFF27AE60),
+                          ).copyWith(decoration: TextDecoration.underline),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // 辅助按钮
                       Row(
                         children: [
                           Expanded(
@@ -244,7 +270,7 @@ class UpdateDialog extends StatelessWidget {
                                     : const Color(0xFF666666),
                               ),
                               child: Text(
-                                '忽略',
+                                '忽略此版本',
                                 style: FontUtils.poppins(fontSize: 14),
                               ),
                             ),
@@ -258,7 +284,7 @@ class UpdateDialog extends StatelessWidget {
                                 foregroundColor: const Color(0xFF27AE60),
                               ),
                               child: Text(
-                                '稍后',
+                                '稍后再说',
                                 style: FontUtils.poppins(fontSize: 14),
                               ),
                             ),
@@ -282,8 +308,9 @@ class UpdateDialog extends StatelessWidget {
     String label,
     String version,
     IconData icon,
-    Color color,
-  ) {
+    Color color, {
+    String? subValue,
+  }) {
     return Column(
       children: [
         Icon(icon, size: 18, color: color),
@@ -306,6 +333,18 @@ class UpdateDialog extends StatelessWidget {
             color: color,
           ),
         ),
+        if (subValue != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subValue,
+            style: FontUtils.poppins(
+              fontSize: 11,
+              color: themeService.isDarkMode
+                  ? const Color(0xFF777777)
+                  : const Color(0xFF888888),
+            ),
+          ),
+        ],
       ],
     );
   }
